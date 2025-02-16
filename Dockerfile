@@ -33,6 +33,8 @@ COPY --from=builder /usr/src/app/templates ./templates
 
 # Set the startup command
 ENV KEY=""
+ENV GEMINI_KEY=""
+ENV GROQ_KEY=""
 EXPOSE 8080
 
 CMD ["./ai"]

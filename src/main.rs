@@ -58,6 +58,11 @@ async fn manual_hello() -> impl Responder {
     HttpResponse::Ok().body("Hey there!")
 }
 
+#[get("/meow")]
+async fn meow() -> impl Responder {
+    HttpResponse::Ok().body("Meow :3")
+}
+
 mod chat {
     use super::*;
 
@@ -79,19 +84,65 @@ mod chat {
         body: web::Json<RequestPayload>,
         req: HttpRequest,
     ) -> Result<impl Responder, Box<dyn std::error::Error>> {
-        // let messages = serde_json::to_string(&body.messages)?;
-
         if let Some(peer_addr) = req.peer_addr() {
             println!("Address: {:?}", peer_addr.ip().to_string());
         }
 
-        println!("{:?}", req.headers());
+        let mut last_error = None;
 
-        let mut res = data
-            .client
-            .post(std::env::var("COMPLETIONS_URL").unwrap())
+        for (index, provider) in data.providers.iter().enumerate() {
+            if index > 0 {
+                println!("Falling back to {}", provider.model);
+            }
+
+            let mut headers = header::HeaderMap::new();
+            headers.insert(
+                header::CONTENT_TYPE,
+                header::HeaderValue::from_static("application/json"),
+            );
+            
+            let bearer = format!("Bearer {}", provider.key);
+            let mut token = header::HeaderValue::from_str(&bearer).unwrap();
+            token.set_sensitive(true);
+            headers.insert(header::AUTHORIZATION, token);
+
+            let client = reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .expect("failed to build client");
+
+            let result = try_provider(
+                client,
+                provider,
+                &body,
+                data.clone(),
+                req.clone(),
+            ).await;
+
+            match result {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    eprintln!("Provider failed: {:?}", e);
+                    last_error = Some(e);
+                    continue;
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| "No providers available".into()))
+    }
+
+    async fn try_provider(
+        client: Client,
+        provider: &Provider,
+        body: &web::Json<RequestPayload>,
+        data: web::Data<AppState>,
+        req: HttpRequest,
+    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+        let mut res = client
+            .post(&provider.url)
             .json(&RequestPayload {
-                model: Some(std::env::var("COMPLETIONS_MODEL").unwrap().to_string()),
+                model: Some(provider.model.clone()),
                 messages: body.messages.clone(),
                 stream: body.stream,
             })
@@ -190,6 +241,43 @@ mod chat {
 struct AppState {
     client: Client,
     db_pool: Pool,
+    providers: Vec<Provider>,
+}
+
+struct Provider {
+    url: String,
+    model: String,
+    key: String,
+}
+
+fn setup_providers() -> Vec<Provider> {
+    let mut providers = Vec::new();
+    
+    if let (Ok(url), Ok(model), Ok(key)) = (
+        std::env::var("COMPLETIONS_URL"),
+        std::env::var("COMPLETIONS_MODEL"),
+        std::env::var("KEY"),
+    ) {
+        providers.push(Provider { url, model, key });
+    }
+
+    if let Ok(key) = std::env::var("GEMINI_KEY") {
+        providers.push(Provider {
+            url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions".to_string(),
+            model: "gemini-2.0-flash".to_string(),
+            key,
+        });
+    }
+
+    if let Ok(key) = std::env::var("GROQ_KEY") {
+        providers.push(Provider {
+            url: "https://api.groq.com/openai/v1/chat/completions".to_string(),
+            model: "llama-3.3-70b-versatile".to_string(),
+            key,
+        });
+    }
+
+    providers
 }
 
 #[actix_web::main]
@@ -246,6 +334,7 @@ pub async fn main() -> std::io::Result<()> {
         let app_state = AppState {
             client,
             db_pool: db_pool.clone(),
+            providers: setup_providers(),
         };
 
         App::new()
