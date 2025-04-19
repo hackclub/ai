@@ -126,7 +126,7 @@ mod chat {
             };
 
             return Ok(HttpResponse::Ok()
-                .content_type("application/json")
+                .content_type("application/x-ndjson")
                 .streaming(Box::pin(processed_stream)));
         } else {
             let mut res_json = res.json::<serde_json::Value>().await?;
