@@ -191,6 +191,12 @@ struct AppState {
     db_pool: Pool,
 }
 
+#[get("/model")]
+async fn get_model() -> Result<impl Responder, Box<dyn std::error::Error>> {
+    let model = std::env::var("COMPLETIONS_MODEL")?;
+    Ok(HttpResponse::Ok().body(model))
+}
+
 #[actix_web::main]
 pub async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
@@ -248,6 +254,7 @@ pub async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(app_state))
             .service(index)
             .service(echo)
+            .service(get_model)
             .route("/chat/completions", web::post().to(chat::completions))
             .route("/hey", web::get().to(manual_hello))
             .wrap(Logger::default())

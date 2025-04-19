@@ -29,11 +29,17 @@
 
     <section>
       <h2>Usage</h2>
+      <h3>Chat Completions</h3>
       <pre><code>curl -X POST https://ai.hackclub.com/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
         "messages": [{"role": "user", "content": "Tell me a joke!"}]
     }'</code></pre>
+
+      <h3>Get Current Model</h3>
+      <p>To get current model:</p>
+      <pre><code>curl https://ai.hackclub.com/model</code></pre>
+      <p>Example response: <code>{{ model }}</code></p>
     </section>
 
     <section>
