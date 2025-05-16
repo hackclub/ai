@@ -15,6 +15,7 @@ use minijinja::{context, path_loader, Environment};
 use reqwest::{header, Client};
 use reqwest_streams::JsonStreamResponse as _;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::PathBuf;
 
 fn remove_field(value: &mut serde_json::Value, key: &str) {
@@ -61,9 +62,52 @@ mod chat {
     use super::*;
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct FunctionCall {
+        name: String,
+        arguments: String, // JSON string
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct ToolCall {
+        id: Option<String>,
+        #[serde(rename = "type")]
+        call_type: String, // Usually "function"
+        function: FunctionCall,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ChatCompletionMessage {
         role: String,
-        content: String,
+        content: Option<String>, // Make content optional for tool responses
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_calls: Option<Vec<ToolCall>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>, // For tool responses
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_call_id: Option<String>, // For tool responses
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct FunctionParameters {
+        #[serde(rename = "type")]
+        param_type: String,
+        properties: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        required: Option<Vec<String>>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct FunctionDefinition {
+        name: String,
+        description: String,
+        parameters: FunctionParameters,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct ToolDefinition {
+        #[serde(rename = "type")]
+        tool_type: String, // Usually "function"
+        function: FunctionDefinition,
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -71,6 +115,10 @@ mod chat {
         model: Option<String>,
         messages: Vec<ChatCompletionMessage>,
         stream: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tools: Option<Vec<ToolDefinition>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_choice: Option<Value>, // Can be "auto", "none", or a specific tool
     }
 
     pub async fn completions(
@@ -78,22 +126,24 @@ mod chat {
         body: web::Json<RequestPayload>,
         req: HttpRequest,
     ) -> Result<impl Responder, Box<dyn std::error::Error>> {
-        // let messages = serde_json::to_string(&body.messages)?;
-
         if let Some(peer_addr) = req.peer_addr() {
             println!("Address: {:?}", peer_addr.ip().to_string());
         }
 
         println!("{:?}", req.headers());
 
+        let mut forward_payload = RequestPayload {
+            model: Some(std::env::var("COMPLETIONS_MODEL").unwrap().to_string()),
+            messages: body.messages.clone(),
+            stream: body.stream,
+            tools: body.tools.clone(),
+            tool_choice: body.tool_choice.clone(),
+        };
+
         let mut res = data
             .client
             .post(std::env::var("COMPLETIONS_URL").unwrap())
-            .json(&RequestPayload {
-                model: Some(std::env::var("COMPLETIONS_MODEL").unwrap().to_string()),
-                messages: body.messages.clone(),
-                stream: body.stream,
-            })
+            .json(&forward_payload)
             .send()
             .await?;
 
@@ -120,8 +170,6 @@ mod chat {
                         },
                         Err(e) => yield Err::<Bytes, _>(e.into()),
                     }
-                    // Force flush after each chunk
-                    //tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                 }
             };
 
@@ -168,7 +216,7 @@ mod chat {
                 }
             };
 
-            let body_value = match serde_json::to_value(body /*.into_inner()*/) {
+            let body_value = match serde_json::to_value(body) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("Failed to serialize body: {}", e);
@@ -263,17 +311,3 @@ pub async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
-/*
- * curl https://api.deepseek.com/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <DeepSeek API Key>" \
-  -d '{
-        "model": "deepseek-chat",
-        "messages": [
-          {"role": "system", "content": "You are a helpful assistant."},
-          {"role": "user", "content": "Hello!"}
-        ],
-        "stream": false
-      }'
-*/
