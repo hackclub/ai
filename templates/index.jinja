@@ -4,6 +4,86 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hack Club | AI</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --text: #111;
+        --muted: #555;
+        --red: #ec3750;
+        --code-bg: #f5f5f5;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0a0a;
+          --text: #f9f9f9;
+          --muted: #aaa;
+          --red: #ff5c77;
+          --code-bg: #1a1a1a;
+        }
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, sans-serif;
+        line-height: 1.6;
+        margin: 0 auto;
+        padding: 2rem;
+        max-width: 800px;
+      }
+
+      header {
+        margin-bottom: 2rem;
+      }
+
+      h1 {
+        color: var(--red);
+        font-family: monospace;
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+      }
+
+      h2, h3 {
+        color: var(--red);
+        font-family: monospace;
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      a {
+        color: var(--red);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      code {
+        font-family: monospace;
+        background: var(--code-bg);
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+      }
+
+      pre {
+        background: var(--code-bg);
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-family: monospace;
+      }
+
+      section {
+        margin-bottom: 2rem;
+      }
+
+      .note {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+    </style>
   </head>
   <body>
     <header>
@@ -11,30 +91,27 @@
       <p>
         An experimental service providing unlimited
         <code>/chat/completions</code> for free, for teens in
-        <a href="https://hackclub.com/" target="_blank">Hack Club</a>. No API
-        key needed.
+        <a href="https://hackclub.com/" target="_blank">Hack Club</a>. No API key needed.
       </p>
       <p>
-        <b>{{ total_tokens }}</b> tokens processed since January 2025. Current
-        model:
-        <b
-          ><code>{{ model }}</code></b
-        >.
+        <strong>{{ total_tokens }}</strong> tokens processed since January 2025. Current model:
+        <strong><code>{{ model }}</code></strong>.
       </p>
       <p>
         Open source at
-        <a href="https://github.com/hackclub/ai">github.com/hackclub/ai</a>!
+        <a href="https://github.com/hackclub/ai" target="_blank">github.com/hackclub/ai</a>!
       </p>
     </header>
 
     <section>
       <h2>Usage</h2>
+
       <h3>Chat Completions</h3>
       <pre><code>curl -X POST https://ai.hackclub.com/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{
-        "messages": [{"role": "user", "content": "Tell me a joke!"}]
-    }'</code></pre>
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Tell me a joke!"}]
+}'</code></pre>
 
       <h3>Get Current Model</h3>
       <p>To get current model:</p>
@@ -43,13 +120,15 @@
     </section>
 
     <section>
-	<h2>Terms</h2>
-	<p>
-	  You must be a teenager in the <a href="https://hackclub.com/slack">Hack Club Slack</a>.
-	  All requests and responses are logged to prevent abuse.
-	  Projects only - no personal use. This means you can't use it in Cursor or anything similar for the moment!
-	  Abuse means this will get shut down - we're a nonprofit funded by donations.
-	</p>
+      <h2>Terms</h2>
+      <p>
+        You must be a teenager in the <a href="https://hackclub.com/slack">Hack Club Slack</a>.
+        All requests and responses are logged to prevent abuse. Projects only – no personal use.
+        This means you can't use it in Cursor or anything similar for the moment!
+      </p>
+      <p class="note">
+        Abuse means this will get shut down – we're a nonprofit funded by donations.
+      </p>
     </section>
   </body>
 </html>
