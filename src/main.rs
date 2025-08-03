@@ -3,6 +3,7 @@ use actix_web::{
     middleware::Logger,
     web::{self, Bytes},
     App, HttpRequest, HttpResponse, HttpServer, Responder, http::StatusCode,
+    error::ErrorBadRequest,
 };
 use async_stream::stream;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
@@ -60,10 +61,75 @@ async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std:
     Ok(HttpResponse::Ok().content_type("text/html").body(page))
 }
 
+mod embeddings {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+    use serde_json::Value;
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct EmbeddingsRequest {
+        pub model: Option<String>,
+        pub input: String,
+    }
+
+    pub async fn handler(
+        data: web::Data<AppState>,
+        mut body: web::Json<EmbeddingsRequest>,
+        req: HttpRequest,
+    ) -> Result<impl Responder, Box<dyn std::error::Error>> {
+        // Override model with environment variable
+        body.model = Some(std::env::var("EMBEDDINGS_MODEL").unwrap().to_string());
+        
+        println!("Embeddings request:");
+        println!("  Model: {:?}", body.model);
+        println!("  Input: {}", body.input);
+
+        let res = data
+            .client
+            .post(std::env::var("EMBEDDINGS_URL").unwrap())
+            .json(&body.into_inner())
+            .send()
+            .await?;
+
+        let res_json = res.json::<serde_json::Value>().await?;
+        
+        // Log the embeddings request
+        if let Some(db_pool) = data.db_pool.clone() {
+            let peer_ip = req
+                .peer_addr()
+                .map(|a| a.ip())
+                .unwrap_or_else(|| "0.0.0.0".parse().unwrap());
+            let user_agent = req
+                .headers()
+                .get("user-agent")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+
+            tokio::task::spawn(async move {
+                if let Ok(conn) = db_pool.get().await {
+                    let body_value = serde_json::to_value(body).unwrap();
+                    let body_string = body_value.to_string();
+                    let res_string = res_json.to_string();
+                    
+                    if let Err(e) = conn.execute(
+                        "INSERT INTO api_request_logs (request, response, ip, user_agent) VALUES ($1, $2, $3, $4)",
+                        &[&body_string, &res_string, &peer_ip, &user_agent]
+                    ).await {
+                        eprintln!("Failed to insert embeddings log: {}", e);
+                    }
+                }
+            });
+        }
+
+        Ok(HttpResponse::Ok()
+            .content_type("application/json")
+            .json(res_json))
+    }
+}
+
+
 mod chat {
     use super::*;
-
-    // Represents a single message in the chat conversation.
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ChatCompletionMessage {
         pub role: String,
@@ -381,6 +447,8 @@ pub async fn main() -> std::io::Result<()> {
     println!("Environment variables:");
     println!("  COMPLETIONS_MODEL: {:?}", std::env::var("COMPLETIONS_MODEL").unwrap_or_else(|_| "NOT SET".to_string()));
     println!("  COMPLETIONS_URL: {:?}", std::env::var("COMPLETIONS_URL").unwrap_or_else(|_| "NOT SET".to_string()));
+    println!("  EMBEDDINGS_MODEL: {:?}", std::env::var("EMBEDDINGS_MODEL").unwrap_or_else(|_| "NOT SET".to_string()));
+    println!("  EMBEDDINGS_URL: {:?}", std::env::var("EMBEDDINGS_URL").unwrap_or_else(|_| "NOT SET".to_string()));
     println!("  KEY: {:?}", std::env::var("KEY").unwrap_or_else(|_| "NOT SET".to_string()));
     println!("  DB_URL: {:?}", std::env::var("DB_URL").unwrap_or_else(|_| "NOT SET".to_string()));
 
@@ -463,6 +531,7 @@ pub async fn main() -> std::io::Result<()> {
             .service(echo)
             .service(get_model)
             .route("/chat/completions", web::post().to(chat::completions))
+            .route("/embeddings", web::post().to(embeddings::handler))
             .route("/hey", web::get().to(manual_hello))
             .wrap(Logger::default())
     })

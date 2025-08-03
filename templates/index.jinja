@@ -66,6 +66,19 @@
       <p><strong>Note:</strong> The <code>model</code> parameter is ignored as the model is configured server-side.</p>
       <p><strong>Note:</strong> Reasoning parameters (<code>include_reasoning</code> and <code>reasoning_format</code>) only work when the currently set model is a reasoning model.</p>
       <p><strong>Note:</strong> The <code>reasoning_effort</code> parameter only works for Qwen models. Use "none" for fast responses without reasoning or "default" for normal reasoning effort.</p>
+
+      <h3>Embeddings API</h3>
+      <p>For embeddings, use the following parameters:</p>
+      <ul>
+        <li><code>model</code> - (Ignored) Uses server's EMBEDDINGS_MODEL</li>
+        <li><code>input</code> - The text to generate embeddings for</li>
+      </ul>
+      <p>Example request:</p>
+      <pre><code>curl -X POST https://ai.hackclub.com/embeddings \
+    -H "Content-Type: application/json" \
+    -d '{
+        "input": "The food was delicious and the waiter..."
+    }'</code></pre>
     </section>
 
     <section>
