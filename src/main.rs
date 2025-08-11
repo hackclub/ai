@@ -1,17 +1,24 @@
 use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer, Responder, get,
     http::StatusCode,
-    middleware::Logger,
+    middleware::{Logger, Middleware},
     web::{self, Bytes},
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
 use async_stream::stream;
+use chrono::{self, Utc};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use futures::StreamExt;
+use futures::{StreamExt, future::LocalBoxFuture, Future};
 use minijinja::{Environment, context, path_loader};
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    task::{Context, Poll},
+    time::{Instant, Duration},
+};
 
 // Remove a field from a JSON object - used to remove unwanted fields before returning response
 fn remove_field(value: &mut Value, key: &str) {
@@ -21,7 +28,16 @@ fn remove_field(value: &mut Value, key: &str) {
 }
 
 #[get("/")]
-async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std::error::Error>> {
+async fn index(data: web::Data<AppState>, req: HttpRequest) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    // Get the response metadata from the request extensions
+    let response_metadata = req.extensions()
+        .get::<ResponseMetadata>()
+        .cloned()
+        .unwrap_or_else(|| ResponseMetadata {
+            response_time_ms: 0,
+            timestamp: Utc::now(),
+        });
+
     // Gracefully handle the case where the database is not configured.
     let sum: i32 = if let Some(pool) = &data.db_pool {
         match pool.get().await {
@@ -50,14 +66,31 @@ async fn index(data: web::Data<AppState>) -> Result<impl Responder, Box<dyn std:
     let tmpl = env.get_template("index.jinja")?;
 
     let ctx = if sum >= 0 {
-        context!(total_tokens => sum, model => std::env::var("COMPLETIONS_MODEL")?)
+        context!(
+            total_tokens => sum,
+            model => std::env::var("COMPLETIONS_MODEL")?,
+            response_time_ms => response_metadata.response_time_ms,
+            timestamp => response_metadata.timestamp.to_rfc3339()
+        )
     } else {
-        context!(total_tokens => -1, model => std::env::var("COMPLETIONS_MODEL")?)
+        context!(
+            total_tokens => -1,
+            model => std::env::var("COMPLETIONS_MODEL")?,
+            response_time_ms => response_metadata.response_time_ms,
+            timestamp => response_metadata.timestamp.to_rfc3339()
+        )
     };
 
     let page = tmpl.render(ctx)?;
 
-    Ok(HttpResponse::Ok().content_type("text/html").body(page))
+    // For HTML responses, we'll add the metadata as a comment at the end of the page
+    let page_with_metadata = format!(
+        "{}\n<!-- Response Metadata: {} -->",
+        page,
+        serde_json::to_string(&response_metadata)?
+    );
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(page_with_metadata))
 }
 
 mod chat {
@@ -153,6 +186,15 @@ mod chat {
         mut body: web::Json<RequestPayload>,
         req: HttpRequest,
     ) -> Result<impl Responder, Box<dyn std::error::Error>> {
+        // Get the response metadata from the request extensions
+        let response_metadata = req.extensions()
+            .get::<ResponseMetadata>()
+            .cloned()
+            .unwrap_or_else(|| ResponseMetadata {
+                response_time_ms: 0,
+                timestamp: Utc::now(),
+            });
+
         // As requested, ignore the model specified by the user and use the one from env vars.
         body.model = Some(std::env::var("COMPLETIONS_MODEL").unwrap().to_string());
 
@@ -177,12 +219,26 @@ mod chat {
         let log_body = body.clone();
         let log_req = req.clone();
 
+        // Measure latency for the external API call
+        let api_call_start = Instant::now();
         let res = data
             .client
             .post(std::env::var("COMPLETIONS_URL").unwrap())
             .json(&body.into_inner()) // Send the full payload to Groq
             .send()
             .await?;
+        let api_latency_ms = api_call_start.elapsed().as_millis() as u64;
+
+        // Create metadata to include in the response
+        let metadata = serde_json::json!({
+            "response_time_ms": response_metadata.response_time_ms,
+            "api_latency_ms": api_latency_ms,
+            "timestamp": response_metadata.timestamp,
+            "server_info": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "model": body.model,
+            }
+        });
 
         // Handle potential errors from the upstream API (e.g., unsupported feature)
         if !res.status().is_success() {
@@ -190,17 +246,41 @@ mod chat {
             let error_body = res.text().await?;
             let status_code =
                 StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+            // Try to parse the error body as JSON to add metadata
+            let error_response = match serde_json::from_str::<Value>(&error_body) {
+                Ok(mut error_json) => {
+                    if let Value::Object(map) = &mut error_json {
+                        map.insert("metadata".to_string(), metadata);
+                    }
+                    serde_json::to_string(&error_json)?
+                },
+                Err(_) => {
+                    // If not valid JSON, wrap the error in a JSON object with metadata
+                    let wrapped_error = serde_json::json!({
+                        "error": error_body,
+                        "metadata": metadata
+                    });
+                    serde_json::to_string(&wrapped_error)?
+                }
+            };
+
             return Ok(HttpResponse::build(status_code)
                 .content_type("application/json")
-                .body(error_body));
+                .body(error_response));
         }
 
         if log_body.stream == Some(true) {
             // Use bytes_stream instead of json_array_stream for proper NDJSON handling
             let mut stream_res = res.bytes_stream();
 
+            // For streaming responses, we'll add metadata to the first chunk
+            let metadata_clone = metadata.clone();
+            let first_chunk_sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
             let processed_stream = stream! {
                 let mut buffer = String::new();
+                let first_chunk_sent_ref = first_chunk_sent.clone();
 
                 while let Some(chunk) = stream_res.next().await {
                     match chunk {
@@ -232,6 +312,16 @@ mod chat {
                                 // Check for stream end
                                 if json_str == "[DONE]" {
                                     // Stream is finished
+                                    // Send a final metadata chunk
+                                    let final_metadata = serde_json::json!({
+                                        "metadata": metadata_clone,
+                                        "done": true
+                                    });
+
+                                    if let Ok(mut bytes) = serde_json::to_vec(&final_metadata) {
+                                        bytes.extend(b"\n");
+                                        yield Ok::<Bytes, Box<dyn std::error::Error>>(Bytes::from(bytes));
+                                    }
                                     break;
                                 }
 
@@ -240,6 +330,16 @@ mod chat {
                                     Ok(mut val) => {
                                         log_reqres(data.clone(), log_body.clone(), log_req.clone(), val.clone());
                                         remove_field(&mut val, "usage");
+
+                                        // Add metadata to the first chunk only
+                                        let is_first = !first_chunk_sent_ref.load(std::sync::atomic::Ordering::Relaxed);
+                                        if is_first {
+                                            if let Value::Object(map) = &mut val {
+                                                map.insert("metadata".to_string(), metadata_clone.clone());
+                                            }
+                                            first_chunk_sent_ref.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        }
+
                                         println!("val: {:#?}", val);
 
                                         match serde_json::to_vec(&val) {
@@ -281,12 +381,34 @@ mod chat {
                     if let Ok(mut val) = serde_json::from_str::<Value>(json_str) {
                         log_reqres(data.clone(), log_body.clone(), log_req.clone(), val.clone());
                         remove_field(&mut val, "usage");
+
+                        // Add metadata if this is the only chunk
+                        let is_first = !first_chunk_sent_ref.load(std::sync::atomic::Ordering::Relaxed);
+                        if is_first {
+                            if let Value::Object(map) = &mut val {
+                                map.insert("metadata".to_string(), metadata_clone.clone());
+                            }
+                        }
+
                         println!("val: {:#?}", val);
 
                         if let Ok(mut bytes) = serde_json::to_vec(&val) {
                             bytes.extend(b"\n");
                             yield Ok::<Bytes, Box<dyn std::error::Error>>(Bytes::from(bytes));
                         }
+                    }
+                }
+
+                // If no chunks were sent, send at least the metadata
+                if !first_chunk_sent_ref.load(std::sync::atomic::Ordering::Relaxed) {
+                    let final_metadata = serde_json::json!({
+                        "metadata": metadata_clone,
+                        "done": true
+                    });
+
+                    if let Ok(mut bytes) = serde_json::to_vec(&final_metadata) {
+                        bytes.extend(b"\n");
+                        yield Ok::<Bytes, Box<dyn std::error::Error>>(Bytes::from(bytes));
                     }
                 }
             };
@@ -300,6 +422,12 @@ mod chat {
             log_reqres(data.clone(), log_body, log_req, res_json.clone());
 
             remove_field(&mut res_json, "usage");
+
+            // Add metadata to the response
+            if let Value::Object(map) = &mut res_json {
+                map.insert("metadata".to_string(), metadata);
+            }
+
             Ok(HttpResponse::Ok()
                 .content_type("application/json")
                 .json(res_json))
@@ -348,24 +476,157 @@ mod chat {
     }
 }
 
+// Middleware to measure response time and add metadata to responses
+pub struct ResponseTimeMiddleware;
+
+impl<S, B> Transform<S, ServiceRequest> for ResponseTimeMiddleware
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = actix_web::Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = actix_web::Error;
+    type Transform = ResponseTimeMiddlewareService<S>;
+    type InitError = ();
+    type Future = LocalBoxFuture<'static, Result<Self::Transform, Self::InitError>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        Box::pin(async move {
+            Ok(ResponseTimeMiddlewareService { service })
+        })
+    }
+}
+
+pub struct ResponseTimeMiddlewareService<S> {
+    service: S,
+}
+
+impl<S, B> Service<ServiceRequest> for ResponseTimeMiddlewareService<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = actix_web::Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = actix_web::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<ServiceResponse<B>, actix_web::Error>>>>;
+
+    fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
+    }
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        let start_time = Instant::now();
+
+        let fut = self.service.call(req);
+
+        Box::pin(async move {
+            let res = fut.await?;
+            let elapsed = start_time.elapsed();
+
+            // Store the response time in the request extensions
+            // This will be used by handlers to include it in the response
+            res.request().extensions_mut().insert(ResponseMetadata {
+                response_time_ms: elapsed.as_millis() as u64,
+                timestamp: chrono::Utc::now(),
+            });
+
+            Ok(res)
+        })
+    }
+}
+
+// Metadata structure to be included in responses
+#[derive(Clone, Debug, Serialize)]
+pub struct ResponseMetadata {
+    pub response_time_ms: u64,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 struct AppState {
     client: Client,
     db_pool: Option<Pool>, // The database pool is now optional
 }
 
 #[get("/model")]
-async fn get_model() -> Result<impl Responder, Box<dyn std::error::Error>> {
+async fn get_model(req: HttpRequest) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    // Get the response metadata from the request extensions
+    let response_metadata = req.extensions()
+        .get::<ResponseMetadata>()
+        .cloned()
+        .unwrap_or_else(|| ResponseMetadata {
+            response_time_ms: 0,
+            timestamp: Utc::now(),
+        });
+
     let model = std::env::var("COMPLETIONS_MODEL")?;
-    Ok(HttpResponse::Ok().body(model))
+
+    // Create a response with metadata
+    let response = serde_json::json!({
+        "model": model,
+        "metadata": response_metadata
+    });
+
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .json(response))
 }
 
 #[get("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
+async fn echo(req_body: String, req: HttpRequest) -> impl Responder {
+    // Get the response metadata from the request extensions
+    let response_metadata = req.extensions()
+        .get::<ResponseMetadata>()
+        .cloned()
+        .unwrap_or_else(|| ResponseMetadata {
+            response_time_ms: 0,
+            timestamp: Utc::now(),
+        });
+
+    // Check if the request body is valid JSON
+    let response = match serde_json::from_str::<Value>(&req_body) {
+        Ok(mut json_body) => {
+            // If it's JSON, add metadata to it
+            if let Value::Object(map) = &mut json_body {
+                map.insert("metadata".to_string(), serde_json::to_value(response_metadata).unwrap());
+            }
+            HttpResponse::Ok()
+                .content_type("application/json")
+                .json(json_body)
+        },
+        Err(_) => {
+            // If it's not JSON, create a JSON wrapper
+            let response = serde_json::json!({
+                "echo": req_body,
+                "metadata": response_metadata
+            });
+            HttpResponse::Ok()
+                .content_type("application/json")
+                .json(response)
+        }
+    };
+
+    response
 }
 
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there!")
+async fn manual_hello(req: HttpRequest) -> impl Responder {
+    // Get the response metadata from the request extensions
+    let response_metadata = req.extensions()
+        .get::<ResponseMetadata>()
+        .cloned()
+        .unwrap_or_else(|| ResponseMetadata {
+            response_time_ms: 0,
+            timestamp: Utc::now(),
+        });
+
+    // Create a response with metadata
+    let response = serde_json::json!({
+        "message": "Hey there!",
+        "metadata": response_metadata
+    });
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .json(response)
 }
 
 #[actix_web::main]
@@ -482,13 +743,14 @@ pub async fn main() -> std::io::Result<()> {
                     .allow_any_method()
                     .allow_any_header(), // Note: NOT calling .supports_credentials() means credentials are disabled by default
             )
+            .wrap(ResponseTimeMiddleware)
+            .wrap(Logger::default())
             .app_data(web::Data::new(app_state))
             .service(index)
             .service(echo)
             .service(get_model)
             .route("/chat/completions", web::post().to(chat::completions))
             .route("/hey", web::get().to(manual_hello))
-            .wrap(Logger::default())
     })
     .bind(("0.0.0.0", 8080))?
     .run()
