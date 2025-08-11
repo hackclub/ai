@@ -4,8 +4,118 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hack Club | AI</title>
+    <style>
+      :root {
+        --bg-light: #fff;
+        --bg-dark: #13151A;
+        --text-light: #222;
+        --text-dark: #f2f2f2;
+        --link-light: #0b5cff;
+        --link-dark: #66aaff;
+        --header-bg-light: #f5f5f5;
+        --header-bg-dark: #222a35;
+        --border-light: #e0e0e0;
+        --border-dark: #333a44;
+      }
+
+      body {
+        background: var(--bg-light);
+        color: var(--text-light);
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 0;
+        transition: background 0.2s, color 0.2s;
+      }
+
+      a {
+        color: var(--link-light);
+        transition: color 0.2s;
+      }
+
+      header {
+        background: var(--header-bg-light);
+        border-bottom: 1px solid var(--border-light);
+        padding: 2rem 1rem 1rem 1rem;
+        margin-bottom: 2rem;
+        text-align: center;
+        transition: background 0.2s, border 0.2s;
+      }
+
+      section {
+        max-width: 700px;
+        margin: 2rem auto;
+        padding: 1rem;
+        background: rgba(0,0,0,0.02);
+        border-radius: 12px;
+      }
+
+      pre {
+        background: #f6f6f6;
+        padding: 0.6em 1em;
+        border-radius: 7px;
+        overflow-x: auto;
+      }
+
+      code {
+        background: #f2f2f2;
+        padding: 0.2em 0.4em;
+        border-radius: 5px;
+      }
+
+      body.dark-mode {
+        background: var(--bg-dark);
+        color: var(--text-dark);
+      }
+
+      body.dark-mode a {
+        color: var(--link-dark);
+      }
+
+      body.dark-mode header {
+        background: var(--header-bg-dark);
+        border-bottom: 1px solid var(--border-dark);
+      }
+
+      body.dark-mode section {
+        background: rgba(20, 25, 35, 0.8);
+      }
+
+      body.dark-mode pre {
+        background: #23272e;
+        color: #f2f2f2;
+      }
+
+      body.dark-mode code {
+        background: #23272e;
+        color: #ffe59e;
+      }
+
+      .dark-mode-toggle {
+        position: absolute;
+        top: 1.5rem;
+        right: 2rem;
+        z-index: 10;
+        background: none;
+        border: 2px solid #bbb;
+        border-radius: 2em;
+        padding: 0.5em 1.2em;
+        font-size: 1em;
+        color: inherit;
+        cursor: pointer;
+        transition: background 0.2s, border 0.2s;
+      }
+
+      body.dark-mode .dark-mode-toggle {
+        border-color: #444;
+        background: #181d24;
+        color: #f2f2f2;
+      }
+    </style>
   </head>
   <body>
+    <button class="dark-mode-toggle" id="darkModeToggle" aria-label="Toggle dark mode">
+      🌙 Dark Mode
+    </button>
     <header>
       <h1>ai.hackclub.com</h1>
       <p>
@@ -77,5 +187,35 @@
 	  Abuse means this will get shut down — we're a nonprofit funded by donations.
 	</p>
     </section>
+    <script>
+      const btn = document.getElementById("darkModeToggle");
+
+      function setMode(mode) {
+        if (mode === "dark") {
+          document.body.classList.add("dark-mode");
+          btn.textContent = "Light Mode";
+        } else {
+          document.body.classList.remove("dark-mode");
+          btn.textContent = "Dark Mode";
+        }
+        localStorage.setItem("color-mode", mode);
+      }
+
+      (function () {
+        const saved = localStorage.getItem("color-mode");
+        if (saved) {
+          setMode(saved);
+        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          setMode("dark");
+        } else {
+          setMode("light");
+        }
+      })();
+
+      btn.addEventListener("click", () => {
+        const isDark = document.body.classList.contains("dark-mode");
+        setMode(isDark ? "light" : "dark");
+      });
+    </script>
   </body>
 </html>
