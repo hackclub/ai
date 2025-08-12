@@ -249,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -258,12 +258,11 @@ dependencies = [
  "deadpool-postgres",
  "env_logger",
  "futures",
+ "log",
  "minijinja",
- "once_cell",
  "reqwest",
  "serde",
  "serde_json",
- "serde_plain",
  "tokio",
  "tokio-postgres",
  "tokio-util",
@@ -1827,15 +1826,6 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
- "serde",
-]
-
-[[package]]
-name = "serde_plain"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ce1fc6db65a611022b23a0dec6975d63fb80a302cb3388835ff02c097258d50"
-dependencies = [
  "serde",
 ]
 

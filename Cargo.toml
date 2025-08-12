@@ -1,7 +1,7 @@
 [package]
 name = "ai"
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 
 [dependencies]
 actix-cors = "0.7.0"
@@ -11,6 +11,7 @@ async-stream = "0.3.6"
 deadpool-postgres = "0.14.1"
 env_logger = "0.11.6"
 futures = "0.3.31"
+log = "0.4.27"
 minijinja = { version = "2.6.0", features = ["loader"] }
 reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1.0.217", features = ["derive"] }

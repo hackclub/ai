@@ -5,11 +5,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use self::{message::ChatCompletionMessage, model::CompletionModel};
+use self::message::ChatCompletionMessage;
 
 pub mod functions;
 pub mod message;
-pub mod model;
 pub mod tools;
 
 /// The main request payload, made to include standard Groq/OpenAI parameters
@@ -24,10 +23,8 @@ pub struct OpenAiRequest {
     /// List of messages
     pub messages: Vec<ChatCompletionMessage>,
 
-    /// The model to call, defaults to env(COMPLETIONS_MODEL), but may be specified by the user to
-    /// one of CompletionModel
-    #[serde(default)]
-    pub model: CompletionModel,
+    /// The model to call
+    pub model: Option<String>,
 
     /// A list of domains to exclude from the search results when the model uses a web search tool.
     #[deprecated(note = "Deprecated: Use search_settings.exclude_domains instead.")]
