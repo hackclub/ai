@@ -222,11 +222,11 @@ pub async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let api_key = std::env::var("KEY").expect("No API key supplied");
-    let models: Vec<_> = std::env::var("VALID_MODELS")
-        .expect("No models specified, must be a comma-separated list of valid model IDs")
-        .split(',')
-        .map(|x| x.to_string())
-        .collect();
+    let models: Vec<String> = std::env::var("VALID_MODELS")
+      .unwrap_or_else(|_| "qwen/qwen3-32b,openai/gpt-oss-120b,openai/gpt-oss-20b,meta-llama/llama-4-maverick-17b-128e-instruct".into())
+      .split(',')
+      .map(String::from)
+      .collect();
 
     let completions_url = std::env::var("COMPLETIONS_URL").expect("No completions url supplied");
     let database_url = std::env::var("DB_URL").ok();
