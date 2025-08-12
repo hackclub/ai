@@ -302,7 +302,12 @@ pub async fn main() -> std::io::Result<()> {
         };
 
         App::new()
-            .wrap(actix_cors::Cors::permissive())
+            .wrap(
+                actix_cors::Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header(),
+            )
             .app_data(web::Data::new(app_state))
             .service(index)
             .service(get_model)
