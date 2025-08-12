@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75-slim-bookworm AS builder
+FROM rust:1.89-slim-bookworm AS builder
 
 WORKDIR /usr/src/app
 
@@ -36,4 +36,3 @@ ENV KEY=""
 EXPOSE 8080
 
 CMD ["./ai"]
-
