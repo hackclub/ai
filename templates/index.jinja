@@ -36,34 +36,15 @@
         "messages": [{"role": "user", "content": "Tell me a joke!"}]
     }'</code></pre>
 
-      <h3>Get Current Model</h3>
-      <p>To get current model:</p>
+      <h3>Get default model</h3>
       <pre><code>curl https://ai.hackclub.com/model</code></pre>
-      <p>Example response: <code>{{ model }}</code></p>
+      <p>Current response: <code>{{ model }}</code></p>
     </section>
 
     <section>
       <h2>API Parameters</h2>
-      <p>The API accepts all standard OpenAI-style parameters for chat completions:</p>
-      <ul>
-        <li><code>messages</code> - Array of message objects with role and content</li>
-        <li><code>model</code> - (Ignored) Model is set server-side</li>
-        <li><code>temperature</code> - Controls randomness (0.0 to 2.0)</li>
-        <li><code>max_completion_tokens</code> - Maximum number of tokens to generate</li>
-        <li><code>top_p</code> - Controls diversity via nucleus sampling</li>
-        <li><code>frequency_penalty</code> - Reduces repetition of token sequences</li>
-        <li><code>presence_penalty</code> - Reduces repetition of tokens</li>
-        <li><code>stream</code> - Set to true for streaming responses</li>
-        <li><code>stop</code> - Array of tokens at which to stop generation</li>
-        <li><code>response_format</code> - Format of the response (e.g., JSON mode)</li>
-        <li><code>seed</code> - Integer for random seed to enable deterministic sampling</li>
-        <li><code>tools</code> - List of tools the model may call</li>
-        <li><code>tool_choice</code> - Controls which (if any) tool is called</li>
-        <li><code>include_reasoning</code> - Set to true to include reasoning in responses (reasoning models only)</li>
-        <li><code>reasoning_format</code> - Format for reasoning output (reasoning models only)</li>
-        <li><code>reasoning_effort</code> - Controls the reasoning effort for Qwen models (none or default)</li>
-      </ul>
-      <p><strong>Note:</strong> The <code>model</code> parameter is ignored as the model is configured server-side.</p>
+      <p><strong>Note:</strong> You can specify which model to use with the <code>model</code> parameter. If not specified or if an unavailable model is requested, the first available model (qwen/qwen3-32b) will be used.</p>
+      <p>The API accepts all standard OpenAI-style parameters accepted by Groq for chat completions. You can read about them <a href="https://console.groq.com/docs/api-reference#chat">here</a></p>
       <p><strong>Note:</strong> Reasoning parameters (<code>include_reasoning</code> and <code>reasoning_format</code>) only work when the currently set model is a reasoning model.</p>
       <p><strong>Note:</strong> The <code>reasoning_effort</code> parameter only works for Qwen models. Use "none" for fast responses without reasoning or "default" for normal reasoning effort.</p>
     </section>
