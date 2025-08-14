@@ -1,0 +1,29 @@
+# Build artifacts
+target/
+Cargo.lock
+
+# Documentation
+README.md
+*.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD
+.github/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

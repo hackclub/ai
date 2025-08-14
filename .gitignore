@@ -1,2 +1,10 @@
 /target
 .DS_Store
+.vscode
+.env
+*.log
+*.rslib
+*.d
+debug/
+release/
+Cargo.lock

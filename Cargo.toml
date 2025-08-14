@@ -1,21 +1,28 @@
 [package]
-name = "ai"
+name = "hackclub-ai"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-actix-cors = "0.7.0"
-actix-files = "0.6.6"
-actix-web = "4.9.0"
-async-stream = "0.3.6"
-deadpool-postgres = "0.14.1"
-env_logger = "0.11.6"
 futures = "0.3.31"
-minijinja = { version = "2.6.0", features = ["loader"] }
-once_cell = "1.20.2"
-reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.137"
-tokio = "1.43.0"
-tokio-postgres = { version = "0.7.12", features = ["with-serde_json-1"] }
+tracing = { version = "0.1.41" }
+serde_json = { version = "1.0.142" }
+dotenvy_macro = { version = "0.15.7" }
+deadpool-postgres = { version = "0.14.1" }
+tracing-subscriber = { version = "0.3.19" }
+maud = { version = "0.26.0", features = ["axum"] }
+serde = { version = "1.0.219", features = ["derive"] }
+utoipa = { version = "5.4.0", features = ["axum_extras"] }
+tokio-postgres = { version = "0.7.13", features = ["with-serde_json-1"] }
+axum = { version = "0.8.4", default-features = false, features = ["json", "tokio", "macros", "http2"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1.47.1", default-features = false, features = ["net", "rt-multi-thread", "macros"] }
 
+[profile.release]
+lto = "fat"
+rpath = false
+opt-level = 3
+strip = "symbols"
+
+[profile.dev.package."*"]
+opt-level = 3
