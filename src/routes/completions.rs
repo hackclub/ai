@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{convert::Infallible, net::SocketAddr};
 
 use axum::{
     body::{Body, to_bytes},
@@ -7,8 +7,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use futures::StreamExt;
+use futures::{StreamExt, stream::unfold};
 use serde_json::{Value, from_slice};
+use tokio::{spawn, sync::mpsc::channel};
 use tracing::error;
 
 use crate::{
@@ -118,35 +119,46 @@ pub async fn completions(
 
     if is_streaming {
         let mut stream = response.bytes_stream();
-        let mut buffer = Vec::new();
-        let mut usage_data = None;
+        let (tx, rx) = channel(32);
 
-        while let Some(Ok(chunk)) = stream.next().await {
-            buffer.extend_from_slice(&chunk);
+        spawn(async move {
+            let mut usage_data = None;
 
-            String::from_utf8_lossy(&chunk)
-                .lines()
-                .filter_map(|line| line.strip_prefix("data: "))
-                .filter(|&data| data != "[DONE]")
-                .filter_map(|data| serde_json::from_str::<Value>(data).ok())
-                .filter(|json| json.get("x_groq").and_then(|x| x.get("usage")).is_some())
-                .for_each(|json| usage_data = Some(json));
-        }
+            while let Some(chunk_result) = stream.next().await {
+                let Ok(chunk) = chunk_result else { break };
 
-        if let Some(final_response) = usage_data {
-            let tokens = extract_tokens(&final_response, true);
-            state
-                .log_request(&request, &final_response, ip, tokens)
-                .await;
-        }
+                if let Some(json) = String::from_utf8_lossy(&chunk)
+                    .lines()
+                    .find_map(|line| {
+                        line.strip_prefix("data: ")
+                            .filter(|&d| d != "[DONE]")
+                            .and_then(|d| serde_json::from_str::<Value>(d).ok())
+                            .filter(|j| j.get("x_groq").and_then(|x| x.get("usage")).is_some())
+                    })
+                {
+                    usage_data = Some(json);
+                }
+
+                if tx.send(Ok::<_, Infallible>(chunk)).await.is_err() {
+                    break;
+                }
+            }
+
+            if let Some(final_response) = usage_data {
+                let tokens = extract_tokens(&final_response, true);
+                state.log_request(&request, &final_response, ip, tokens).await;
+            }
+        });
 
         Ok(Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
-            .body(Body::from(buffer))
+            .body(Body::from_stream(unfold(rx, |mut rx| async move {
+                rx.recv().await.map(|chunk| (chunk, rx))
+            })))
             .unwrap())
     } else {
-        let body = response.text().await.map_err(|e| {
+        let bytes = response.bytes().await.map_err(|e| {
             error!("Failed to read response body: {}", e);
             APIError {
                 code: StatusCode::BAD_GATEWAY,
@@ -154,7 +166,7 @@ pub async fn completions(
             }
         })?;
 
-        let json: Value = serde_json::from_str(&body).map_err(|e| {
+        let json: Value = from_slice(&bytes).map_err(|e| {
             error!("Failed to parse response JSON: {}", e);
             APIError {
                 code: StatusCode::BAD_GATEWAY,
@@ -168,7 +180,7 @@ pub async fn completions(
         Ok(Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
-            .body(Body::from(body))
+            .body(Body::from(bytes))
             .unwrap())
     }
 }
