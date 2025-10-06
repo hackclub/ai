@@ -3,7 +3,8 @@ WORKDIR /app
 COPY . .
 RUN cargo build --release
 
-FROM gcr.io/distroless/cc
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/hackclub-ai /usr/local/bin/hackclub-ai
 ENV PORT=8080
 EXPOSE 8080
