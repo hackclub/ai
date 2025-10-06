@@ -6,15 +6,20 @@ edition = "2024"
 [dependencies]
 futures = "0.3.31"
 tracing = { version = "0.1.41" }
-serde_json = { version = "1.0.142" }
+rustls = { version = "0.23.32" }
+serde_json = { version = "1.0.145" }
 dotenvy_macro = { version = "0.15.7" }
+rustls-pemfile = { version = "2.3.0" } 
+rustls-pemfile = { version = "2.3.0" } 
+webpki-roots = { version = "0.26.11" } 
 deadpool-postgres = { version = "0.14.1" }
-tracing-subscriber = { version = "0.3.19" }
+tracing-subscriber = { version = "0.3.20" }
+tokio-postgres-rustls = { version = "0.13.1" }
 maud = { version = "0.26.0", features = ["axum"] }
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 utoipa = { version = "5.4.0", features = ["axum_extras"] }
-tokio-postgres = { version = "0.7.13", features = ["with-serde_json-1"] }
-axum = { version = "0.8.4", default-features = false, features = ["json", "tokio", "macros", "http2"] }
+tokio-postgres = { version = "0.7.14", features = ["with-serde_json-1"] }
+axum = { version = "0.8.6", default-features = false, features = ["json", "tokio", "macros", "http2"] }
 reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tokio = { version = "1.47.1", default-features = false, features = ["net", "rt-multi-thread", "macros"] }
 tower-http = { version = "0.6.6", features = ["cors"] }

@@ -5,9 +5,12 @@ use std::sync::{
 };
 
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime::Tokio1};
+use rustls::RootCertStore;
+use rustls_pemfile::certs;
 use serde_json::Value;
-use tokio_postgres::NoTls;
+use tokio_postgres_rustls::MakeRustlsConnect;
 use tracing::error;
+use webpki_roots::TLS_SERVER_ROOTS;
 
 use crate::DATABASE_URL;
 
@@ -25,7 +28,16 @@ impl MetricsState {
             recycling_method: RecyclingMethod::Fast,
         });
 
-        match cfg.create_pool(Some(Tokio1), NoTls) {
+        let mut root_store = RootCertStore::empty();
+        root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
+
+        let tls = MakeRustlsConnect::new(
+            rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth(),
+        );
+
+        match cfg.create_pool(Some(Tokio1), tls) {
             Ok(pool) => Self {
                 db: Some(pool),
                 tokens: std::sync::Arc::new(AtomicI64::new(0)),
