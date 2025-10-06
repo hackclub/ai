@@ -6,7 +6,6 @@ use std::sync::{
 
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime::Tokio1};
 use rustls::RootCertStore;
-use rustls_pemfile::certs;
 use serde_json::Value;
 use tokio_postgres_rustls::MakeRustlsConnect;
 use tracing::error;

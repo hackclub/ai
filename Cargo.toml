@@ -4,17 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-futures = "0.3.31"
+futures = { version = "0.3.31" }
 tracing = { version = "0.1.41" }
-rustls = { version = "0.23.32" }
+rustls = { version = "0.23.32", features = ["aws-lc-rs"] }
 serde_json = { version = "1.0.145" }
 dotenvy_macro = { version = "0.15.7" }
-rustls-pemfile = { version = "2.3.0" } 
-rustls-pemfile = { version = "2.3.0" } 
+rustls-pemfile = { version = "2.2.0" } 
 webpki-roots = { version = "0.26.11" } 
 deadpool-postgres = { version = "0.14.1" }
 tracing-subscriber = { version = "0.3.20" }
-tokio-postgres-rustls = { version = "0.13.1" }
+tokio-postgres-rustls = { version = "0.13.0" }
 maud = { version = "0.26.0", features = ["axum"] }
 serde = { version = "1.0.228", features = ["derive"] }
 utoipa = { version = "5.4.0", features = ["axum_extras"] }

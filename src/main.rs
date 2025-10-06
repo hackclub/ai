@@ -17,6 +17,7 @@ use reqwest::{
     header::{HeaderMap, HeaderValue},
 };
 use tokio::net::TcpListener;
+use rustls::crypto::aws_lc_rs::default_provider;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::fmt;
 use utoipa::OpenApi;
@@ -97,6 +98,10 @@ pub(crate) fn is_allowed_model(model: &str) -> bool {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    default_provider()
+        .install_default()
+        .unwrap();
+
     fmt::init();
 
     LazyLock::force(&CLIENT);
