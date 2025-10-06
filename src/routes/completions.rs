@@ -77,7 +77,7 @@ pub async fn validate_model(req: Request, next: Next) -> Result<Response, APIErr
         (status = 502, description = "Upstream service error")
     ),
     tag = "Chat",
-    description = "OpenAI/Groq compatible chat completions endpoint. See: https://platform.openai.com/docs/api-reference/introduction and https://console.groq.com/docs/api-reference#chat-create"
+    description = "OpenAI and Groq compatible chat completions endpoint. See: (OpenAI)[https://platform.openai.com/docs/api-reference/introduction] or (Groq)[https://console.groq.com/docs/api-reference#chat-create]"
 )]
 pub async fn completions(
     State(state): State<MetricsState>,
