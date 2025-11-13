@@ -28,7 +28,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
               ];
               const colorClass = colors[idx % colors.length];
               return (
-                <div key={`${model}-${idx}`} class={`card-${idx} flex-shrink-0 w-52 ${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors transform hover:scale-105`} style={`--delay: ${delay}s; --dur: ${duration}s;`}>
+                <div key={`${model}-${idx}`} class={`card-${idx} flex-shrink-0 ${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors transform hover:scale-105`} style={`--delay: ${delay}s; --dur: ${duration}s;`}>
                   <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
                   </svg>
