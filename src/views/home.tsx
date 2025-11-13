@@ -1,18 +1,8 @@
 import { Layout } from './layout';
 import { Card } from './components/Card';
 
-const models = [
-  'gpt-5-mini',
-  'gpt-5-nano',
-  'qwen/qwen3-32b',
-  'deepseek/deepseek-v3.2-exp',
-  'google/gemini-2.5-flash',
-  'moonshotai/kimi-k2-thinking',
-  'openai/gpt-oss-120b',
-  'deepseek/deepseek-r1-0528',
-];
-
-export const Home = () => {
+export const Home = ({ models = [] }: { models?: string[] }) => {
+  const displayModels = models.length > 0 ? models : [];
   return (
     <Layout title="AI Proxy">
       <div class="text-center py-16 px-4">
@@ -26,7 +16,7 @@ export const Home = () => {
         <h2 class="text-2xl font-semibold mb-6">Featured Models</h2>
         <div class="relative w-full max-w-5xl mx-auto mb-12 overflow-hidden h-40">
           <div class="absolute inset-0 flex items-center gap-4 animate-carousel">
-            {[...models, ...models].map((model, idx) => {
+            {[...displayModels, ...displayModels].map((model, idx) => {
               const rotation = (idx % 2 === 0 ? 1 : -1) * (3 + (idx % 3));
               const delay = idx * 0.3;
               const duration = 3 + (idx % 4);

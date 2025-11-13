@@ -34,7 +34,8 @@ dashboard.get('/', async (c) => {
     }
   }
 
-  return c.html(<Home />);
+  const allowedLanguageModels = getAllowedLanguageModels();
+  return c.html(<Home models={allowedLanguageModels || []} />);
 });
 
 dashboard.get('/dashboard', requireAuth, async (c) => {
