@@ -1,5 +1,4 @@
 import { Layout } from './layout';
-import { Card } from './components/Card';
 
 export const Home = ({ models = [] }: { models?: string[] }) => {
   const displayModels = models.length > 0 ? models : [];
@@ -17,13 +16,24 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
         <div class="relative w-full max-w-5xl mx-auto mb-12 overflow-hidden h-40">
           <div class="absolute inset-0 flex items-center gap-4 animate-carousel">
             {[...displayModels, ...displayModels].map((model, idx) => {
-              const rotation = (idx % 2 === 0 ? 1 : -1) * (3 + (idx % 3));
               const delay = idx * 0.3;
               const duration = 3 + (idx % 4);
+              const colors = [
+                'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+                'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+                'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800',
+                'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+                'bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+                'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+              ];
+              const colorClass = colors[idx % colors.length];
               return (
-                <Card key={`${model}-${idx}`} class={`card-${idx} flex-shrink-0 w-52 px-4 py-3 transform hover:scale-105 transition-all duration-300`} style={`--rot: ${rotation}deg; --delay: ${delay}s; --dur: ${duration}s;`}>
-                  <div class="text-sm font-medium truncate">{model}</div>
-                </Card>
+                <div key={`${model}-${idx}`} class={`card-${idx} flex-shrink-0 w-52 ${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors transform hover:scale-105`} style={`--delay: ${delay}s; --dur: ${duration}s;`}>
+                  <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
+                  </svg>
+                  <span class="font-medium text-sm truncate">{model}</span>
+                </div>
               );
             })}
           </div>
@@ -38,11 +48,9 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
             0% { transform: translateX(0); }
             100% { transform: translateX(-50%); }
           }
-          @keyframes floatRotate {
-            0%, 100% { transform: rotate(var(--rot)) translateY(0); }
-            25% { transform: rotate(calc(var(--rot) + 6deg)) translateY(-10px); }
-            50% { transform: rotate(var(--rot)) translateY(0); }
-            75% { transform: rotate(calc(var(--rot) - 6deg)) translateY(10px); }
+          @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
           }
           .animate-carousel {
             animation: carousel 25s linear infinite;
@@ -51,7 +59,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
             animation-play-state: paused;
           }
           [class^="card-"] {
-            animation: floatRotate var(--dur) ease-in-out var(--delay) infinite;
+            animation: float var(--dur) ease-in-out var(--delay) infinite;
           }
         `
       }} />
