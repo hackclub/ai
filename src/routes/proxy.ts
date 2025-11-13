@@ -24,7 +24,6 @@ function getOpenRouterHeaders() {
 proxy.use('*', blockAICodingAgents);
 
 proxy.use((c, next) => {
-  // skip /v1/models
   if (c.req.path === '/v1/models') {
     return next();
   }
