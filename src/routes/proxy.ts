@@ -22,7 +22,15 @@ function getOpenRouterHeaders() {
 }
 
 proxy.use('*', blockAICodingAgents);
-proxy.use('*', requireApiKey);
+
+proxy.use((c, next) => {
+  // skip /v1/models
+  if (c.req.path === '/v1/models') {
+    return next();
+  }
+  return requireApiKey(c, next);
+})
+
 proxy.use('/v1/models', etag());
 
 function getClientIp(c: any): string {
