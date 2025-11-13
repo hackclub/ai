@@ -12,7 +12,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
           Sign in with Slack
         </a>
 
-        <h2 class="text-2xl font-semibold mb-6">Featured Models</h2>
+        <h2 class="text-2xl font-semibold mb-2">Featured Models</h2>
         <div class="relative w-full max-w-5xl mx-auto mb-12 overflow-hidden h-40">
           <div class="absolute inset-0 flex items-center gap-4 animate-carousel">
             {[...displayModels, ...displayModels].map((model, idx) => {
@@ -53,7 +53,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
             50% { transform: translateY(-10px); }
           }
           .animate-carousel {
-            animation: carousel 25s linear infinite;
+            animation: carousel 12s linear infinite;
           }
           .animate-carousel:hover {
             animation-play-state: paused;
