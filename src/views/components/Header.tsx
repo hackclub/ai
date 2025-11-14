@@ -14,18 +14,6 @@ export const Header = ({ title, user, showBackToDashboard, showGlobalStats }: He
     <header class="border-b border-gray-200 dark:border-gray-700 py-3 sm:py-4 mb-6 sm:mb-8">
       <div class="max-w-6xl mx-auto px-3 sm:px-4 flex justify-between items-center gap-2 sm:gap-4">
         <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {showGlobalStats && (
-            <a
-              href="/global"
-              class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
-              title="Global Stats"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-              </svg>
-              <span class="hidden sm:inline text-sm">Global Stats</span>
-            </a>
-          )}
           <h1 class="text-lg sm:text-xl md:text-2xl font-semibold truncate">{title}</h1>
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
