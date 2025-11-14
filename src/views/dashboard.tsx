@@ -11,7 +11,7 @@ import { Modal } from './components/Modal';
 export const Dashboard = ({ user, apiKeys, stats, recentLogs, allowedLanguageModels, allowedEmbeddingModels }: any) => {
   return (
     <Layout title="Dashboard">
-      <Header title="AI Proxy" user={user} />
+      <Header title="AI Proxy" user={user} showGlobalStats />
 
       <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
