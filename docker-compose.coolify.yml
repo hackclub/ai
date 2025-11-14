@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "51735:51735"
+    environment:
+      DATABASE_URL: postgresql://postgres:${SERVICE_PASSWORD_DB}@db:5432/ai_proxy
+      PORT: 51735
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}
+      OPENAI_API_URL: ${OPENAI_API_URL:-https://api.openai.com}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ALLOWED_MODELS: ${ALLOWED_MODELS:-}
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "56712:5432"
+    environment:
+      POSTGRES_DB: ai_proxy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
