@@ -7,6 +7,7 @@ import { eq, desc, sql, and, gt } from 'drizzle-orm';
 import { Home } from '../views/home';
 import { Dashboard } from '../views/dashboard';
 import { Global } from '../views/global';
+import { Docs } from '../views/docs';
 import { getAllowedLanguageModels, getAllowedEmbeddingModels } from '../env';
 import type { AppVariables } from '../types';
 
@@ -111,7 +112,7 @@ dashboard.get('/global', requireAuth, async (c) => {
       model: requestLogs.model,
       totalRequests: sql<number>`COUNT(*)::int`,
       totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
+      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
       totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
     })
     .from(requestLogs)
@@ -123,6 +124,20 @@ dashboard.get('/global', requireAuth, async (c) => {
       user={user}
       globalStats={globalStats[0] || { totalRequests: 0, totalTokens: 0, totalPromptTokens: 0, totalCompletionTokens: 0 }}
       modelStats={modelStats}
+    />
+  );
+});
+
+dashboard.get('/docs', requireAuth, async (c) => {
+  const user = c.get('user');
+  const allowedLanguageModels = getAllowedLanguageModels();
+  const allowedEmbeddingModels = getAllowedEmbeddingModels();
+
+  return c.html(
+    <Docs
+      user={user}
+      allowedLanguageModels={allowedLanguageModels}
+      allowedEmbeddingModels={allowedEmbeddingModels}
     />
   );
 });
