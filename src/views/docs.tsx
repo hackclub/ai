@@ -1,5 +1,6 @@
 import { Layout } from './layout';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { Card } from './components/Card';
 import { env } from '../env';
 
@@ -9,9 +10,11 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
 
   return (
     <Layout title="API Documentation">
-      <Header title="AI Proxy - API Docs" user={user} showBackToDashboard />
+      <Header title="API Docs" user={user} showBackToDashboard />
+      <Sidebar currentPath="/docs" />
 
-      <div class="max-w-4xl mx-auto px-4 py-8 prose dark:prose-invert prose-sm sm:prose max-w-none">
+      <div class="ml-64">
+        <div class="max-w-4xl mx-auto px-4 py-8 prose dark:prose-invert prose-sm sm:prose max-w-none">
         <h1 class="text-3xl font-bold mb-6">API Documentation</h1>
         <p class="text-lg text-gray-600 dark:text-gray-400 mb-8">
           This is a lightweight AI proxy providing access to language models and embeddings through an OpenAI-compatible API.
@@ -462,6 +465,7 @@ for chunk in stream:
           <p class="text-gray-600 dark:text-gray-400">
             Need help? Check your <a href="/dashboard" class="text-blue-600 dark:text-blue-400 hover:underline">dashboard</a> for usage statistics and API keys.
           </p>
+        </div>
         </div>
       </div>
 

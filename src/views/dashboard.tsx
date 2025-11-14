@@ -1,6 +1,7 @@
 import { Layout } from './layout';
 import { env } from '../env';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { StatCard } from './components/StatCard';
 import { Card } from './components/Card';
 import { EmptyState } from './components/EmptyState';
@@ -11,9 +12,11 @@ import { Modal } from './components/Modal';
 export const Dashboard = ({ user, apiKeys, stats, recentLogs, allowedLanguageModels, allowedEmbeddingModels }: any) => {
   return (
     <Layout title="Dashboard">
-      <Header title="AI Proxy" user={user} showGlobalStats />
+      <Header title="Dashboard" user={user} showGlobalStats />
+      <Sidebar currentPath="/dashboard" />
 
-      <div class="max-w-6xl mx-auto px-4 py-8">
+      <div class="ml-64">
+        <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard value={stats.totalRequests?.toLocaleString() || 0} label="Total Requests" />
@@ -174,6 +177,7 @@ export const Dashboard = ({ user, apiKeys, stats, recentLogs, allowedLanguageMod
             data={recentLogs}
           />
         )}
+        </div>
       </div>
 
       <Modal id="createKeyModal" title="Create API Key">
