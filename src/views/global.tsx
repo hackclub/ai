@@ -1,5 +1,6 @@
 import { Layout } from './layout';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { StatCard } from './components/StatCard';
 import { EmptyState } from './components/EmptyState';
 import { Table } from './components/Table';
@@ -7,9 +8,11 @@ import { Table } from './components/Table';
 export const Global = ({ user, globalStats, modelStats }: any) => {
   return (
     <Layout title="Global Statistics">
-      <Header title="AI Proxy - Global Stats" user={user} showBackToDashboard />
+      <Header title="Global Stats" user={user} showBackToDashboard />
+      <Sidebar currentPath="/global" />
 
-      <div class="max-w-6xl mx-auto px-4 py-8">
+      <div class="ml-64">
+        <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Global Usage Statistics (All Users)</h2>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard value={globalStats.totalRequests?.toLocaleString() || 0} label="Total Requests" />
@@ -48,6 +51,7 @@ export const Global = ({ user, globalStats, modelStats }: any) => {
             data={modelStats}
           />
         )}
+        </div>
       </div>
 
       <script

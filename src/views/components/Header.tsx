@@ -1,6 +1,4 @@
 import { DarkModeToggle } from './DarkModeToggle';
-import { GlobalStatsButton } from './GlobalStatsButton';
-import { DocsButton } from './DocsButton';
 import { Button } from './Button';
 
 type HeaderProps = {
@@ -12,7 +10,7 @@ type HeaderProps = {
 
 export const Header = ({ title, user, showBackToDashboard, showGlobalStats }: HeaderProps) => {
   return (
-    <header class="border-b border-gray-200 dark:border-gray-700 py-3 sm:py-4 mb-6 sm:mb-8">
+    <header class="border-b border-gray-200 dark:border-gray-700 py-3 sm:py-4 mb-6 sm:mb-8 ml-64 relative z-20 bg-white dark:bg-gray-900">
       <div class="max-w-6xl mx-auto px-3 sm:px-4 flex justify-between items-center gap-2 sm:gap-4">
         <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <h1 class="text-lg sm:text-xl md:text-2xl font-semibold truncate">{title}</h1>
@@ -28,8 +26,6 @@ export const Header = ({ title, user, showBackToDashboard, showGlobalStats }: He
               <span class="sm:hidden">←</span>
             </a>
           )}
-          <DocsButton />
-          <GlobalStatsButton />
           <DarkModeToggle />
           {user.avatar && <img src={user.avatar} alt={user.name} class="w-8 h-8 rounded-full flex-shrink-0" />}
           <span class="hidden md:inline text-sm truncate max-w-[120px]">{user.name}</span>
