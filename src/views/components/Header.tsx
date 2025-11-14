@@ -1,4 +1,5 @@
 import { DarkModeToggle } from './DarkModeToggle';
+import { GlobalStatsButton } from './GlobalStatsButton';
 import { Button } from './Button';
 
 type HeaderProps = {
@@ -38,6 +39,7 @@ export const Header = ({ title, user, showBackToDashboard, showGlobalStats }: He
               <span class="sm:hidden">←</span>
             </a>
           )}
+          <GlobalStatsButton />
           <DarkModeToggle />
           {user.avatar && <img src={user.avatar} alt={user.name} class="w-8 h-8 rounded-full flex-shrink-0" />}
           <span class="hidden md:inline text-sm truncate max-w-[120px]">{user.name}</span>
