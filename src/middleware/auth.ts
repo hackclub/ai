@@ -8,6 +8,7 @@ import type { AppVariables } from '../types';
 import blockedAppsConfig from '../config/blocked-apps.json';
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map(a => a.toLowerCase());
+const BLOCKED_MESSAGE = "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
 export async function blockAICodingAgents(c: Context, next: Next) {
   const referer = c.req.header('Referer') || c.req.header('HTTP-Referer');
@@ -18,20 +19,17 @@ export async function blockAICodingAgents(c: Context, next: Next) {
   const refererLower = (referer || '').toLowerCase();
   const xTitleLower = (xTitle || '').toLowerCase();
 
-  const blockedApp = BLOCKED_APPS.find(app =>
-    refererLower.includes(app) || xTitleLower.includes(app)
-  );
-
-  if (blockedApp) {
-    const message = "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
-
-    throw new HTTPException(403, {
-      message,
-      res: Response.json(
-        { error: message },
-        { status: 403 }
-      )
-    });
+  for (let i = 0; i < BLOCKED_APPS.length; i++) {
+    const app = BLOCKED_APPS[i];
+    if (refererLower.includes(app) || xTitleLower.includes(app)) {
+      throw new HTTPException(403, {
+        message: BLOCKED_MESSAGE,
+        res: Response.json(
+          { error: BLOCKED_MESSAGE },
+          { status: 403 }
+        )
+      });
+    }
   }
 
   await next();
@@ -44,9 +42,12 @@ export async function requireAuth(c: Context<{ Variables: AppVariables }>, next:
     return c.redirect('/');
   }
 
-  const [session] = await db
-    .select()
+  const [result] = await db
+    .select({
+      user: users,
+    })
     .from(sessions)
+    .innerJoin(users, eq(sessions.userId, users.id))
     .where(
       and(
         eq(sessions.token, sessionToken),
@@ -55,21 +56,11 @@ export async function requireAuth(c: Context<{ Variables: AppVariables }>, next:
     )
     .limit(1);
 
-  if (!session) {
+  if (!result) {
     return c.redirect('/');
   }
 
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
-
-  if (!user) {
-    return c.redirect('/');
-  }
-
-  c.set('user', user);
+  c.set('user', result.user);
   await next();
 }
 

@@ -25,23 +25,42 @@ if (result instanceof type.errors) {
 
 export const env = result;
 
+let cachedAllowedModels: string[] | null | undefined;
+let cachedAllowedLanguageModels: string[] | null | undefined;
+let cachedAllowedEmbeddingModels: string[] | null | undefined;
+
 export function getAllowedModels(): string[] | null {
+  if (cachedAllowedModels !== undefined) {
+    return cachedAllowedModels;
+  }
   if (!env.ALLOWED_MODELS || env.ALLOWED_MODELS.trim() === '') {
+    cachedAllowedModels = null;
     return null;
   }
-  return env.ALLOWED_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  cachedAllowedModels = env.ALLOWED_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return cachedAllowedModels;
 }
 
 export function getAllowedLanguageModels(): string[] | null {
+  if (cachedAllowedLanguageModels !== undefined) {
+    return cachedAllowedLanguageModels;
+  }
   if (!env.ALLOWED_LANGUAGE_MODELS || env.ALLOWED_LANGUAGE_MODELS.trim() === '') {
+    cachedAllowedLanguageModels = null;
     return null;
   }
-  return env.ALLOWED_LANGUAGE_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  cachedAllowedLanguageModels = env.ALLOWED_LANGUAGE_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return cachedAllowedLanguageModels;
 }
 
 export function getAllowedEmbeddingModels(): string[] | null {
+  if (cachedAllowedEmbeddingModels !== undefined) {
+    return cachedAllowedEmbeddingModels;
+  }
   if (!env.ALLOWED_EMBEDDING_MODELS || env.ALLOWED_EMBEDDING_MODELS.trim() === '') {
+    cachedAllowedEmbeddingModels = null;
     return null;
   }
-  return env.ALLOWED_EMBEDDING_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  cachedAllowedEmbeddingModels = env.ALLOWED_EMBEDDING_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return cachedAllowedEmbeddingModels;
 }

@@ -21,19 +21,24 @@ await runMigrations();
 const app = new Hono<{ Variables: AppVariables & RequestIdVariables }>();
 
 app.use('*', secureHeaders());
-app.use('*', logger());
-app.use('*', requestId());
-app.use('*', csrf({ origin: env.BASE_URL }));
-app.use(
-  '*',
-  bodyLimit({
-    maxSize: 20 * 1024 * 1024,
-    onError: (c) => {
-      throw new HTTPException(413, { message: 'Request too large' });
-    },
-  })
-);
+app.use('/proxy/*', bodyLimit({
+  maxSize: 20 * 1024 * 1024,
+  onError: (c) => {
+    throw new HTTPException(413, { message: 'Request too large' });
+  },
+}));
 app.use('/proxy/*', timeout(120000));
+
+app.use('/auth/*', requestId());
+app.use('/auth/*', csrf({ origin: env.BASE_URL }));
+app.use('/api/*', requestId());
+app.use('/api/*', csrf({ origin: env.BASE_URL }));
+app.use('/*', requestId());
+app.use('/*', csrf({ origin: env.BASE_URL }));
+
+if (env.NODE_ENV === 'development') {
+  app.use('*', logger());
+}
 
 app.use('/*', serveStatic({ root: './public' }));
 
