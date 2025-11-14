@@ -25,23 +25,25 @@ if (result instanceof type.errors) {
 
 export const env = result;
 
-export function getAllowedModels(): string[] | null {
-  if (!env.ALLOWED_MODELS || env.ALLOWED_MODELS.trim() === '') {
+function parseModelList(value: string | undefined): string[] | null {
+  if (!value || value.trim() === '') {
     return null;
   }
-  return env.ALLOWED_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return value.split(',').map(m => m.trim()).filter(m => m.length > 0);
+}
+
+export const allowedModels = parseModelList(env.ALLOWED_MODELS);
+export const allowedLanguageModels = parseModelList(env.ALLOWED_LANGUAGE_MODELS);
+export const allowedEmbeddingModels = parseModelList(env.ALLOWED_EMBEDDING_MODELS);
+
+export function getAllowedModels(): string[] | null {
+  return allowedModels;
 }
 
 export function getAllowedLanguageModels(): string[] | null {
-  if (!env.ALLOWED_LANGUAGE_MODELS || env.ALLOWED_LANGUAGE_MODELS.trim() === '') {
-    return null;
-  }
-  return env.ALLOWED_LANGUAGE_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return allowedLanguageModels;
 }
 
 export function getAllowedEmbeddingModels(): string[] | null {
-  if (!env.ALLOWED_EMBEDDING_MODELS || env.ALLOWED_EMBEDDING_MODELS.trim() === '') {
-    return null;
-  }
-  return env.ALLOWED_EMBEDDING_MODELS.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return allowedEmbeddingModels;
 }

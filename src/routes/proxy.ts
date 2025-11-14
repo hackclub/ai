@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { requireApiKey, blockAICodingAgents } from '../middleware/auth';
 import { db } from '../db';
 import { requestLogs } from '../db/schema';
-import { env, getAllowedLanguageModels, getAllowedEmbeddingModels } from '../env';
+import { env, allowedLanguageModels, allowedEmbeddingModels } from '../env';
 import type { AppVariables } from '../types';
 
 const proxy = new Hono<{ Variables: AppVariables }>();
@@ -14,12 +14,10 @@ let modelsCache: { data: any; timestamp: number } | null = null;
 let modelsCacheFetch: Promise<any> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-function getOpenRouterHeaders() {
-  return {
-    'HTTP-Referer': `${env.BASE_URL}/global?utm_source=openrouter`,
-    'X-Title': 'Hack Club AI',
-  };
-}
+export const openRouterHeaders = {
+  'HTTP-Referer': `${env.BASE_URL}/global?utm_source=openrouter`,
+  'X-Title': 'Hack Club AI',
+};
 
 proxy.use('*', blockAICodingAgents);
 
@@ -33,22 +31,10 @@ proxy.use((c, next) => {
 proxy.use('/v1/models', etag());
 
 function getClientIp(c: any): string {
-  const cfConnectingIp = c.req.header('CF-Connecting-IP');
-  if (cfConnectingIp) {
-    return cfConnectingIp;
-  }
-
-  const xForwardedFor = c.req.header('X-Forwarded-For');
-  if (xForwardedFor) {
-    return xForwardedFor.split(',')[0].trim();
-  }
-
-  const xRealIp = c.req.header('X-Real-IP');
-  if (xRealIp) {
-    return xRealIp;
-  }
-
-  return 'unknown';
+  return c.req.header('CF-Connecting-IP') || 
+         c.req.header('X-Forwarded-For')?.split(',')[0].trim() || 
+         c.req.header('X-Real-IP') || 
+         'unknown';
 }
 
 proxy.get('/v1/models', async (c) => {
@@ -74,7 +60,7 @@ proxy.get('/v1/models', async (c) => {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-          ...getOpenRouterHeaders(),
+          ...openRouterHeaders,
         },
       });
 
@@ -85,17 +71,14 @@ proxy.get('/v1/models', async (c) => {
         return data;
       }
 
-      const allowedLanguageModels = getAllowedLanguageModels();
-      const allowedEmbeddingModels = getAllowedEmbeddingModels();
-
-      // Combine both lists, or if both are null, allow all models
       const allAllowedModels: string[] | null =
         (allowedLanguageModels || allowedEmbeddingModels)
           ? [...(allowedLanguageModels || []), ...(allowedEmbeddingModels || [])]
           : null;
 
       if (allAllowedModels && allAllowedModels.length > 0) {
-        data.data = data.data.filter((model: any) => allAllowedModels.includes(model.id));
+        const allowedSet = new Set(allAllowedModels);
+        data.data = data.data.filter((model: any) => allowedSet.has(model.id));
       }
 
       modelsCache = { data, timestamp: now };
@@ -125,9 +108,11 @@ proxy.post('/v1/chat/completions', async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    const allowedModels = getAllowedLanguageModels();
-    if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(requestBody.model)) {
-      requestBody.model = allowedModels[0];
+    if (allowedLanguageModels && allowedLanguageModels.length > 0) {
+      const allowedSet = new Set(allowedLanguageModels);
+      if (!allowedSet.has(requestBody.model)) {
+        requestBody.model = allowedLanguageModels[0];
+      }
     }
 
     requestBody.user = `user_${user.id}`;
@@ -139,7 +124,7 @@ proxy.post('/v1/chat/completions', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-        ...getOpenRouterHeaders(),
+        ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
@@ -152,7 +137,7 @@ proxy.post('/v1/chat/completions', async (c) => {
       const completionTokens = responseData.usage?.completion_tokens || 0;
       const totalTokens = responseData.usage?.total_tokens || 0;
 
-      await db.insert(requestLogs).values({
+      db.insert(requestLogs).values({
         apiKeyId: apiKey.id,
         userId: user.id,
         slackId: user.slackId,
@@ -165,7 +150,7 @@ proxy.post('/v1/chat/completions', async (c) => {
         ip: getClientIp(c),
         timestamp: new Date(),
         duration,
-      });
+      }).catch(err => console.error('Logging error:', err));
 
       return c.json(responseData, response.status as any);
     }
@@ -210,7 +195,7 @@ proxy.post('/v1/chat/completions', async (c) => {
       } finally {
         const duration = Date.now() - startTime;
 
-        await db.insert(requestLogs).values({
+        db.insert(requestLogs).values({
           apiKeyId: apiKey.id,
           userId: user.id,
           slackId: user.slackId,
@@ -223,14 +208,14 @@ proxy.post('/v1/chat/completions', async (c) => {
           ip: getClientIp(c),
           timestamp: new Date(),
           duration,
-        });
+        }).catch(err => console.error('Logging error:', err));
       }
     });
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error('Proxy error:', error);
 
-    await db.insert(requestLogs).values({
+    db.insert(requestLogs).values({
       apiKeyId: apiKey.id,
       userId: user.id,
       slackId: user.slackId,
@@ -243,7 +228,7 @@ proxy.post('/v1/chat/completions', async (c) => {
       ip: getClientIp(c),
       timestamp: new Date(),
       duration,
-    });
+    }).catch(err => console.error('Logging error:', err));
 
     throw new HTTPException(500, { message: 'Internal server error' });
   }
@@ -257,9 +242,11 @@ proxy.post('/v1/embeddings', async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    const allowedModels = getAllowedEmbeddingModels();
-    if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(requestBody.model)) {
-      requestBody.model = allowedModels[0];
+    if (allowedEmbeddingModels && allowedEmbeddingModels.length > 0) {
+      const allowedSet = new Set(allowedEmbeddingModels);
+      if (!allowedSet.has(requestBody.model)) {
+        requestBody.model = allowedEmbeddingModels[0];
+      }
     }
 
     requestBody.user = `user_${user.id}`;
@@ -269,7 +256,7 @@ proxy.post('/v1/embeddings', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-        ...getOpenRouterHeaders(),
+        ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
@@ -280,7 +267,7 @@ proxy.post('/v1/embeddings', async (c) => {
     const promptTokens = responseData.usage?.prompt_tokens || 0;
     const totalTokens = responseData.usage?.total_tokens || 0;
 
-    await db.insert(requestLogs).values({
+    db.insert(requestLogs).values({
       apiKeyId: apiKey.id,
       userId: user.id,
       slackId: user.slackId,
@@ -293,14 +280,14 @@ proxy.post('/v1/embeddings', async (c) => {
       ip: getClientIp(c),
       timestamp: new Date(),
       duration,
-    });
+    }).catch(err => console.error('Logging error:', err));
 
     return c.json(responseData, response.status as any);
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error('Embeddings proxy error:', error);
 
-    await db.insert(requestLogs).values({
+    db.insert(requestLogs).values({
       apiKeyId: apiKey.id,
       userId: user.id,
       slackId: user.slackId,
@@ -313,7 +300,7 @@ proxy.post('/v1/embeddings', async (c) => {
       ip: getClientIp(c),
       timestamp: new Date(),
       duration,
-    });
+    }).catch(err => console.error('Logging error:', err));
 
     throw new HTTPException(500, { message: 'Internal server error' });
   }
