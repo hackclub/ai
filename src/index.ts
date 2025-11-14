@@ -29,19 +29,12 @@ app.use('/proxy/*', bodyLimit({
 }));
 app.use('/proxy/*', timeout(120000));
 
-app.use('*', (c, next) => {
-  if (c.req.path.startsWith('/proxy/')) {
-    return next();
-  }
-  return requestId()(c, next);
-});
-
-app.use('*', (c, next) => {
-  if (c.req.path.startsWith('/proxy/')) {
-    return next();
-  }
-  return csrf({ origin: env.BASE_URL })(c, next);
-});
+app.use('/auth/*', requestId());
+app.use('/auth/*', csrf({ origin: env.BASE_URL }));
+app.use('/api/*', requestId());
+app.use('/api/*', csrf({ origin: env.BASE_URL }));
+app.use('/*', requestId());
+app.use('/*', csrf({ origin: env.BASE_URL }));
 
 if (env.NODE_ENV === 'development') {
   app.use('*', logger());
