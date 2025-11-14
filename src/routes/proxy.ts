@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { requireApiKey, blockAICodingAgents } from '../middleware/auth';
 import { db } from '../db';
 import { requestLogs } from '../db/schema';
-import { env, getAllowedLanguageModels, getAllowedEmbeddingModels } from '../env';
+import { env, allowedLanguageModels, allowedEmbeddingModels } from '../env';
 import type { AppVariables } from '../types';
 
 const proxy = new Hono<{ Variables: AppVariables }>();
@@ -14,14 +14,10 @@ let modelsCache: { data: any; timestamp: number } | null = null;
 let modelsCacheFetch: Promise<any> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-const openRouterHeaders = {
+export const openRouterHeaders = {
   'HTTP-Referer': `${env.BASE_URL}/global?utm_source=openrouter`,
   'X-Title': 'Hack Club AI',
 };
-
-function getOpenRouterHeaders() {
-  return openRouterHeaders;
-}
 
 proxy.use('*', blockAICodingAgents);
 
@@ -64,7 +60,7 @@ proxy.get('/v1/models', async (c) => {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-          ...getOpenRouterHeaders(),
+          ...openRouterHeaders,
         },
       });
 
@@ -74,9 +70,6 @@ proxy.get('/v1/models', async (c) => {
         modelsCacheFetch = null;
         return data;
       }
-
-      const allowedLanguageModels = getAllowedLanguageModels();
-      const allowedEmbeddingModels = getAllowedEmbeddingModels();
 
       const allAllowedModels: string[] | null =
         (allowedLanguageModels || allowedEmbeddingModels)
@@ -115,11 +108,10 @@ proxy.post('/v1/chat/completions', async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    const allowedModels = getAllowedLanguageModels();
-    if (allowedModels && allowedModels.length > 0) {
-      const allowedSet = new Set(allowedModels);
+    if (allowedLanguageModels && allowedLanguageModels.length > 0) {
+      const allowedSet = new Set(allowedLanguageModels);
       if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedModels[0];
+        requestBody.model = allowedLanguageModels[0];
       }
     }
 
@@ -132,7 +124,7 @@ proxy.post('/v1/chat/completions', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-        ...getOpenRouterHeaders(),
+        ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
@@ -250,11 +242,10 @@ proxy.post('/v1/embeddings', async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    const allowedModels = getAllowedEmbeddingModels();
-    if (allowedModels && allowedModels.length > 0) {
-      const allowedSet = new Set(allowedModels);
+    if (allowedEmbeddingModels && allowedEmbeddingModels.length > 0) {
+      const allowedSet = new Set(allowedEmbeddingModels);
       if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedModels[0];
+        requestBody.model = allowedEmbeddingModels[0];
       }
     }
 
@@ -265,7 +256,7 @@ proxy.post('/v1/embeddings', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-        ...getOpenRouterHeaders(),
+        ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
