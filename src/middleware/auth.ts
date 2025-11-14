@@ -7,26 +7,26 @@ import { eq, and, isNull, gt } from 'drizzle-orm';
 import type { AppVariables } from '../types';
 import blockedAppsConfig from '../config/blocked-apps.json';
 
-const BLOCKED_APPS = blockedAppsConfig.blockedApps;
+const BLOCKED_APPS = blockedAppsConfig.blockedApps.map(a => a.toLowerCase());
 
 export async function blockAICodingAgents(c: Context, next: Next) {
-  const referer = c.req.header('Referer') || c.req.header('HTTP-Referer') || '';
-  const xTitle = c.req.header('X-Title') || '';
+  const referer = (c.req.header('Referer') || c.req.header('HTTP-Referer') || '').toLowerCase();
+  const xTitle = (c.req.header('X-Title') || '').toLowerCase();
 
-  const refererLower = referer.toLowerCase();
-  const xTitleLower = xTitle.toLowerCase();
+  const blockedApp = BLOCKED_APPS.find(app =>
+    referer.includes(app) || xTitle.includes(app)
+  );
 
-  for (const blockedApp of BLOCKED_APPS) {
-    if (refererLower.includes(blockedApp) || xTitleLower.includes(blockedApp)) {
-      const disallowedAppMessage = "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
-      throw new HTTPException(403, {
-        message: disallowedAppMessage,
-        res: Response.json({
-          error: disallowedAppMessage,
-          blocked_app: blockedApp
-        }, { status: 403 })
-      });
-    }
+  if (blockedApp) {
+    const message = "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
+
+    throw new HTTPException(403, {
+      message,
+      res: Response.json(
+        { error: message },
+        { status: 403 }
+      )
+    });
   }
 
   await next();
