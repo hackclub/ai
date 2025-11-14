@@ -1,7 +1,7 @@
 export const GlobalStatsButton = () => {
   return (
     <a
-      href="/dashboard/global"
+      href="/global"
       class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
       aria-label="View global statistics"
       title="Global Statistics"
