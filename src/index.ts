@@ -29,10 +29,6 @@ app.use('/proxy/*', bodyLimit({
 }));
 app.use('/proxy/*', timeout(120000));
 
-app.use('/auth/*', requestId());
-app.use('/auth/*', csrf({ origin: env.BASE_URL }));
-app.use('/api/*', requestId());
-app.use('/api/*', csrf({ origin: env.BASE_URL }));
 app.use('/*', requestId());
 app.use('/*', csrf({ origin: env.BASE_URL }));
 
