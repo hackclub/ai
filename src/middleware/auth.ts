@@ -10,11 +10,16 @@ import blockedAppsConfig from '../config/blocked-apps.json';
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map(a => a.toLowerCase());
 
 export async function blockAICodingAgents(c: Context, next: Next) {
-  const referer = (c.req.header('Referer') || c.req.header('HTTP-Referer') || '').toLowerCase();
-  const xTitle = (c.req.header('X-Title') || '').toLowerCase();
+  const referer = c.req.header('Referer') || c.req.header('HTTP-Referer');
+  const xTitle = c.req.header('X-Title');
+
+  if (!referer && !xTitle) return next();
+
+  const refererLower = (referer || '').toLowerCase();
+  const xTitleLower = (xTitle || '').toLowerCase();
 
   const blockedApp = BLOCKED_APPS.find(app =>
-    referer.includes(app) || xTitle.includes(app)
+    refererLower.includes(app) || xTitleLower.includes(app)
   );
 
   if (blockedApp) {
