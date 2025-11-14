@@ -11,23 +11,15 @@ import { Modal } from './components/Modal';
 export const Dashboard = ({ user, apiKeys, stats, recentLogs, allowedLanguageModels, allowedEmbeddingModels }: any) => {
   return (
     <Layout title="Dashboard">
-      <Header title="AI Proxy" user={user} />
+      <Header title="AI Proxy" user={user} showGlobalStats />
 
       <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard value={stats.totalRequests?.toLocaleString() || 0} label="Total Requests" />
           <StatCard value={stats.totalTokens?.toLocaleString() || 0} label="Total Tokens" />
           <StatCard value={stats.totalPromptTokens?.toLocaleString() || 0} label="Prompt Tokens" />
           <StatCard value={stats.totalCompletionTokens?.toLocaleString() || 0} label="Completion Tokens" />
-          <a href="/global" class="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 block">
-            <div class="text-3xl font-semibold mb-1 text-gray-900 dark:text-gray-100">
-              <svg class="w-8 h-8 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-              </svg>
-            </div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Global Stats</div>
-          </a>
         </div>
 
         <div class="mb-8">
