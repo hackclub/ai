@@ -308,7 +308,10 @@ export const Docs = ({
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
-                <code>{`curl ${env.BASE_URL}/proxy/v1/models`}</code>
+                <code>{`curl ${env.BASE_URL}/proxy/v1/models \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json"
+  `}</code>
               </pre>
             </div>
 
