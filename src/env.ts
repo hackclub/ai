@@ -3,7 +3,7 @@ import { type } from "arktype";
 const envSchema = type({
   DATABASE_URL: "string",
   BASE_URL: "string",
-  PORT: "number",
+  PORT: "string.numeric.parse",
   SLACK_CLIENT_ID: "string",
   SLACK_CLIENT_SECRET: "string",
   SLACK_TEAM_ID: "string",
@@ -35,10 +35,10 @@ function parseModelList(value: string | undefined): string[] | null {
 }
 
 export const allowedLanguageModels = parseModelList(
-  env.ALLOWED_LANGUAGE_MODELS,
+  env.ALLOWED_LANGUAGE_MODELS
 );
 export const allowedEmbeddingModels = parseModelList(
-  env.ALLOWED_EMBEDDING_MODELS,
+  env.ALLOWED_EMBEDDING_MODELS
 );
 
 export function getAllowedLanguageModels(): string[] | null {
