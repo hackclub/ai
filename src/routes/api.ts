@@ -1,23 +1,22 @@
-import { Hono } from 'hono';
-import { arktypeValidator } from '@hono/arktype-validator';
-import { type } from 'arktype';
-import { HTTPException } from 'hono/http-exception';
-import { requireAuth } from '../middleware/auth';
-import { db } from '../db';
-import { apiKeys, requestLogs } from '../db/schema';
-import { eq, and, isNull, desc, sql } from 'drizzle-orm';
-import type { AppVariables } from '../types';
+import { Hono } from "hono";
+import { arktypeValidator } from "@hono/arktype-validator";
+import { type } from "arktype";
+import { HTTPException } from "hono/http-exception";
+import { requireAuth } from "../middleware/auth";
+import { db } from "../db";
+import { apiKeys, requestLogs } from "../db/schema";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import type { AppVariables } from "../types";
 
 const api = new Hono<{ Variables: AppVariables }>();
 
-api.use('*', requireAuth);
+api.use("*", requireAuth);
 
-const createKeySchema = type({ name: '1<=string<=100' });
-const deleteKeySchema = type({ id: 'string' });
+const createKeySchema = type({ name: "1<=string<=100" });
 
-api.post('/keys', arktypeValidator('json', createKeySchema), async (c) => {
-  const user = c.get('user');
-  const { name } = c.req.valid('json');
+api.post("/keys", arktypeValidator("json", createKeySchema), async (c) => {
+  const user = c.get("user");
+  const { name } = c.req.valid("json");
 
   const existingKeys = await db
     .select({ count: sql<number>`COUNT(*)::int` })
@@ -25,10 +24,13 @@ api.post('/keys', arktypeValidator('json', createKeySchema), async (c) => {
     .where(and(eq(apiKeys.userId, user.id), isNull(apiKeys.revokedAt)));
 
   if (existingKeys[0].count >= 50) {
-    throw new HTTPException(400, { message: 'Maximum API key limit reached' });
+    throw new HTTPException(400, { message: "Maximum API key limit reached" });
   }
 
-  const key = `sk-${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
+  const key = `sk-${crypto.randomUUID()}${crypto.randomUUID()}`.replace(
+    /-/g,
+    ""
+  );
 
   const [apiKey] = await db
     .insert(apiKeys)
@@ -42,8 +44,8 @@ api.post('/keys', arktypeValidator('json', createKeySchema), async (c) => {
   return c.json({ key: apiKey.key, name: apiKey.name, id: apiKey.id });
 });
 
-api.get('/keys', async (c) => {
-  const user = c.get('user');
+api.get("/keys", async (c) => {
+  const user = c.get("user");
 
   const keys = await db
     .select({
@@ -60,23 +62,18 @@ api.get('/keys', async (c) => {
   return c.json(keys);
 });
 
-api.delete('/keys/:id', async (c) => {
-  const user = c.get('user');
-  const keyId = c.req.param('id');
+api.delete("/keys/:id", async (c) => {
+  const user = c.get("user");
+  const keyId = c.req.param("id");
 
   const [apiKey] = await db
     .select()
     .from(apiKeys)
-    .where(
-      and(
-        eq(apiKeys.id, keyId),
-        eq(apiKeys.userId, user.id)
-      )
-    )
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.userId, user.id)))
     .limit(1);
 
   if (!apiKey) {
-    throw new HTTPException(404, { message: 'Operation failed' });
+    throw new HTTPException(404, { message: "Operation failed" });
   }
 
   await db
@@ -87,8 +84,8 @@ api.delete('/keys/:id', async (c) => {
   return c.json({ success: true });
 });
 
-api.get('/stats', async (c) => {
-  const user = c.get('user');
+api.get("/stats", async (c) => {
+  const user = c.get("user");
 
   const stats = await db
     .select({

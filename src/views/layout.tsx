@@ -1,4 +1,10 @@
-export const Layout = ({ children, title }: { children: any; title: string }) => {
+export const Layout = ({
+  children,
+  title,
+}: {
+  children: any;
+  title: string;
+}) => {
   return (
     <html lang="en">
       <head>
@@ -8,8 +14,15 @@ export const Layout = ({ children, title }: { children: any; title: string }) =>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossorigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
         <script src="https://cdn.tailwindcss.com"></script>
         <script
           dangerouslySetInnerHTML={{
@@ -38,7 +51,9 @@ export const Layout = ({ children, title }: { children: any; title: string }) =>
           }}
         />
       </head>
-      <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">{children}</body>
+      <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+        {children}
+      </body>
     </html>
   );
 };

@@ -12,7 +12,6 @@ services:
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}
       OPENAI_API_URL: ${OPENAI_API_URL:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ALLOWED_MODELS: ${ALLOWED_MODELS:-}
       NODE_ENV: ${NODE_ENV:-production}
     depends_on:
       db:

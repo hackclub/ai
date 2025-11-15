@@ -1,11 +1,16 @@
-import { Layout } from './layout';
-import { Header } from './components/Header';
-import { Card } from './components/Card';
-import { env } from '../env';
+import { Layout } from "./layout";
+import { Header } from "./components/Header";
+import { Card } from "./components/Card";
+import { env } from "../env";
 
-export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: any) => {
-  const exampleModel = allowedLanguageModels?.[0] || 'gpt-4';
-  const exampleEmbeddingModel = allowedEmbeddingModels?.[0] || 'text-embedding-3-large';
+export const Docs = ({
+  user,
+  allowedLanguageModels,
+  allowedEmbeddingModels,
+}: any) => {
+  const exampleModel = allowedLanguageModels?.[0] || "gpt-4";
+  const exampleEmbeddingModel =
+    allowedEmbeddingModels?.[0] || "text-embedding-3-large";
 
   return (
     <Layout title="API Documentation">
@@ -14,26 +19,47 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
       <div class="max-w-4xl mx-auto px-4 py-8 prose dark:prose-invert prose-sm sm:prose max-w-none">
         <h1 class="text-3xl font-bold mb-6">API Documentation</h1>
         <p class="text-lg text-gray-600 dark:text-gray-400 mb-8">
-          This is a lightweight AI proxy providing access to language models and embeddings through an OpenAI-compatible API.
+          This is a lightweight AI proxy providing access to language models and
+          embeddings through an OpenAI-compatible API.
         </p>
 
         {/* Quick Start */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              ></path>
             </svg>
             Quick Start
           </h2>
           <Card class="p-6 mb-4">
             <h3 class="text-lg font-semibold mb-3">1. Get Your API Key</h3>
             <p class="text-gray-600 dark:text-gray-400 mb-3">
-              Create an API key from your <a href="/dashboard" class="text-blue-600 dark:text-blue-400 hover:underline">dashboard</a>.
+              Create an API key from your{" "}
+              <a
+                href="/dashboard"
+                class="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                dashboard
+              </a>
+              .
             </p>
 
-            <h3 class="text-lg font-semibold mb-3 mt-6">2. Make Your First Request</h3>
+            <h3 class="text-lg font-semibold mb-3 mt-6">
+              2. Make Your First Request
+            </h3>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
+              <pre class="text-sm text-gray-100">
+                <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -41,7 +67,8 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
     "messages": [
       {"role": "user", "content": "Hello!"}
     ]
-  }'`}</code></pre>
+  }'`}</code>
+              </pre>
             </div>
           </Card>
         </section>
@@ -49,20 +76,34 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
         {/* Authentication */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              ></path>
             </svg>
             Authentication
           </h2>
           <Card class="p-6">
             <p class="text-gray-600 dark:text-gray-400 mb-3">
-              All API requests require authentication using an API key in the Authorization header as a Bearer token:
+              All API requests require authentication using an API key in the
+              Authorization header as a Bearer token:
             </p>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+              <pre class="text-sm text-gray-100">
+                <code>Authorization: Bearer YOUR_API_KEY</code>
+              </pre>
             </div>
             <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
-              API keys can be created and managed from your dashboard. You can have up to 50 active API keys.
+              API keys can be created and managed from your dashboard. You can
+              have up to 50 active API keys.
             </p>
           </Card>
         </section>
@@ -70,8 +111,18 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
         {/* Endpoints */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              ></path>
             </svg>
             API Endpoints
           </h2>
@@ -80,16 +131,20 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Chat Completions</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">POST</span>
+              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">
+                POST
+              </span>
               <code class="text-sm">/proxy/v1/chat/completions</code>
             </div>
             <p class="text-gray-600 dark:text-gray-400 mb-4">
-              Create a chat completion for the given conversation. Supports streaming and non-streaming modes.
+              Create a chat completion for the given conversation. Supports
+              streaming and non-streaming modes.
             </p>
 
             <h4 class="font-semibold mb-2">Request Body</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100"><code>{`{
+              <pre class="text-sm text-gray-100">
+                <code>{`{
   "model": "string",              // Required: Model ID
   "messages": [                   // Required: Array of messages
     {
@@ -102,12 +157,14 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
   "max_tokens": null,             // Optional: Max tokens to generate
   "top_p": 1.0,                   // Optional: Nucleus sampling
   // ... other OpenAI-compatible parameters
-}`}</code></pre>
+}`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100"><code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
+              <pre class="text-sm text-gray-100">
+                <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -123,12 +180,14 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
       }
     ],
     "temperature": 0.7
-  }'`}</code></pre>
+  }'`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`{
+              <pre class="text-sm text-gray-100">
+                <code>{`{
   "id": "chatcmpl-123",
   "object": "chat.completion",
   "created": 1677652288,
@@ -148,22 +207,29 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
     "completion_tokens": 10,
     "total_tokens": 30
   }
-}`}</code></pre>
+}`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2 mt-4">Streaming</h4>
             <p class="text-gray-600 dark:text-gray-400 mb-3">
-              Set <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">stream: true</code> to receive Server-Sent Events (SSE) instead of a single response:
+              Set{" "}
+              <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">
+                stream: true
+              </code>{" "}
+              to receive Server-Sent Events (SSE) instead of a single response:
             </p>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
+              <pre class="text-sm text-gray-100">
+                <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${exampleModel}",
     "messages": [{"role": "user", "content": "Hello!"}],
     "stream": true
-  }'`}</code></pre>
+  }'`}</code>
+              </pre>
             </div>
           </Card>
 
@@ -171,7 +237,9 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Embeddings</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">POST</span>
+              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">
+                POST
+              </span>
               <code class="text-sm">/proxy/v1/embeddings</code>
             </div>
             <p class="text-gray-600 dark:text-gray-400 mb-4">
@@ -180,27 +248,32 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
 
             <h4 class="font-semibold mb-2">Request Body</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100"><code>{`{
+              <pre class="text-sm text-gray-100">
+                <code>{`{
   "model": "string",              // Required: Embedding model ID
   "input": "string" | ["array"],  // Required: Text to embed
   "encoding_format": "float"      // Optional: "float" or "base64"
-}`}</code></pre>
+}`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100"><code>{`curl ${env.BASE_URL}/proxy/v1/embeddings \\
+              <pre class="text-sm text-gray-100">
+                <code>{`curl ${env.BASE_URL}/proxy/v1/embeddings \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${exampleEmbeddingModel}",
     "input": "The quick brown fox jumps over the lazy dog"
-  }'`}</code></pre>
+  }'`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`{
+              <pre class="text-sm text-gray-100">
+                <code>{`{
   "object": "list",
   "data": [
     {
@@ -214,7 +287,8 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
     "prompt_tokens": 10,
     "total_tokens": 10
   }
-}`}</code></pre>
+}`}</code>
+              </pre>
             </div>
           </Card>
 
@@ -222,7 +296,9 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6">
             <h3 class="text-xl font-semibold mb-2">List Models</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-1 rounded text-sm font-mono">GET</span>
+              <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-1 rounded text-sm font-mono">
+                GET
+              </span>
               <code class="text-sm">/proxy/v1/models</code>
             </div>
             <p class="text-gray-600 dark:text-gray-400 mb-4">
@@ -231,12 +307,15 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100"><code>{`curl ${env.BASE_URL}/proxy/v1/models`}</code></pre>
+              <pre class="text-sm text-gray-100">
+                <code>{`curl ${env.BASE_URL}/proxy/v1/models`}</code>
+              </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`{
+              <pre class="text-sm text-gray-100">
+                <code>{`{
   "object": "list",
   "data": [
     {
@@ -246,7 +325,8 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
       "owned_by": "organization-owner"
     }
   ]
-}`}</code></pre>
+}`}</code>
+              </pre>
             </div>
           </Card>
         </section>
@@ -254,8 +334,18 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
         {/* Allowed Models */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
             Available Models
           </h2>
@@ -263,9 +353,13 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6 mb-6">
             <h3 class="text-lg font-semibold mb-3">Language Models</h3>
             {allowedLanguageModels === null ? (
-              <p class="text-gray-600 dark:text-gray-400">All language models are available.</p>
+              <p class="text-gray-600 dark:text-gray-400">
+                All language models are available.
+              </p>
             ) : allowedLanguageModels.length === 0 ? (
-              <p class="text-gray-600 dark:text-gray-400">No language models are currently configured.</p>
+              <p class="text-gray-600 dark:text-gray-400">
+                No language models are currently configured.
+              </p>
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedLanguageModels.map((model: string) => (
@@ -280,9 +374,13 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6">
             <h3 class="text-lg font-semibold mb-3">Embedding Models</h3>
             {allowedEmbeddingModels === null ? (
-              <p class="text-gray-600 dark:text-gray-400">All embedding models are available.</p>
+              <p class="text-gray-600 dark:text-gray-400">
+                All embedding models are available.
+              </p>
             ) : allowedEmbeddingModels.length === 0 ? (
-              <p class="text-gray-600 dark:text-gray-400">No embedding models are currently configured.</p>
+              <p class="text-gray-600 dark:text-gray-400">
+                No embedding models are currently configured.
+              </p>
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedEmbeddingModels.map((model: string) => (
@@ -296,7 +394,9 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
 
           <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
             <p class="text-sm text-blue-800 dark:text-blue-300">
-              <strong>Note:</strong> If you request a model that is not in the allowed list, the API will automatically use the first allowed model from the respective category.
+              <strong>Note:</strong> If you request a model that is not in the
+              allowed list, the API will automatically use the first allowed
+              model from the respective category.
             </p>
           </div>
         </section>
@@ -304,8 +404,18 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
         {/* SDK Examples */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+              ></path>
             </svg>
             SDK Examples
           </h2>
@@ -313,7 +423,8 @@ export const Docs = ({ user, allowedLanguageModels, allowedEmbeddingModels }: an
           <Card class="p-6 mb-6">
             <h3 class="text-lg font-semibold mb-3">Python (OpenAI SDK)</h3>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`from openai import OpenAI
+              <pre class="text-sm text-gray-100">
+                <code>{`from openai import OpenAI
 
 client = OpenAI(
     api_key="YOUR_API_KEY",
@@ -327,14 +438,18 @@ response = client.chat.completions.create(
     ]
 )
 
-print(response.choices[0].message.content)`}</code></pre>
+print(response.choices[0].message.content)`}</code>
+              </pre>
             </div>
           </Card>
 
           <Card class="p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-3">JavaScript/TypeScript (OpenAI SDK)</h3>
+            <h3 class="text-lg font-semibold mb-3">
+              JavaScript/TypeScript (OpenAI SDK)
+            </h3>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`import OpenAI from 'openai';
+              <pre class="text-sm text-gray-100">
+                <code>{`import OpenAI from 'openai';
 
 const client = new OpenAI({
   apiKey: 'YOUR_API_KEY',
@@ -348,14 +463,16 @@ const response = await client.chat.completions.create({
   ],
 });
 
-console.log(response.choices[0].message.content);`}</code></pre>
+console.log(response.choices[0].message.content);`}</code>
+              </pre>
             </div>
           </Card>
 
           <Card class="p-6">
             <h3 class="text-lg font-semibold mb-3">Streaming with Python</h3>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100"><code>{`from openai import OpenAI
+              <pre class="text-sm text-gray-100">
+                <code>{`from openai import OpenAI
 
 client = OpenAI(
     api_key="YOUR_API_KEY",
@@ -370,7 +487,8 @@ stream = client.chat.completions.create(
 
 for chunk in stream:
     if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="")`}</code></pre>
+        print(chunk.choices[0].delta.content, end="")`}</code>
+              </pre>
             </div>
           </Card>
         </section>
@@ -378,8 +496,18 @@ for chunk in stream:
         {/* Rate Limits & Notes */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
             Important Notes
           </h2>
@@ -387,34 +515,100 @@ for chunk in stream:
           <Card class="p-6">
             <ul class="space-y-3 text-gray-600 dark:text-gray-400">
               <li class="flex gap-2">
-                <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg
+                  class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
                 </svg>
-                <span><strong>Request Size:</strong> Maximum request body size is 20MB.</span>
+                <span>
+                  <strong>Request Size:</strong> Maximum request body size is
+                  20MB.
+                </span>
               </li>
               <li class="flex gap-2">
-                <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg
+                  class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
                 </svg>
-                <span><strong>Timeout:</strong> Requests will timeout after 120 seconds.</span>
+                <span>
+                  <strong>Timeout:</strong> Requests will timeout after 120
+                  seconds.
+                </span>
               </li>
               <li class="flex gap-2">
-                <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg
+                  class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
                 </svg>
-                <span><strong>API Keys:</strong> You can create up to 50 API keys per user.</span>
+                <span>
+                  <strong>API Keys:</strong> You can create up to 50 API keys
+                  per user.
+                </span>
               </li>
               <li class="flex gap-2">
-                <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg
+                  class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
                 </svg>
-                <span><strong>Logging:</strong> All requests are logged with token usage, duration, and IP address for monitoring purposes.</span>
+                <span>
+                  <strong>Logging:</strong> All requests are logged with token
+                  usage, duration, and IP address for monitoring purposes.
+                </span>
               </li>
               <li class="flex gap-2">
-                <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg
+                  class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
                 </svg>
-                <span><strong>OpenAI Compatibility:</strong> This API is compatible with OpenAI's client libraries. Simply change the base URL to use this proxy.</span>
+                <span>
+                  <strong>OpenAI Compatibility:</strong> This API is compatible
+                  with OpenAI's client libraries. Simply change the base URL to
+                  use this proxy.
+                </span>
               </li>
             </ul>
           </Card>
@@ -423,36 +617,57 @@ for chunk in stream:
         {/* Error Handling */}
         <section class="mb-12">
           <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              ></path>
             </svg>
             Error Handling
           </h2>
 
           <Card class="p-6">
             <p class="text-gray-600 dark:text-gray-400 mb-4">
-              The API uses standard HTTP status codes to indicate success or failure:
+              The API uses standard HTTP status codes to indicate success or
+              failure:
             </p>
             <div class="space-y-3">
               <div class="border-l-4 border-green-500 pl-4">
                 <code class="font-semibold">200 OK</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Request succeeded</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Request succeeded
+                </p>
               </div>
               <div class="border-l-4 border-yellow-500 pl-4">
                 <code class="font-semibold">400 Bad Request</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Invalid request parameters</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Invalid request parameters
+                </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">401 Unauthorized</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Missing or invalid API key</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Missing or invalid API key
+                </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">413 Payload Too Large</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Request body exceeds 20MB limit</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Request body exceeds 20MB limit
+                </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">500 Internal Server Error</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Server error occurred</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Server error occurred
+                </p>
               </div>
             </div>
           </Card>
@@ -460,7 +675,14 @@ for chunk in stream:
 
         <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center">
           <p class="text-gray-600 dark:text-gray-400">
-            Need help? Check your <a href="/dashboard" class="text-blue-600 dark:text-blue-400 hover:underline">dashboard</a> for usage statistics and API keys.
+            Need help? Check your{" "}
+            <a
+              href="/dashboard"
+              class="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              dashboard
+            </a>{" "}
+            for usage statistics and API keys.
           </p>
         </div>
       </div>
