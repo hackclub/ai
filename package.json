@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "start": "bun run src/index.ts",
+    "start": "bun run src/index.ts --fetch-preconnect $OPENAI_API_URL",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

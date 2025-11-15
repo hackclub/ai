@@ -15,8 +15,10 @@ import dashboard from "./routes/dashboard";
 import { runMigrations } from "./migrate";
 import type { AppVariables } from "./types";
 import type { RequestIdVariables } from "hono/request-id";
+import { dns } from "bun";
 
 await runMigrations();
+dns.prefetch(env.OPENAI_API_URL, 443);
 
 const app = new Hono<{ Variables: AppVariables & RequestIdVariables }>();
 
