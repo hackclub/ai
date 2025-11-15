@@ -29,7 +29,7 @@ api.post("/keys", arktypeValidator("json", createKeySchema), async (c) => {
 
   const key = `sk-${crypto.randomUUID()}${crypto.randomUUID()}`.replace(
     /-/g,
-    ""
+    "",
   );
 
   const [apiKey] = await db

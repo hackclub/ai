@@ -28,7 +28,7 @@ app.use(
     onError: () => {
       throw new HTTPException(413, { message: "Request too large" });
     },
-  })
+  }),
 );
 app.use("/proxy/*", timeout(120000));
 
