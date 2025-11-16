@@ -21,7 +21,7 @@ services:
   db:
     image: postgres:18-alpine
     ports:
-      - "56712:5432"
+      - "5432:5432"
     environment:
       POSTGRES_DB: ai_proxy
       POSTGRES_USER: postgres
