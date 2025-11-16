@@ -48,7 +48,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       name: apiKeys.name,
       createdAt: apiKeys.createdAt,
       revokedAt: apiKeys.revokedAt,
-      keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 10), '...')`,
+      keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
     })
     .from(apiKeys)
     .where(eq(apiKeys.userId, user.id))
