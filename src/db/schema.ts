@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, uuid, index, jsonb, bigint } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, uuid, index, jsonb, bigint, boolean } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   email: text('email'),
   name: text('name'),
   avatar: text('avatar'),
+  isIdvVerified: boolean('is_idv_verified').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

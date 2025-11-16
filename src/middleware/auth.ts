@@ -6,6 +6,7 @@ import { users, sessions, apiKeys } from '../db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import type { AppVariables } from '../types';
 import blockedAppsConfig from '../config/blocked-apps.json';
+import { getEnforceIdv } from '../env';
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map(a => a.toLowerCase());
 const BLOCKED_MESSAGE = "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
@@ -90,6 +91,16 @@ export async function requireApiKey(c: Context<{ Variables: AppVariables }>, nex
 
   if (!apiKey) {
     throw new HTTPException(401, { message: 'Authentication failed' });
+  }
+
+  if (getEnforceIdv() && !apiKey.user.isIdvVerified) {
+    throw new HTTPException(403, {
+      message: 'Identity verification required. Please visit https://identity.hackclub.com to verify your identity.',
+      res: Response.json(
+        { error: 'Identity verification required. Please visit https://identity.hackclub.com to verify your identity.' },
+        { status: 403 }
+      )
+    });
   }
 
   c.set('apiKey', apiKey.apiKey);

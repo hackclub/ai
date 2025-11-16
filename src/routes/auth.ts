@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { setCookie, getCookie } from 'hono/cookie';
 import { env } from '../env';
 import type { AppVariables } from '../types';
+import { checkIdvStatus } from '../utils/idv';
 
 const auth = new Hono<{ Variables: AppVariables }>();
 
@@ -78,6 +79,8 @@ auth.get('/callback', async (c) => {
       throw new HTTPException(403, { message: 'Access denied: Invalid workspace' });
     }
 
+    const isIdvVerified = await checkIdvStatus(slackId, email);
+
     let [user] = await db
       .select()
       .from(users)
@@ -93,6 +96,7 @@ auth.get('/callback', async (c) => {
           email,
           name: displayName,
           avatar: avatarUrl,
+          isIdvVerified,
         })
         .returning();
     } else {
@@ -102,6 +106,7 @@ auth.get('/callback', async (c) => {
           email,
           name: displayName,
           avatar: avatarUrl,
+          isIdvVerified,
           updatedAt: new Date(),
         })
         .where(eq(users.id, user.id))

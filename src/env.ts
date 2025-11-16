@@ -13,6 +13,7 @@ const envSchema = type({
   'ALLOWED_LANGUAGE_MODELS?': 'string',
   'ALLOWED_EMBEDDING_MODELS?': 'string',
   'NODE_ENV?': "'development' | 'production' | 'test'",
+  'ENFORCE_IDV?': 'string',
 });
 
 const result = envSchema(process.env);
@@ -36,6 +37,13 @@ export const allowedModels = parseModelList(env.ALLOWED_MODELS);
 export const allowedLanguageModels = parseModelList(env.ALLOWED_LANGUAGE_MODELS);
 export const allowedEmbeddingModels = parseModelList(env.ALLOWED_EMBEDDING_MODELS);
 
+function parseBoolean(value: string | undefined): boolean {
+  if (!value) return false;
+  return value.toLowerCase() === 'true' || value === '1';
+}
+
+export const enforceIdv = parseBoolean(env.ENFORCE_IDV);
+
 export function getAllowedModels(): string[] | null {
   return allowedModels;
 }
@@ -46,4 +54,8 @@ export function getAllowedLanguageModels(): string[] | null {
 
 export function getAllowedEmbeddingModels(): string[] | null {
   return allowedEmbeddingModels;
+}
+
+export function getEnforceIdv(): boolean {
+  return enforceIdv;
 }

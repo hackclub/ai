@@ -7,7 +7,7 @@ import { eq, desc, sql, and, gt } from 'drizzle-orm';
 import { Home } from '../views/home';
 import { Dashboard } from '../views/dashboard';
 import { Global } from '../views/global';
-import { getAllowedLanguageModels, getAllowedEmbeddingModels } from '../env';
+import { getAllowedLanguageModels, getAllowedEmbeddingModels, getEnforceIdv } from '../env';
 import type { AppVariables } from '../types';
 
 const dashboard = new Hono<{ Variables: AppVariables }>();
@@ -79,6 +79,7 @@ dashboard.get('/dashboard', requireAuth, async (c) => {
 
   const allowedLanguageModels = getAllowedLanguageModels();
   const allowedEmbeddingModels = getAllowedEmbeddingModels();
+  const enforceIdv = getEnforceIdv();
 
   return c.html(
     <Dashboard
@@ -88,6 +89,7 @@ dashboard.get('/dashboard', requireAuth, async (c) => {
       recentLogs={recentLogs}
       allowedLanguageModels={allowedLanguageModels}
       allowedEmbeddingModels={allowedEmbeddingModels}
+      enforceIdv={enforceIdv}
     />
   );
 });

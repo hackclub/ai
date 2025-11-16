@@ -8,6 +8,13 @@
       "when": 1762974444770,
       "tag": "0000_strange_the_spike",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1763332630789,
+      "tag": "0001_narrow_wendigo",
+      "breakpoints": true
     }
   ]
 }
