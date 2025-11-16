@@ -61,7 +61,6 @@ proxy.get("/v1/models", async (c) => {
       const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
           ...openRouterHeaders,
         },
       });
