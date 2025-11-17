@@ -8,7 +8,11 @@ import { Home } from "../views/home";
 import { Dashboard } from "../views/dashboard";
 import { Global } from "../views/global";
 import { Docs } from "../views/docs";
-import { getAllowedLanguageModels, getAllowedEmbeddingModels, env } from "../env";
+import {
+  getAllowedLanguageModels,
+  getAllowedEmbeddingModels,
+  env,
+} from "../env";
 import type { AppVariables } from "../types";
 
 const dashboard = new Hono<{ Variables: AppVariables }>();

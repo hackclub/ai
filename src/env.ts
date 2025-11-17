@@ -33,10 +33,10 @@ function parseModelList(value: string): string[] {
 }
 
 export const allowedLanguageModels = parseModelList(
-  env.ALLOWED_LANGUAGE_MODELS
+  env.ALLOWED_LANGUAGE_MODELS,
 );
 export const allowedEmbeddingModels = parseModelList(
-  env.ALLOWED_EMBEDDING_MODELS
+  env.ALLOWED_EMBEDDING_MODELS,
 );
 
 export function getAllowedLanguageModels(): string[] {

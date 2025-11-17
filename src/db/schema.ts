@@ -36,7 +36,7 @@ export const apiKeys = pgTable(
   (table) => [
     index("api_keys_user_id_idx").on(table.userId),
     index("api_keys_key_revoked_idx").on(table.key, table.revokedAt),
-  ]
+  ],
 );
 
 export const requestLogs = pgTable(
@@ -63,18 +63,18 @@ export const requestLogs = pgTable(
   (table) => [
     index("request_logs_user_timestamp_idx").on(
       table.userId,
-      table.timestamp.desc()
+      table.timestamp.desc(),
     ),
     index("request_logs_apikey_timestamp_idx").on(
       table.apiKeyId,
-      table.timestamp.desc()
+      table.timestamp.desc(),
     ),
     index("request_logs_slack_timestamp_idx").on(
       table.slackId,
-      table.timestamp.desc()
+      table.timestamp.desc(),
     ),
     index("request_logs_model_idx").on(table.model),
-  ]
+  ],
 );
 
 export const sessions = pgTable(
@@ -91,5 +91,5 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
     index("sessions_expires_at_idx").on(table.expiresAt),
-  ]
+  ],
 );

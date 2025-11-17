@@ -27,8 +27,11 @@ api.post("/keys", arktypeValidator("json", createKeySchema), async (c) => {
     throw new HTTPException(400, { message: "Maximum API key limit reached" });
   }
 
-  const initial = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-  const key = `sk-hc-v1-${initial}`
+  const initial = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(
+    /-/g,
+    "",
+  );
+  const key = `sk-hc-v1-${initial}`;
 
   const [apiKey] = await db
     .insert(apiKeys)

@@ -2,9 +2,14 @@ import { db } from "../src/db";
 import { users } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 
-async function checkIdvStatus(slackId: string, email: string): Promise<boolean> {
+async function checkIdvStatus(
+  slackId: string,
+  email: string,
+): Promise<boolean> {
   try {
-    const urlBySlackId = new URL("https://identity.hackclub.com/api/external/check");
+    const urlBySlackId = new URL(
+      "https://identity.hackclub.com/api/external/check",
+    );
     urlBySlackId.searchParams.append("slack_id", slackId);
 
     const slackResponse = await fetch(urlBySlackId);
@@ -17,7 +22,9 @@ async function checkIdvStatus(slackId: string, email: string): Promise<boolean> 
 
     if (!email) return false;
 
-    const urlByEmail = new URL("https://identity.hackclub.com/api/external/check");
+    const urlByEmail = new URL(
+      "https://identity.hackclub.com/api/external/check",
+    );
     urlByEmail.searchParams.append("email", email);
 
     const emailResponse = await fetch(urlByEmail);
@@ -40,12 +47,17 @@ async function importIdvStatus() {
 
   const results = await Promise.all(
     allUsers.map(async (user) => {
-      console.log(`Checking user: ${user.name || user.slackId} (${user.email || "no email"})`);
+      console.log(
+        `Checking user: ${user.name || user.slackId} (${user.email || "no email"})`,
+      );
 
-      const isIdvVerified = await checkIdvStatus(user.slackId, user.email || "");
+      const isIdvVerified = await checkIdvStatus(
+        user.slackId,
+        user.email || "",
+      );
 
       return { user, isIdvVerified };
-    })
+    }),
   );
 
   let updatedCount = 0;
@@ -74,7 +86,7 @@ async function importIdvStatus() {
           console.log(`✗ ${user.name || user.slackId}: Not verified`);
         }
       }
-    })
+    }),
   );
 
   console.log(`\nImport complete!`);

@@ -7,9 +7,14 @@ import { setCookie, getCookie } from "hono/cookie";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
-async function checkIdvStatus(slackId: string, email: string): Promise<boolean> {
+async function checkIdvStatus(
+  slackId: string,
+  email: string,
+): Promise<boolean> {
   try {
-    const urlBySlackId = new URL("https://identity.hackclub.com/api/external/check");
+    const urlBySlackId = new URL(
+      "https://identity.hackclub.com/api/external/check",
+    );
     urlBySlackId.searchParams.append("slack_id", slackId);
 
     const slackResponse = await fetch(urlBySlackId);
@@ -22,7 +27,9 @@ async function checkIdvStatus(slackId: string, email: string): Promise<boolean> 
 
     if (!email) return false;
 
-    const urlByEmail = new URL("https://identity.hackclub.com/api/external/check");
+    const urlByEmail = new URL(
+      "https://identity.hackclub.com/api/external/check",
+    );
     urlByEmail.searchParams.append("email", email);
 
     const emailResponse = await fetch(urlByEmail);

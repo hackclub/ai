@@ -94,7 +94,8 @@ export async function requireApiKey(
 
   if (env.ENFORCE_IDV && !apiKey.user.isIdvVerified) {
     throw new HTTPException(403, {
-      message: "Identity verification required. Please verify at https://identity.hackclub.com",
+      message:
+        "Identity verification required. Please verify at https://identity.hackclub.com",
     });
   }
 
