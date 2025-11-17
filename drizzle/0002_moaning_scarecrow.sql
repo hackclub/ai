@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "is_idv_verified" boolean DEFAULT false NOT NULL;

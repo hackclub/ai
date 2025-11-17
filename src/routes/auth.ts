@@ -7,6 +7,35 @@ import { setCookie, getCookie } from "hono/cookie";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
+async function checkIdvStatus(slackId: string, email: string): Promise<boolean> {
+  try {
+    const urlBySlackId = new URL("https://identity.hackclub.com/api/external/check");
+    urlBySlackId.searchParams.append("slack_id", slackId);
+
+    const slackResponse = await fetch(urlBySlackId);
+    if (slackResponse.ok) {
+      const data = await slackResponse.json();
+      if (data.result === "verified_eligible") {
+        return true;
+      }
+    }
+
+    if (!email) return false;
+
+    const urlByEmail = new URL("https://identity.hackclub.com/api/external/check");
+    urlByEmail.searchParams.append("email", email);
+
+    const emailResponse = await fetch(urlByEmail);
+    if (!emailResponse.ok) return false;
+
+    const data = await emailResponse.json();
+    return data.result === "verified_eligible";
+  } catch (error) {
+    console.error("IDV check error:", error);
+    return false;
+  }
+}
+
 const auth = new Hono<{ Variables: AppVariables }>();
 
 function parseJwt(slackIdToken: string) {
@@ -92,6 +121,8 @@ auth.get("/callback", async (c) => {
       .where(eq(users.slackId, slackId))
       .limit(1);
 
+    const isIdvVerified = await checkIdvStatus(slackId, email);
+
     if (!user) {
       [user] = await db
         .insert(users)
@@ -101,6 +132,7 @@ auth.get("/callback", async (c) => {
           email,
           name: displayName,
           avatar: avatarUrl,
+          isIdvVerified,
         })
         .returning();
     } else {
@@ -110,6 +142,7 @@ auth.get("/callback", async (c) => {
           email,
           name: displayName,
           avatar: avatarUrl,
+          isIdvVerified,
           updatedAt: new Date(),
         })
         .where(eq(users.id, user.id))

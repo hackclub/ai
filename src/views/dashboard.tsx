@@ -7,6 +7,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Table } from "./components/Table";
 import { Button } from "./components/Button";
 import { Modal } from "./components/Modal";
+import { IdvBanner } from "./components/IdvBanner";
 
 export const Dashboard = ({
   user,
@@ -15,10 +16,15 @@ export const Dashboard = ({
   recentLogs,
   allowedLanguageModels,
   allowedEmbeddingModels,
+  enforceIdv,
 }: any) => {
+  const showIdvBanner = enforceIdv && !user.isIdvVerified;
+
   return (
     <Layout title="Dashboard">
       <Header title="AI Proxy" user={user} showGlobalStats />
+
+      {showIdvBanner && <IdvBanner />}
 
       <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>

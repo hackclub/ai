@@ -12,6 +12,7 @@ const envSchema = type({
   "ALLOWED_LANGUAGE_MODELS?": "string",
   "ALLOWED_EMBEDDING_MODELS?": "string",
   "NODE_ENV?": "'development' | 'production' | 'test'",
+  "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
 });
 
 const result = envSchema(process.env);
@@ -35,10 +36,10 @@ function parseModelList(value: string | undefined): string[] | null {
 }
 
 export const allowedLanguageModels = parseModelList(
-  env.ALLOWED_LANGUAGE_MODELS,
+  env.ALLOWED_LANGUAGE_MODELS
 );
 export const allowedEmbeddingModels = parseModelList(
-  env.ALLOWED_EMBEDDING_MODELS,
+  env.ALLOWED_EMBEDDING_MODELS
 );
 
 export function getAllowedLanguageModels(): string[] | null {

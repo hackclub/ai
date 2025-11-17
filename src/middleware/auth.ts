@@ -6,6 +6,7 @@ import { users, sessions, apiKeys } from "../db/schema";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import type { AppVariables } from "../types";
 import blockedAppsConfig from "../config/blocked-apps.json";
+import { env } from "../env";
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
@@ -90,5 +91,12 @@ export async function requireApiKey(
 
   c.set("apiKey", apiKey.apiKey);
   c.set("user", apiKey.user);
+
+  if (env.ENFORCE_IDV && !apiKey.user.isIdvVerified) {
+    throw new HTTPException(403, {
+      message: "Identity verification required. Please verify at https://identity.hackclub.com",
+    });
+  }
+
   await next();
 }
