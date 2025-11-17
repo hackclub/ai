@@ -2,7 +2,7 @@ import { Button } from "./Button";
 
 export const IdvBanner = () => {
   return (
-    <div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 mt-4">
+    <div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 mx-4 mt-4">
       <div class="max-w-6xl mx-auto px-4 py-4">
         <div class="flex items-center gap-4">
           <svg
@@ -23,8 +23,7 @@ export const IdvBanner = () => {
               Identity Verification Required
             </h3>
             <p class="text-sm text-red-700 dark:text-red-300 mt-1">
-              You must verify your identity to use the API. API requests are
-              currently blocked. Once you're done, sign out and sign back in.
+              You must verify your identity to use the API. API requests are currently blocked. Once you're done, sign out and sign back in.
             </p>
           </div>
           <a
