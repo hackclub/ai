@@ -23,7 +23,8 @@ export const IdvBanner = () => {
               Identity Verification Required
             </h3>
             <p class="text-sm text-red-700 dark:text-red-300 mt-1">
-              You must verify your identity to use the API. API requests are currently blocked. Once you're done, sign out and sign back in.
+              You must verify your identity to use the API. API requests are
+              currently blocked. Once you're done, sign out and sign back in.
             </p>
           </div>
           <a

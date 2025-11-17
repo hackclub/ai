@@ -24,9 +24,9 @@ export const Dashboard = ({
     <Layout title="Dashboard">
       <Header title="AI Proxy" user={user} showGlobalStats />
 
-      <div class="max-w-6xl mx-auto px-4 py-8">
-        {showIdvBanner && <IdvBanner />}
+      {showIdvBanner && <IdvBanner />}
 
+      <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
