@@ -73,18 +73,13 @@ proxy.get("/v1/models", async (c) => {
         return data;
       }
 
-      const allAllowedModels: string[] | null =
-        allowedLanguageModels || allowedEmbeddingModels
-          ? [
-              ...(allowedLanguageModels || []),
-              ...(allowedEmbeddingModels || []),
-            ]
-          : null;
+      const allAllowedModels = [
+        ...allowedLanguageModels,
+        ...allowedEmbeddingModels,
+      ];
 
-      if (allAllowedModels && allAllowedModels.length > 0) {
-        const allowedSet = new Set(allAllowedModels);
-        data.data = data.data.filter((model: any) => allowedSet.has(model.id));
-      }
+      const allowedSet = new Set(allAllowedModels);
+      data.data = data.data.filter((model: any) => allowedSet.has(model.id));
 
       modelsCache = { data, timestamp: now };
       modelsCacheFetch = null;
@@ -113,11 +108,9 @@ proxy.post("/v1/chat/completions", async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    if (allowedLanguageModels && allowedLanguageModels.length > 0) {
-      const allowedSet = new Set(allowedLanguageModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedLanguageModels[0];
-      }
+    const allowedSet = new Set(allowedLanguageModels);
+    if (!allowedSet.has(requestBody.model)) {
+      requestBody.model = allowedLanguageModels[0];
     }
 
     requestBody.user = `user_${user.id}`;
@@ -257,11 +250,9 @@ proxy.post("/v1/embeddings", async (c) => {
   try {
     const requestBody = await c.req.json();
 
-    if (allowedEmbeddingModels && allowedEmbeddingModels.length > 0) {
-      const allowedSet = new Set(allowedEmbeddingModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedEmbeddingModels[0];
-      }
+    const allowedSet = new Set(allowedEmbeddingModels);
+    if (!allowedSet.has(requestBody.model)) {
+      requestBody.model = allowedEmbeddingModels[0];
     }
 
     requestBody.user = `user_${user.id}`;
