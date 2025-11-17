@@ -1,25 +1,24 @@
-import { type } from 'arktype';
+import { type } from "arktype";
 
 const envSchema = type({
-  DATABASE_URL: 'string',
-  BASE_URL: 'string',
-  PORT: 'string',
-  SLACK_CLIENT_ID: 'string',
-  SLACK_CLIENT_SECRET: 'string',
-  SLACK_TEAM_ID: 'string',
-  OPENAI_API_URL: 'string',
-  OPENAI_API_KEY: 'string',
-  'ALLOWED_MODELS?': 'string',
-  'ALLOWED_LANGUAGE_MODELS?': 'string',
-  'ALLOWED_EMBEDDING_MODELS?': 'string',
-  'NODE_ENV?': "'development' | 'production' | 'test'",
-  'ENFORCE_IDV?': 'string',
+  DATABASE_URL: "string",
+  BASE_URL: "string",
+  PORT: "string.numeric.parse",
+  SLACK_CLIENT_ID: "string",
+  SLACK_CLIENT_SECRET: "string",
+  SLACK_TEAM_ID: "string",
+  OPENAI_API_URL: "string",
+  OPENAI_API_KEY: "string",
+  "ALLOWED_LANGUAGE_MODELS?": "string",
+  "ALLOWED_EMBEDDING_MODELS?": "string",
+  "NODE_ENV?": "'development' | 'production' | 'test'",
+  "ENFORCE_IDV?": 'string.boolean.parse',
 });
 
 const result = envSchema(process.env);
 
 if (result instanceof type.errors) {
-  console.error('Environment validation failed:');
+  console.error("Environment validation failed:");
   console.error(result.summary);
   process.exit(1);
 }
@@ -27,10 +26,13 @@ if (result instanceof type.errors) {
 export const env = result;
 
 function parseModelList(value: string | undefined): string[] | null {
-  if (!value || value.trim() === '') {
+  if (!value || value.trim() === "") {
     return null;
   }
-  return value.split(',').map(m => m.trim()).filter(m => m.length > 0);
+  return value
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
 }
 
 export const allowedModels = parseModelList(env.ALLOWED_MODELS);
@@ -42,7 +44,7 @@ function parseBoolean(value: string | undefined): boolean {
   return value.toLowerCase() === 'true' || value === '1';
 }
 
-export const enforceIdv = parseBoolean(env.ENFORCE_IDV);
+export const enforceIdv = env.ENFORCE_IDV;
 
 export function getAllowedModels(): string[] | null {
   return allowedModels;

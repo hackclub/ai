@@ -1,12 +1,12 @@
-import { Hono } from 'hono';
-import { stream } from 'hono/streaming';
-import { etag } from 'hono/etag';
-import { HTTPException } from 'hono/http-exception';
-import { requireApiKey, blockAICodingAgents } from '../middleware/auth';
-import { db } from '../db';
-import { requestLogs } from '../db/schema';
-import { env, allowedLanguageModels, allowedEmbeddingModels } from '../env';
-import type { AppVariables } from '../types';
+import { Hono } from "hono";
+import { stream } from "hono/streaming";
+import { etag } from "hono/etag";
+import { HTTPException } from "hono/http-exception";
+import { requireApiKey, blockAICodingAgents } from "../middleware/auth";
+import { db } from "../db";
+import { requestLogs } from "../db/schema";
+import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
+import type { AppVariables } from "../types";
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
@@ -14,33 +14,35 @@ let modelsCache: { data: any; timestamp: number } | null = null;
 let modelsCacheFetch: Promise<any> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-export const openRouterHeaders = {
-  'HTTP-Referer': `${env.BASE_URL}/global?utm_source=openrouter`,
-  'X-Title': 'Hack Club AI',
+const openRouterHeaders = {
+  "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
+  "X-Title": "Hack Club AI",
 };
 
-proxy.use('*', blockAICodingAgents);
+proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path === '/v1/models') {
+  if (c.req.path === "/v1/models") {
     return next();
   }
   return requireApiKey(c, next);
-})
+});
 
-proxy.use('/v1/models', etag());
+proxy.use("/v1/models", etag());
 
 function getClientIp(c: any): string {
-  return c.req.header('CF-Connecting-IP') || 
-         c.req.header('X-Forwarded-For')?.split(',')[0].trim() || 
-         c.req.header('X-Real-IP') || 
-         'unknown';
+  return (
+    c.req.header("CF-Connecting-IP") ||
+    c.req.header("X-Forwarded-For")?.split(",")[0].trim() ||
+    c.req.header("X-Real-IP") ||
+    "unknown"
+  );
 }
 
-proxy.get('/v1/models', async (c) => {
+proxy.get("/v1/models", async (c) => {
   const now = Date.now();
 
-  if (modelsCache && (now - modelsCache.timestamp) < CACHE_TTL) {
+  if (modelsCache && now - modelsCache.timestamp < CACHE_TTL) {
     return c.json(modelsCache.data);
   }
 
@@ -49,22 +51,22 @@ proxy.get('/v1/models', async (c) => {
       const data = await modelsCacheFetch;
       return c.json(data);
     } catch (error) {
-      console.error('Models fetch error:', error);
-      throw new HTTPException(500, { message: 'Failed to fetch models' });
+      console.error("Models fetch error:", error);
+      throw new HTTPException(500, { message: "Failed to fetch models" });
     }
   }
 
   modelsCacheFetch = (async () => {
     try {
       const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
           ...openRouterHeaders,
         },
       });
 
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
 
       if (!response.ok || !data.data || !Array.isArray(data.data)) {
         modelsCacheFetch = null;
@@ -72,8 +74,11 @@ proxy.get('/v1/models', async (c) => {
       }
 
       const allAllowedModels: string[] | null =
-        (allowedLanguageModels || allowedEmbeddingModels)
-          ? [...(allowedLanguageModels || []), ...(allowedEmbeddingModels || [])]
+        allowedLanguageModels || allowedEmbeddingModels
+          ? [
+              ...(allowedLanguageModels || []),
+              ...(allowedEmbeddingModels || []),
+            ]
           : null;
 
       if (allAllowedModels && allAllowedModels.length > 0) {
@@ -95,14 +100,14 @@ proxy.get('/v1/models', async (c) => {
     const data = await modelsCacheFetch;
     return c.json(data);
   } catch (error) {
-    console.error('Models fetch error:', error);
-    throw new HTTPException(500, { message: 'Failed to fetch models' });
+    console.error("Models fetch error:", error);
+    throw new HTTPException(500, { message: "Failed to fetch models" });
   }
 });
 
-proxy.post('/v1/chat/completions', async (c) => {
-  const apiKey = c.get('apiKey');
-  const user = c.get('user');
+proxy.post("/v1/chat/completions", async (c) => {
+  const apiKey = c.get("apiKey");
+  const user = c.get("user");
   const startTime = Date.now();
 
   try {
@@ -120,37 +125,39 @@ proxy.post('/v1/chat/completions', async (c) => {
     const isStreaming = requestBody.stream === true;
 
     const response = await fetch(`${env.OPENAI_API_URL}/v1/chat/completions`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!isStreaming) {
-      const responseData = await response.json() as any;
+      const responseData = (await response.json()) as any;
       const duration = Date.now() - startTime;
 
       const promptTokens = responseData.usage?.prompt_tokens || 0;
       const completionTokens = responseData.usage?.completion_tokens || 0;
       const totalTokens = responseData.usage?.total_tokens || 0;
 
-      db.insert(requestLogs).values({
-        apiKeyId: apiKey.id,
-        userId: user.id,
-        slackId: user.slackId,
-        model: requestBody.model,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        request: requestBody,
-        response: responseData,
-        ip: getClientIp(c),
-        timestamp: new Date(),
-        duration,
-      }).catch(err => console.error('Logging error:', err));
+      db.insert(requestLogs)
+        .values({
+          apiKeyId: apiKey.id,
+          userId: user.id,
+          slackId: user.slackId,
+          model: requestBody.model,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          request: requestBody,
+          response: responseData,
+          ip: getClientIp(c),
+          timestamp: new Date(),
+          duration,
+        })
+        .catch((err) => console.error("Logging error:", err));
 
       return c.json(responseData, response.status as any);
     }
@@ -158,7 +165,7 @@ proxy.post('/v1/chat/completions', async (c) => {
     return stream(c, async (stream) => {
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('No response body');
+        throw new Error("No response body");
       }
 
       const decoder = new TextDecoder();
@@ -177,10 +184,12 @@ proxy.post('/v1/chat/completions', async (c) => {
 
           await stream.write(value);
 
-          const lines = chunk.split('\n').filter(line => line.trim().startsWith('data: '));
+          const lines = chunk
+            .split("\n")
+            .filter((line) => line.trim().startsWith("data: "));
           for (const line of lines) {
-            const data = line.replace(/^data: /, '').trim();
-            if (data === '[DONE]') continue;
+            const data = line.replace(/^data: /, "").trim();
+            if (data === "[DONE]") continue;
 
             try {
               const parsed = JSON.parse(data);
@@ -195,48 +204,54 @@ proxy.post('/v1/chat/completions', async (c) => {
       } finally {
         const duration = Date.now() - startTime;
 
-        db.insert(requestLogs).values({
-          apiKeyId: apiKey.id,
-          userId: user.id,
-          slackId: user.slackId,
-          model: requestBody.model,
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          request: requestBody,
-          response: { stream: true, chunks: chunks.join('') },
-          ip: getClientIp(c),
-          timestamp: new Date(),
-          duration,
-        }).catch(err => console.error('Logging error:', err));
+        db.insert(requestLogs)
+          .values({
+            apiKeyId: apiKey.id,
+            userId: user.id,
+            slackId: user.slackId,
+            model: requestBody.model,
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            request: requestBody,
+            response: { stream: true, chunks: chunks.join("") },
+            ip: getClientIp(c),
+            timestamp: new Date(),
+            duration,
+          })
+          .catch((err) => console.error("Logging error:", err));
       }
     });
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Proxy error:', error);
+    console.error("Proxy error:", error);
 
-    db.insert(requestLogs).values({
-      apiKeyId: apiKey.id,
-      userId: user.id,
-      slackId: user.slackId,
-      model: 'unknown',
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      request: {},
-      response: { error: error instanceof Error ? error.message : 'Unknown error' },
-      ip: getClientIp(c),
-      timestamp: new Date(),
-      duration,
-    }).catch(err => console.error('Logging error:', err));
+    db.insert(requestLogs)
+      .values({
+        apiKeyId: apiKey.id,
+        userId: user.id,
+        slackId: user.slackId,
+        model: "unknown",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        request: {},
+        response: {
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        ip: getClientIp(c),
+        timestamp: new Date(),
+        duration,
+      })
+      .catch((err) => console.error("Logging error:", err));
 
-    throw new HTTPException(500, { message: 'Internal server error' });
+    throw new HTTPException(500, { message: "Internal server error" });
   }
 });
 
-proxy.post('/v1/embeddings', async (c) => {
-  const apiKey = c.get('apiKey');
-  const user = c.get('user');
+proxy.post("/v1/embeddings", async (c) => {
+  const apiKey = c.get("apiKey");
+  const user = c.get("user");
   const startTime = Date.now();
 
   try {
@@ -252,57 +267,63 @@ proxy.post('/v1/embeddings', async (c) => {
     requestBody.user = `user_${user.id}`;
 
     const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         ...openRouterHeaders,
       },
       body: JSON.stringify(requestBody),
     });
 
-    const responseData = await response.json() as any;
+    const responseData = (await response.json()) as any;
     const duration = Date.now() - startTime;
 
     const promptTokens = responseData.usage?.prompt_tokens || 0;
     const totalTokens = responseData.usage?.total_tokens || 0;
 
-    db.insert(requestLogs).values({
-      apiKeyId: apiKey.id,
-      userId: user.id,
-      slackId: user.slackId,
-      model: requestBody.model,
-      promptTokens,
-      completionTokens: 0,
-      totalTokens,
-      request: requestBody,
-      response: responseData,
-      ip: getClientIp(c),
-      timestamp: new Date(),
-      duration,
-    }).catch(err => console.error('Logging error:', err));
+    db.insert(requestLogs)
+      .values({
+        apiKeyId: apiKey.id,
+        userId: user.id,
+        slackId: user.slackId,
+        model: requestBody.model,
+        promptTokens,
+        completionTokens: 0,
+        totalTokens,
+        request: requestBody,
+        response: responseData,
+        ip: getClientIp(c),
+        timestamp: new Date(),
+        duration,
+      })
+      .catch((err) => console.error("Logging error:", err));
 
     return c.json(responseData, response.status as any);
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Embeddings proxy error:', error);
+    console.error("Embeddings proxy error:", error);
 
-    db.insert(requestLogs).values({
-      apiKeyId: apiKey.id,
-      userId: user.id,
-      slackId: user.slackId,
-      model: 'unknown',
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      request: {},
-      response: { error: error instanceof Error ? error.message : 'Unknown error' },
-      ip: getClientIp(c),
-      timestamp: new Date(),
-      duration,
-    }).catch(err => console.error('Logging error:', err));
+    db.insert(requestLogs)
+      .values({
+        apiKeyId: apiKey.id,
+        userId: user.id,
+        slackId: user.slackId,
+        model: "unknown",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        request: {},
+        response: {
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        ip: getClientIp(c),
+        timestamp: new Date(),
+        duration,
+      })
+      .catch((err) => console.error("Logging error:", err));
 
-    throw new HTTPException(500, { message: 'Internal server error' });
+    throw new HTTPException(500, { message: "Internal server error" });
   }
 });
 

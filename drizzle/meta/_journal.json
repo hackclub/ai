@@ -15,6 +15,13 @@
       "when": 1763332630789,
       "tag": "0001_narrow_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1763203318768,
+      "tag": "0002_boring_fallen_one",
+      "breakpoints": true
     }
   ]
 }

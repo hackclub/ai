@@ -1,20 +1,21 @@
-import { Hono } from 'hono';
-import { getCookie } from 'hono/cookie';
-import { requireAuth } from '../middleware/auth';
-import { db } from '../db';
-import { apiKeys, requestLogs, sessions } from '../db/schema';
-import { eq, desc, sql, and, gt } from 'drizzle-orm';
-import { Home } from '../views/home';
-import { Dashboard } from '../views/dashboard';
-import { Global } from '../views/global';
-import { getAllowedLanguageModels, getAllowedEmbeddingModels, getEnforceIdv } from '../env';
-import type { AppVariables } from '../types';
+import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
+import { requireAuth } from "../middleware/auth";
+import { db } from "../db";
+import { apiKeys, requestLogs, sessions } from "../db/schema";
+import { eq, desc, sql, and, gt } from "drizzle-orm";
+import { Home } from "../views/home";
+import { Dashboard } from "../views/dashboard";
+import { Global } from "../views/global";
+import { Docs } from "../views/docs";
+import { getAllowedLanguageModels, getAllowedEmbeddingModels } from "../env";
+import type { AppVariables } from "../types";
 
 const dashboard = new Hono<{ Variables: AppVariables }>();
 
-dashboard.get('/', async (c) => {
+dashboard.get("/", async (c) => {
   // Check if user has a valid session and redirect to dashboard
-  const sessionToken = getCookie(c, 'session_token');
+  const sessionToken = getCookie(c, "session_token");
 
   if (sessionToken) {
     // Validate session is not expired
@@ -24,13 +25,13 @@ dashboard.get('/', async (c) => {
       .where(
         and(
           eq(sessions.token, sessionToken),
-          gt(sessions.expiresAt, new Date())
-        )
+          gt(sessions.expiresAt, new Date()),
+        ),
       )
       .limit(1);
 
     if (session) {
-      return c.redirect('/dashboard');
+      return c.redirect("/dashboard");
     }
   }
 
@@ -38,8 +39,8 @@ dashboard.get('/', async (c) => {
   return c.html(<Home models={allowedLanguageModels || []} />);
 });
 
-dashboard.get('/dashboard', requireAuth, async (c) => {
-  const user = c.get('user');
+dashboard.get("/dashboard", requireAuth, async (c) => {
+  const user = c.get("user");
 
   const keys = await db
     .select({
@@ -47,7 +48,7 @@ dashboard.get('/dashboard', requireAuth, async (c) => {
       name: apiKeys.name,
       createdAt: apiKeys.createdAt,
       revokedAt: apiKeys.revokedAt,
-      keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 10), '...')`,
+      keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
     })
     .from(apiKeys)
     .where(eq(apiKeys.userId, user.id))
@@ -85,17 +86,23 @@ dashboard.get('/dashboard', requireAuth, async (c) => {
     <Dashboard
       user={user}
       apiKeys={keys}
-      stats={stats[0] || { totalRequests: 0, totalTokens: 0, totalPromptTokens: 0, totalCompletionTokens: 0 }}
+      stats={
+        stats[0] || {
+          totalRequests: 0,
+          totalTokens: 0,
+          totalPromptTokens: 0,
+          totalCompletionTokens: 0,
+        }
+      }
       recentLogs={recentLogs}
       allowedLanguageModels={allowedLanguageModels}
       allowedEmbeddingModels={allowedEmbeddingModels}
-      enforceIdv={enforceIdv}
-    />
+    />,
   );
 });
 
-dashboard.get('/global', requireAuth, async (c) => {
-  const user = c.get('user');
+dashboard.get("/global", requireAuth, async (c) => {
+  const user = c.get("user");
 
   // Global stats across ALL users
   const globalStats = await db
@@ -113,7 +120,7 @@ dashboard.get('/global', requireAuth, async (c) => {
       model: requestLogs.model,
       totalRequests: sql<number>`COUNT(*)::int`,
       totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
+      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
       totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
     })
     .from(requestLogs)
@@ -123,9 +130,30 @@ dashboard.get('/global', requireAuth, async (c) => {
   return c.html(
     <Global
       user={user}
-      globalStats={globalStats[0] || { totalRequests: 0, totalTokens: 0, totalPromptTokens: 0, totalCompletionTokens: 0 }}
+      globalStats={
+        globalStats[0] || {
+          totalRequests: 0,
+          totalTokens: 0,
+          totalPromptTokens: 0,
+          totalCompletionTokens: 0,
+        }
+      }
       modelStats={modelStats}
-    />
+    />,
+  );
+});
+
+dashboard.get("/docs", requireAuth, async (c) => {
+  const user = c.get("user");
+  const allowedLanguageModels = getAllowedLanguageModels();
+  const allowedEmbeddingModels = getAllowedEmbeddingModels();
+
+  return c.html(
+    <Docs
+      user={user}
+      allowedLanguageModels={allowedLanguageModels}
+      allowedEmbeddingModels={allowedEmbeddingModels}
+    />,
   );
 });
 

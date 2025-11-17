@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["bun-types"]
+    "types": ["@types/bun"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

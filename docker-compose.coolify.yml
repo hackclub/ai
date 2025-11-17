@@ -6,7 +6,7 @@ services:
     ports:
       - "51735:51735"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/ai_proxy
+      DATABASE_URL: postgresql://postgres:${SERVICE_PASSWORD_DB}@db:5432/ai_proxy
       PORT: 51735
       SLACK_CLIENT_ID: ${SLACK_CLIENT_ID}
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}
@@ -20,10 +20,12 @@ services:
 
   db:
     image: postgres:18-alpine
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ai_proxy
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

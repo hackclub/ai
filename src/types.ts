@@ -1,4 +1,4 @@
-import type { users, apiKeys } from './db/schema';
+import type { users, apiKeys } from "./db/schema";
 
 export type AppVariables = {
   user: typeof users.$inferSelect;

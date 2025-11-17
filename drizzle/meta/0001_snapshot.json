@@ -1,5 +1,5 @@
 {
-  "id": "0c0b7080-edf9-45a2-9a4d-8517c8ebe15a",
+  "id": "b31ad991-d415-4391-9ab8-e728c7d177e8",
   "prevId": "d95155f1-9afb-4eb5-a294-f47e617f438d",
   "version": "7",
   "dialect": "postgresql",
@@ -48,21 +48,6 @@
         }
       },
       "indexes": {
-        "api_keys_key_idx": {
-          "name": "api_keys_key_idx",
-          "columns": [
-            {
-              "expression": "key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "api_keys_user_id_idx": {
           "name": "api_keys_user_id_idx",
           "columns": [
@@ -78,9 +63,15 @@
           "method": "btree",
           "with": {}
         },
-        "api_keys_revoked_at_idx": {
-          "name": "api_keys_revoked_at_idx",
+        "api_keys_key_revoked_idx": {
+          "name": "api_keys_key_revoked_idx",
           "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "revoked_at",
               "isExpression": false,
@@ -99,12 +90,8 @@
           "name": "api_keys_user_id_users_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -114,9 +101,7 @@
         "api_keys_key_unique": {
           "name": "api_keys_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -212,43 +197,19 @@
         }
       },
       "indexes": {
-        "request_logs_api_key_id_idx": {
-          "name": "request_logs_api_key_id_idx",
-          "columns": [
-            {
-              "expression": "api_key_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "request_logs_user_id_idx": {
-          "name": "request_logs_user_id_idx",
+        "request_logs_user_timestamp_idx": {
+          "name": "request_logs_user_timestamp_idx",
           "columns": [
             {
               "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "request_logs_slack_id_idx": {
-          "name": "request_logs_slack_id_idx",
-          "columns": [
+            },
             {
-              "expression": "slack_id",
+              "expression": "timestamp",
               "isExpression": false,
-              "asc": true,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -257,13 +218,40 @@
           "method": "btree",
           "with": {}
         },
-        "request_logs_timestamp_idx": {
-          "name": "request_logs_timestamp_idx",
+        "request_logs_apikey_timestamp_idx": {
+          "name": "request_logs_apikey_timestamp_idx",
           "columns": [
+            {
+              "expression": "api_key_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "timestamp",
               "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "request_logs_slack_timestamp_idx": {
+          "name": "request_logs_slack_timestamp_idx",
+          "columns": [
+            {
+              "expression": "slack_id",
+              "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -293,12 +281,8 @@
           "name": "request_logs_api_key_id_api_keys_id_fk",
           "tableFrom": "request_logs",
           "tableTo": "api_keys",
-          "columnsFrom": [
-            "api_key_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["api_key_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -306,12 +290,8 @@
           "name": "request_logs_user_id_users_id_fk",
           "tableFrom": "request_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -360,21 +340,6 @@
         }
       },
       "indexes": {
-        "sessions_token_idx": {
-          "name": "sessions_token_idx",
-          "columns": [
-            {
-              "expression": "token",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "sessions_user_id_idx": {
           "name": "sessions_user_id_idx",
           "columns": [
@@ -411,12 +376,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -426,9 +387,7 @@
         "sessions_token_unique": {
           "name": "sessions_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -476,13 +435,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_idv_verified": {
-          "name": "is_idv_verified",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -498,32 +450,14 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "users_slack_id_idx": {
-          "name": "users_slack_id_idx",
-          "columns": [
-            {
-              "expression": "slack_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_slack_id_unique": {
           "name": "users_slack_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slack_id"
-          ]
+          "columns": ["slack_id"]
         }
       },
       "policies": {},
