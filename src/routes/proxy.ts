@@ -22,7 +22,7 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path === "/v1/models") {
+  if (c.req.path.endsWith("/v1/models")) {
     return next();
   }
   return requireApiKey(c, next);
