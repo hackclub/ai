@@ -9,18 +9,26 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  slackId: text("slack_id").notNull().unique(),
-  slackTeamId: text("slack_team_id").notNull(),
-  email: text("email"),
-  name: text("name"),
-  avatar: text("avatar"),
-  isIdvVerified: boolean("is_idv_verified").notNull().default(false),
-  skipIdv: boolean("skip_idv").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slackId: text("slack_id").notNull().unique(),
+    slackTeamId: text("slack_team_id").notNull(),
+    email: text("email"),
+    name: text("name"),
+    avatar: text("avatar"),
+    isIdvVerified: boolean("is_idv_verified").notNull().default(false),
+    skipIdv: boolean("skip_idv").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("users_slack_id_idx").on(table.slackId),
+    index("users_email_idx").on(table.email),
+    index("users_idv_verified_idx").on(table.isIdvVerified),
+  ],
+);
 
 export const apiKeys = pgTable(
   "api_keys",
