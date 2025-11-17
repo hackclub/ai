@@ -17,7 +17,6 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=build /app/drizzle ./drizzle
-RUN apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 USER bun
 EXPOSE 3000
