@@ -18,7 +18,7 @@ export const Dashboard = ({
   allowedEmbeddingModels,
   enforceIdv,
 }: any) => {
-  const showIdvBanner = enforceIdv && !user.isIdvVerified;
+  const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
   return (
     <Layout title="Dashboard">
@@ -26,7 +26,9 @@ export const Dashboard = ({
 
       {showIdvBanner && <IdvBanner />}
 
-      <div class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}>
+      <div
+        class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
+      >
         <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard

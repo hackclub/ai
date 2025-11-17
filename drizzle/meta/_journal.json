@@ -22,6 +22,13 @@
       "when": 1763370834815,
       "tag": "0002_moaning_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763372813370,
+      "tag": "0003_lazy_wallop",
+      "breakpoints": true
     }
   ]
 }

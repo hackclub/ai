@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   name: text("name"),
   avatar: text("avatar"),
   isIdvVerified: boolean("is_idv_verified").notNull().default(false),
+  skipIdv: boolean("skip_idv").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "skip_idv" boolean DEFAULT false NOT NULL;
