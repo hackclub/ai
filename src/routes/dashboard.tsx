@@ -8,6 +8,7 @@ import { Home } from "../views/home";
 import { Dashboard } from "../views/dashboard";
 import { Global } from "../views/global";
 import { Docs } from "../views/docs";
+import { ImageGenerationDocs } from "../views/docs-image-generation";
 import {
   getAllowedLanguageModels,
   getAllowedEmbeddingModels,
@@ -157,6 +158,18 @@ dashboard.get("/docs", requireAuth, async (c) => {
       user={user}
       allowedLanguageModels={allowedLanguageModels}
       allowedEmbeddingModels={allowedEmbeddingModels}
+    />,
+  );
+});
+
+dashboard.get("/docs/image-generation", requireAuth, async (c) => {
+  const user = c.get("user");
+  const allowedLanguageModels = getAllowedLanguageModels();
+
+  return c.html(
+    <ImageGenerationDocs
+      user={user}
+      allowedLanguageModels={allowedLanguageModels}
     />,
   );
 });
