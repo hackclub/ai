@@ -5,10 +5,11 @@ import {
     getAllowedEmbeddingModels,
 } from "../env";
 import type { AppVariables } from "../types";
+import { optionalAuth } from "../middleware/auth";
 
 const docs = new Hono<{ Variables: AppVariables }>();
 
-docs.get("/", async (c) => {
+docs.get("/", optionalAuth, async (c) => {
     const user = c.get("user");
     const allowedLanguageModels = getAllowedLanguageModels();
     const allowedEmbeddingModels = getAllowedEmbeddingModels();

@@ -63,6 +63,38 @@ export async function requireAuth(
   await next();
 }
 
+export async function optionalAuth(
+  c: Context<{ Variables: AppVariables }>,
+  next: Next,
+) {
+  const sessionToken = getCookie(c, "session_token");
+
+  if (!sessionToken) {
+    await next();
+    return;
+  }
+
+  const [result] = await db
+    .select({
+      user: users,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(sessions.userId, users.id))
+    .where(
+      and(eq(sessions.token, sessionToken), gt(sessions.expiresAt, new Date())),
+    )
+    .limit(1);
+
+  if (!result) {
+    await next();
+    return;
+  }
+
+  c.set("user", result.user);
+  await next();
+}
+
+
 export async function requireApiKey(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
