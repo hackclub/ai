@@ -175,13 +175,13 @@ proxy.openapi(modelsRoute, async (c) => {
   const now = Date.now();
 
   if (modelsCache && now - modelsCache.timestamp < CACHE_TTL) {
-    return c.json(modelsCache.data, 200);
+    return c.json(modelsCache.data);
   }
 
   if (modelsCacheFetch) {
     try {
       const data = await modelsCacheFetch;
-      return c.json(data, 200);
+      return c.json(data);
     } catch (error) {
       console.error("Models fetch error:", error);
       throw new HTTPException(500, { message: "Failed to fetch models" });
@@ -225,7 +225,7 @@ proxy.openapi(modelsRoute, async (c) => {
 
   try {
     const data = await modelsCacheFetch;
-    return c.json(data, 200);
+    return c.json(data);
   } catch (error) {
     console.error("Models fetch error:", error);
     throw new HTTPException(500, { message: "Failed to fetch models" });
@@ -505,7 +505,7 @@ proxy.get("/openapi.json", async (c) => {
    
   }
 
-  return c.json(doc, 200);
+  return c.json(doc);
 });
 
 export default proxy;
