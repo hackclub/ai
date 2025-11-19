@@ -15,7 +15,7 @@ import {
 } from "@shikijs/transformers";
 
 const highlighter = await createHighlighter({
-  langs: ["bash", "javascript", "json", "markdown", "tsx", "typescript"],
+  langs: ["bash", "javascript", "json", "markdown", "python", "typescript"],
   themes: ["github-dark-dimmed"],
 });
 
