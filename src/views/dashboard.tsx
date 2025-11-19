@@ -29,8 +29,8 @@ export const Dashboard = ({
       <div
         class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
       >
-        <h2 class="text-xl font-semibold mb-4">Usage Statistics</h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Usage Statistics</h2>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <StatCard
             value={stats.totalRequests?.toLocaleString() || 0}
             label="Total Requests"
@@ -49,29 +49,29 @@ export const Dashboard = ({
           />
         </div>
 
-        <div class="mb-8">
-          <h2 class="text-xl font-semibold mb-4">Allowed Language Models</h2>
-          <Card class="p-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="mb-12">
+          <h2 class="text-2xl font-bold mb-6 text-brand-heading">Allowed Language Models</h2>
+          <Card class="p-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {allowedLanguageModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-mocha-surface1 text-gray-900 dark:text-mocha-text border-2 border-gray-300 dark:border-mocha-overlay0 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm"
                   >
                     <svg
-                      class="w-5 h-5 flex-shrink-0"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      stroke-width="2.5"
                     >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        stroke-width="2"
                         d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                       ></path>
                     </svg>
-                    <span class="font-medium text-sm truncate">{model}</span>
+                    <span class="font-bold text-sm truncate">{model}</span>
                   </div>
                 );
               })}
@@ -79,29 +79,29 @@ export const Dashboard = ({
           </Card>
         </div>
 
-        <div class="mb-8">
-          <h2 class="text-xl font-semibold mb-4">Allowed Embedding Models</h2>
-          <Card class="p-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="mb-12">
+          <h2 class="text-2xl font-bold mb-6 text-brand-heading">Allowed Embedding Models</h2>
+          <Card class="p-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {allowedEmbeddingModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-mocha-surface1 text-gray-900 dark:text-mocha-text border-2 border-gray-300 dark:border-mocha-overlay0 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm"
                   >
                     <svg
-                      class="w-5 h-5 flex-shrink-0"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      stroke-width="2.5"
                     >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm4 0h8m-8 4h8m-8 4h5"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
                       ></path>
                     </svg>
-                    <span class="font-medium text-sm truncate">{model}</span>
+                    <span class="font-bold text-sm truncate">{model}</span>
                   </div>
                 );
               })}
@@ -109,10 +109,12 @@ export const Dashboard = ({
           </Card>
         </div>
 
-        <div class="mb-8">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-semibold">API Keys</h2>
-            <Button onclick="showCreateKeyModal()">Create New Key</Button>
+        <div class="mb-12">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-brand-heading">API Keys</h2>
+            <Button onclick="showCreateKeyModal()" variant="primary" class="rounded-full px-6">
+              Create New Key
+            </Button>
           </div>
 
           {apiKeys.length === 0 ? (
@@ -124,7 +126,7 @@ export const Dashboard = ({
                 {
                   header: "Key",
                   render: (row) => (
-                    <code class="bg-gray-100 dark:bg-mocha-base px-2 py-1 text-xs">
+                    <code class="bg-brand-bg px-2 py-1 rounded-lg text-xs font-mono text-brand-heading border border-brand-border">
                       {row.keyPreview}
                     </code>
                   ),
@@ -144,7 +146,7 @@ export const Dashboard = ({
                       <Button
                         variant="danger"
                         onclick={`revokeKey('${row.id}')`}
-                        class="px-3 py-1"
+                        class="px-3 text-xs"
                       >
                         Revoke
                       </Button>
@@ -152,12 +154,12 @@ export const Dashboard = ({
                 },
               ]}
               data={apiKeys}
-              rowClass={(row) => (row.revokedAt ? "opacity-50" : "")}
+              rowClass={(row) => (row.revokedAt ? "opacity-50 grayscale" : "")}
             />
           )}
         </div>
 
-        <h2 class="text-xl font-semibold mb-4">Recent Requests</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Recent Requests</h2>
         {recentLogs.length === 0 ? (
           <EmptyState message="No requests yet." />
         ) : (
@@ -165,7 +167,17 @@ export const Dashboard = ({
             columns={[
               {
                 header: "Time",
-                render: (row) => new Date(row.timestamp).toLocaleString(),
+                render: (row) => {
+                  const date = new Date(row.timestamp);
+                  const now = new Date();
+                  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+                  if (diffInSeconds < 60) return "just now";
+                  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+                  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+                  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+                  return date.toLocaleDateString();
+                },
               },
               { header: "Model", key: "model" },
               {
@@ -183,19 +195,19 @@ export const Dashboard = ({
         )}
       </div>
 
-      <Modal id="createKeyModal" title="Create API Key">
-        <div class="mb-4">
-          <label for="keyName" class="block text-sm font-medium mb-2">
+      <Modal id="createKeyModal" title="Create New API Key">
+        <div class="mb-6">
+          <label class="block text-sm font-bold text-brand-heading mb-2">
             Key Name
           </label>
           <input
             type="text"
             id="keyName"
-            placeholder="My API Key"
-            class="w-full px-3 py-2 border border-gray-200 dark:border-mocha-surface1 bg-white dark:bg-mocha-base text-sm focus:outline-none focus:border-gray-900 dark:focus:border-mocha-overlay0"
+            class="w-full px-4 py-3 rounded-xl border-2 border-brand-border bg-brand-bg/50 focus:border-brand-primary focus:ring-0 outline-none transition-colors font-medium text-brand-text placeholder-brand-text/50"
+            placeholder="e.g. My Project"
           />
         </div>
-        <div class="flex gap-2 justify-end">
+        <div class="flex justify-end gap-3">
           <Button variant="secondary" onclick="hideCreateKeyModal()">
             Cancel
           </Button>
@@ -203,43 +215,34 @@ export const Dashboard = ({
         </div>
       </Modal>
 
-      <div
-        id="keyCreatedModal"
-        class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-50 items-center justify-center"
-        style="display: none;"
-      >
-        <div class="bg-white dark:bg-mocha-surface0 border border-gray-200 dark:border-mocha-surface1 p-6 max-w-2xl w-11/12">
-          <h3 class="text-lg font-semibold mb-3">API Key Created</h3>
-          <p class="mb-4 text-sm text-gray-600 dark:text-mocha-subtext0">
-            Save this key now. You will not be able to see it again.
+      <Modal id="keyCreatedModal" title="API Key Created">
+        <div class="bg-white border-2 border-brand-border p-8 rounded-3xl max-w-2xl w-11/12 shadow-2xl transform transition-all scale-100">
+          <h3 class="text-2xl font-bold mb-4 text-brand-heading">API Key Created</h3>
+          <p class="mb-6 text-brand-text">
+            Save this key now. You will not be able to see it again. <b>Don't share it or commit it to a public repo!</b>
           </p>
           <div
-            class="bg-gray-100 dark:bg-mocha-base border border-gray-200 dark:border-mocha-surface1 p-3 mb-4 overflow-x-auto font-mono text-sm break-all"
+            class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-sm break-all text-brand-primary font-bold"
             id="newApiKey"
           ></div>
-          <p class="mb-2 text-sm text-gray-600 dark:text-mocha-subtext0">
+          <p class="mb-3 text-sm font-bold text-brand-heading">
             Use this key in your requests:
           </p>
-          <div class="bg-gray-100 dark:bg-mocha-base border border-gray-200 dark:border-mocha-surface1 p-3 mb-4 overflow-x-auto font-mono text-xs">
-            curl {env.BASE_URL}/proxy/v1/chat/completions \<br />
-            {"  "}-H "Authorization: Bearer YOUR_API_KEY" \<br />
-            {"  "}-H "Content-Type: application/json" \<br />
-            {"  "}-d '
-            {`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}
-            '
+          <div class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-xs text-brand-text leading-relaxed">
+            <div class="whitespace-nowrap">curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
+            <div class="whitespace-nowrap pl-4">-H "Authorization: Bearer <span id="curlApiKey" class="font-bold text-brand-primary">YOUR_API_KEY</span>" \</div>
+            <div class="whitespace-nowrap pl-4">-H "Content-Type: application/json" \</div>
+            <div class="whitespace-nowrap pl-4">-d '{`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}'</div>
           </div>
-          <Button onclick="hideKeyCreatedModal()">Done</Button>
+          <div class="flex justify-end">
+            <Button onclick="hideKeyCreatedModal()">Done</Button>
+          </div>
         </div>
-      </div>
+      </Modal>
 
       <script
         dangerouslySetInnerHTML={{
           __html: `
-            function toggleDarkMode() {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('darkMode', isDark);
-            }
-
             function showCreateKeyModal() {
               document.getElementById('createKeyModal').style.display = 'flex';
             }
@@ -274,6 +277,9 @@ export const Dashboard = ({
 
                 const data = await response.json();
                 document.getElementById('newApiKey').textContent = data.key;
+                // Update the curl command with the new key
+                document.getElementById('curlApiKey').textContent = data.key;
+                
                 hideCreateKeyModal();
                 document.getElementById('keyCreatedModal').style.display = 'flex';
               } catch (error) {

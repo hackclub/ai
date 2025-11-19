@@ -13,14 +13,14 @@ export const Button = ({
   children,
   class: className,
 }: ButtonProps) => {
-  const baseClasses = "px-4 py-2 text-sm transition-colors";
+  const baseClasses = "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95";
 
   const variantClasses = {
     primary:
-      "bg-gray-900 dark:bg-mocha-text text-white dark:text-mocha-base hover:bg-gray-700 dark:hover:bg-mocha-text",
+      "bg-brand-primary text-white hover:bg-brand-primary-hover shadow-lg hover:shadow-xl hover:-translate-y-0.5",
     secondary:
-      "bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 hover:bg-gray-100 dark:hover:bg-mocha-surface1",
-    danger: "text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 hover:bg-gray-100 dark:hover:bg-mocha-surface1",
+      "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
+    danger: "bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 hover:border-red-200",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className || ""}`;

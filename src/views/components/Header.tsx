@@ -16,57 +16,53 @@ export const Header = ({
   showBackToDashboard,
 }: HeaderProps) => {
   return (
-    <header class="border-b border-gray-200 dark:border-mocha-surface1 py-3 sm:py-4 mb-6 sm:mb-8">
-      <div class="max-w-6xl mx-auto px-3 sm:px-4 flex justify-between items-center gap-2 sm:gap-4">
-        <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          <h1 class="text-lg sm:text-xl md:text-2xl font-semibold truncate">
+    <header class="py-6 mb-8">
+      <div class="max-w-6xl mx-auto px-4 flex justify-between items-center gap-4">
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <div class="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white font-bold text-xl transform -rotate-3">h</div>
+          <h1 class="text-2xl md:text-3xl font-bold text-brand-heading tracking-tight">
             {title}
           </h1>
         </div>
-        <div class="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
+        <div class="flex items-center gap-6">
           {showBackToDashboard && (
             <a
               href="/dashboard"
-              class="bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-2 sm:px-3 md:px-4 py-2 hover:bg-gray-100 dark:hover:bg-mocha-surface1 text-xs sm:text-sm transition-colors whitespace-nowrap"
-              title="Back to Dashboard"
+              class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
             >
-              <span class="hidden sm:inline">Back to Dashboard</span>
-              <span class="sm:hidden">←</span>
+              Back to Dashboard
             </a>
           )}
-          <DocsButton />
-          <GlobalStatsButton />
-          <DarkModeToggle />
-          {user.avatar && (
-            <img
-              src={user.avatar}
-              alt={user.name}
-              class="w-8 h-8 flex-shrink-0"
-            />
-          )}
-          <span class="hidden md:inline text-sm truncate max-w-[120px]">
-            {user.name}
-          </span>
           <a
-            href="/auth/logout"
-            class="bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 p-2 hover:bg-gray-100 dark:hover:bg-mocha-surface1 transition-colors flex items-center gap-2"
-            title="Logout"
+            href="/docs"
+            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
           >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              ></path>
-            </svg>
-            <span class="hidden sm:inline text-sm">Logout</span>
+            Docs
           </a>
+          <a
+            href="/global"
+            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+          >
+            Global Stats
+          </a>
+          <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
+            <span class="text-sm font-medium text-brand-heading">
+              {user.name}
+            </span>
+            {user.avatar && (
+              <img
+                src={user.avatar}
+                alt={user.name}
+                class="w-10 h-10 rounded-full border-2 border-brand-border"
+              />
+            )}
+            <a
+              href="/auth/logout"
+              class="text-sm font-medium text-red-500 hover:text-red-600 ml-2"
+            >
+              Logout
+            </a>
+          </div>
         </div>
       </div>
     </header>

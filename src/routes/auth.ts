@@ -19,7 +19,7 @@ async function checkIdvStatus(
 
     const slackResponse = await fetch(urlBySlackId);
     if (slackResponse.ok) {
-      const data = await slackResponse.json();
+      const data = (await slackResponse.json()) as any;
       if (data.result === "verified_eligible") {
         return true;
       }
@@ -35,7 +35,7 @@ async function checkIdvStatus(
     const emailResponse = await fetch(urlByEmail);
     if (!emailResponse.ok) return false;
 
-    const data = await emailResponse.json();
+    const data = (await emailResponse.json()) as any;
     return data.result === "verified_eligible";
   } catch (error) {
     console.error("IDV check error:", error);
