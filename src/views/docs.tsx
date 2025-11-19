@@ -18,7 +18,7 @@ export const Docs = ({
 
       <div class="max-w-4xl mx-auto px-4 py-8 prose dark:prose-invert prose-sm sm:prose max-w-none">
         <h1 class="text-3xl font-bold mb-6">API Documentation</h1>
-        <p class="text-lg text-gray-600 dark:text-gray-400 mb-8">
+        <p class="text-lg text-gray-600 dark:text-mocha-subtext0 mb-8">
           This is a lightweight AI proxy providing access to language models and
           embeddings through an OpenAI-compatible API.
         </p>
@@ -43,11 +43,11 @@ export const Docs = ({
           </h2>
           <Card class="p-6 mb-4">
             <h3 class="text-lg font-semibold mb-3">1. Get Your API Key</h3>
-            <p class="text-gray-600 dark:text-gray-400 mb-3">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-3">
               Create an API key from your{" "}
               <a
                 href="/dashboard"
-                class="text-blue-600 dark:text-blue-400 hover:underline"
+                class="text-blue-600 dark:text-mocha-blue hover:underline"
               >
                 dashboard
               </a>
@@ -57,8 +57,8 @@ export const Docs = ({
             <h3 class="text-lg font-semibold mb-3 mt-6">
               2. Make Your First Request
             </h3>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -92,16 +92,16 @@ export const Docs = ({
             Authentication
           </h2>
           <Card class="p-6">
-            <p class="text-gray-600 dark:text-gray-400 mb-3">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-3">
               All API requests require authentication using an API key in the
               Authorization header as a Bearer token:
             </p>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>Authorization: Bearer YOUR_API_KEY</code>
               </pre>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mt-3 text-sm">
               API keys can be created and managed from your dashboard. You can
               have up to 50 active API keys.
             </p>
@@ -131,19 +131,19 @@ export const Docs = ({
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Chat Completions</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 text-sm font-mono">
+              <span class="bg-green-100 dark:bg-mocha-green/30 text-green-800 dark:text-mocha-green px-2 py-1 text-sm font-mono">
                 POST
               </span>
               <code class="text-sm">/proxy/v1/chat/completions</code>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 mb-4">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-4">
               Create a chat completion for the given conversation. Supports
               streaming and non-streaming modes.
             </p>
 
             <h4 class="font-semibold mb-2">Request Body</h4>
             <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`{
   "model": "string",              // Required: Model ID
   "messages": [                   // Required: Array of messages
@@ -163,7 +163,7 @@ export const Docs = ({
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -185,8 +185,8 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`{
   "id": "chatcmpl-123",
   "object": "chat.completion",
@@ -212,15 +212,15 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2 mt-4">Streaming</h4>
-            <p class="text-gray-600 dark:text-gray-400 mb-3">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-3">
               Set{" "}
-              <code class="bg-gray-100 dark:bg-gray-800 px-1">
+              <code class="bg-gray-100 dark:bg-mocha-surface0 px-1">
                 stream: true
               </code>{" "}
               to receive Server-Sent Events (SSE) instead of a single response:
             </p>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -237,18 +237,18 @@ export const Docs = ({
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Embeddings</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 text-sm font-mono">
+              <span class="bg-green-100 dark:bg-mocha-green/30 text-green-800 dark:text-mocha-green px-2 py-1 text-sm font-mono">
                 POST
               </span>
               <code class="text-sm">/proxy/v1/embeddings</code>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 mb-4">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-4">
               Generate vector embeddings from text input.
             </p>
 
             <h4 class="font-semibold mb-2">Request Body</h4>
             <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`{
   "model": "string",              // Required: Embedding model ID
   "input": "string" | ["array"],  // Required: Text to embed
@@ -259,7 +259,7 @@ export const Docs = ({
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/embeddings \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -271,8 +271,8 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`{
   "object": "list",
   "data": [
@@ -296,25 +296,25 @@ export const Docs = ({
           <Card class="p-6">
             <h3 class="text-xl font-semibold mb-2">List Models</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-1 text-sm font-mono">
+              <span class="bg-blue-100 dark:bg-mocha-blue/30 text-blue-800 dark:text-mocha-blue px-2 py-1 text-sm font-mono">
                 GET
               </span>
               <code class="text-sm">/proxy/v1/models</code>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 mb-4">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-4">
               List all available models. No authentication required.
             </p>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
             <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
-              <pre class="text-sm text-gray-100">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/models`}</code>
               </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`{
   "object": "list",
   "data": [
@@ -353,17 +353,17 @@ export const Docs = ({
           <Card class="p-6 mb-6">
             <h3 class="text-lg font-semibold mb-3">Language Models</h3>
             {allowedLanguageModels === null ? (
-              <p class="text-gray-600 dark:text-gray-400">
+              <p class="text-gray-600 dark:text-mocha-subtext0">
                 All language models are available.
               </p>
             ) : allowedLanguageModels.length === 0 ? (
-              <p class="text-gray-600 dark:text-gray-400">
+              <p class="text-gray-600 dark:text-mocha-subtext0">
                 No language models are currently configured.
               </p>
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedLanguageModels.map((model: string) => (
-                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
+                  <div class="bg-gray-50 dark:bg-mocha-surface0 border border-gray-200 dark:border-mocha-surface1 px-3 py-2">
                     <code class="text-sm">{model}</code>
                   </div>
                 ))}
@@ -374,17 +374,17 @@ export const Docs = ({
           <Card class="p-6">
             <h3 class="text-lg font-semibold mb-3">Embedding Models</h3>
             {allowedEmbeddingModels === null ? (
-              <p class="text-gray-600 dark:text-gray-400">
+              <p class="text-gray-600 dark:text-mocha-subtext0">
                 All embedding models are available.
               </p>
             ) : allowedEmbeddingModels.length === 0 ? (
-              <p class="text-gray-600 dark:text-gray-400">
+              <p class="text-gray-600 dark:text-mocha-subtext0">
                 No embedding models are currently configured.
               </p>
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedEmbeddingModels.map((model: string) => (
-                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
+                  <div class="bg-gray-50 dark:bg-mocha-surface0 border border-gray-200 dark:border-mocha-surface1 px-3 py-2">
                     <code class="text-sm">{model}</code>
                   </div>
                 ))}
@@ -392,8 +392,8 @@ export const Docs = ({
             )}
           </Card>
 
-          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800  p-4 mt-4">
-            <p class="text-sm text-blue-800 dark:text-blue-300">
+          <div class="bg-blue-50 dark:bg-mocha-blue/30 border border-blue-200 dark:border-mocha-blue p-4 mt-4">
+            <p class="text-sm text-blue-800 dark:text-mocha-blue">
               <strong>Note:</strong> If you request a model that is not in the
               allowed list, the API will automatically use the first allowed
               model from the respective category.
@@ -422,8 +422,8 @@ export const Docs = ({
 
           <Card class="p-6 mb-6">
             <h3 class="text-lg font-semibold mb-3">Python (OpenAI SDK)</h3>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`from openai import OpenAI
 
 client = OpenAI(
@@ -447,8 +447,8 @@ print(response.choices[0].message.content)`}</code>
             <h3 class="text-lg font-semibold mb-3">
               JavaScript/TypeScript (OpenAI SDK)
             </h3>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -470,8 +470,8 @@ console.log(response.choices[0].message.content);`}</code>
 
           <Card class="p-6">
             <h3 class="text-lg font-semibold mb-3">Streaming with Python</h3>
-            <div class="bg-gray-900  p-4 overflow-x-auto">
-              <pre class="text-sm text-gray-100">
+            <div class="bg-gray-900 dark:bg-mocha-base p-4 overflow-x-auto">
+              <pre class="text-sm text-gray-100 dark:text-mocha-text">
                 <code>{`from openai import OpenAI
 
 client = OpenAI(
@@ -513,7 +513,7 @@ for chunk in stream:
           </h2>
 
           <Card class="p-6">
-            <ul class="space-y-3 text-gray-600 dark:text-gray-400">
+            <ul class="space-y-3 text-gray-600 dark:text-mocha-subtext0">
               <li class="flex gap-2">
                 <svg
                   class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5"
@@ -634,38 +634,38 @@ for chunk in stream:
           </h2>
 
           <Card class="p-6">
-            <p class="text-gray-600 dark:text-gray-400 mb-4">
+            <p class="text-gray-600 dark:text-mocha-subtext0 mb-4">
               The API uses standard HTTP status codes to indicate success or
               failure:
             </p>
             <div class="space-y-3">
               <div class="border-l-4 border-green-500 pl-4">
                 <code class="font-semibold">200 OK</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-600 dark:text-mocha-subtext0 mt-1">
                   Request succeeded
                 </p>
               </div>
               <div class="border-l-4 border-yellow-500 pl-4">
                 <code class="font-semibold">400 Bad Request</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-600 dark:text-mocha-subtext0 mt-1">
                   Invalid request parameters
                 </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">401 Unauthorized</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-600 dark:text-mocha-subtext0 mt-1">
                   Missing or invalid API key
                 </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">413 Payload Too Large</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-600 dark:text-mocha-subtext0 mt-1">
                   Request body exceeds 20MB limit
                 </p>
               </div>
               <div class="border-l-4 border-red-500 pl-4">
                 <code class="font-semibold">500 Internal Server Error</code>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-600 dark:text-mocha-subtext0 mt-1">
                   Server error occurred
                 </p>
               </div>
@@ -673,12 +673,12 @@ for chunk in stream:
           </Card>
         </section>
 
-        <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700  p-6 text-center">
-          <p class="text-gray-600 dark:text-gray-400">
+        <div class="bg-gray-50 dark:bg-mocha-surface0 border border-gray-200 dark:border-mocha-surface1 p-6 text-center">
+          <p class="text-gray-600 dark:text-mocha-subtext0">
             Need help? Check your{" "}
             <a
               href="/dashboard"
-              class="text-blue-600 dark:text-blue-400 hover:underline"
+              class="text-blue-600 dark:text-mocha-blue hover:underline"
             >
               dashboard
             </a>{" "}

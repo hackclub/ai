@@ -17,7 +17,7 @@ export const Header = ({
   showGlobalStats,
 }: HeaderProps) => {
   return (
-    <header class="border-b border-gray-200 dark:border-gray-700 py-3 sm:py-4 mb-6 sm:mb-8">
+    <header class="border-b border-gray-200 dark:border-mocha-surface1 py-3 sm:py-4 mb-6 sm:mb-8">
       <div class="max-w-6xl mx-auto px-3 sm:px-4 flex justify-between items-center gap-2 sm:gap-4">
         <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <h1 class="text-lg sm:text-xl md:text-2xl font-semibold truncate">
@@ -28,7 +28,7 @@ export const Header = ({
           {showBackToDashboard && (
             <a
               href="/dashboard"
-              class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-2 sm:px-3 md:px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs sm:text-sm transition-colors whitespace-nowrap"
+              class="bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-2 sm:px-3 md:px-4 py-2 hover:bg-gray-100 dark:hover:bg-mocha-surface1 text-xs sm:text-sm transition-colors whitespace-nowrap"
               title="Back to Dashboard"
             >
               <span class="hidden sm:inline">Back to Dashboard</span>
@@ -50,7 +50,7 @@ export const Header = ({
           </span>
           <a
             href="/auth/logout"
-            class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+            class="bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 p-2 hover:bg-gray-100 dark:hover:bg-mocha-surface1 transition-colors flex items-center gap-2"
             title="Logout"
           >
             <svg

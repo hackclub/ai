@@ -17,10 +17,10 @@ export const Button = ({
 
   const variantClasses = {
     primary:
-      "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-200",
+      "bg-gray-900 dark:bg-mocha-text text-white dark:text-mocha-base hover:bg-gray-700 dark:hover:bg-mocha-text",
     secondary:
-      "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700",
-    danger: "text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700",
+      "bg-white dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 hover:bg-gray-100 dark:hover:bg-mocha-surface1",
+    danger: "text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 hover:bg-gray-100 dark:hover:bg-mocha-surface1",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className || ""}`;

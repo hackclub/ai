@@ -6,13 +6,13 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
     <Layout title="AI Proxy">
       <div class="text-center py-16 px-4">
         <h1 class="text-4xl font-semibold mb-4">Hack Club AI</h1>
-        <p class="text-lg text-gray-600 dark:text-gray-400 mb-8">
+        <p class="text-lg text-gray-600 dark:text-mocha-subtext0 mb-8">
           Open beta - DM @mahad on the Slack if issues pop up!
         </p>
 
         <a
           href="/auth/login"
-          class="inline-block bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2 hover:bg-gray-700 dark:hover:bg-gray-200 text-sm transition-colors mb-12"
+          class="inline-block bg-gray-900 dark:bg-mocha-text text-white dark:text-mocha-base px-4 py-2 hover:bg-gray-700 dark:hover:bg-mocha-text text-sm transition-colors mb-12"
         >
           Sign in with Slack
         </a>
@@ -24,12 +24,12 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
               const delay = idx * 0.3;
               const duration = 3 + (idx % 4);
               const colors = [
-                "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800",
-                "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800",
-                "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800",
-                "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800",
-                "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300 border-pink-200 dark:border-pink-800",
-                "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
+                "bg-blue-100 dark:bg-mocha-blue/30 text-blue-800 dark:text-mocha-blue border-blue-200 dark:border-mocha-blue",
+                "bg-purple-100 dark:bg-mocha-mauve/30 text-purple-800 dark:text-mocha-mauve border-purple-200 dark:border-mocha-mauve",
+                "bg-green-100 dark:bg-mocha-green/30 text-green-800 dark:text-mocha-green border-green-200 dark:border-mocha-green",
+                "bg-orange-100 dark:bg-mocha-peach/30 text-orange-800 dark:text-mocha-peach border-orange-200 dark:border-mocha-peach",
+                "bg-pink-100 dark:bg-mocha-pink/30 text-pink-800 dark:text-mocha-pink border-pink-200 dark:border-mocha-pink",
+                "bg-indigo-100 dark:bg-mocha-lavender/30 text-indigo-800 dark:text-mocha-lavender border-indigo-200 dark:border-mocha-lavender",
               ];
               const colorClass = colors[idx % colors.length];
               return (
@@ -58,7 +58,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
           </div>
         </div>
 
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-16">
+        <p class="text-sm text-gray-500 dark:text-mocha-subtext0 mt-16">
           © 2025 Hack Club
         </p>
       </div>

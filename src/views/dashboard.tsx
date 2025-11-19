@@ -56,7 +56,7 @@ export const Dashboard = ({
               {allowedLanguageModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-gray-100 dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
@@ -86,7 +86,7 @@ export const Dashboard = ({
               {allowedEmbeddingModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-gray-100 dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
@@ -124,7 +124,7 @@ export const Dashboard = ({
                 {
                   header: "Key",
                   render: (row) => (
-                    <code class="bg-gray-100 dark:bg-gray-900 px-2 py-1 text-xs">
+                    <code class="bg-gray-100 dark:bg-mocha-base px-2 py-1 text-xs">
                       {row.keyPreview}
                     </code>
                   ),
@@ -192,7 +192,7 @@ export const Dashboard = ({
             type="text"
             id="keyName"
             placeholder="My API Key"
-            class="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900  text-sm focus:outline-none focus:border-gray-900 dark:focus:border-gray-500"
+            class="w-full px-3 py-2 border border-gray-200 dark:border-mocha-surface1 bg-white dark:bg-mocha-base text-sm focus:outline-none focus:border-gray-900 dark:focus:border-mocha-overlay0"
           />
         </div>
         <div class="flex gap-2 justify-end">
@@ -208,19 +208,19 @@ export const Dashboard = ({
         class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-50 items-center justify-center"
         style="display: none;"
       >
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700  p-6 max-w-2xl w-11/12">
+        <div class="bg-white dark:bg-mocha-surface0 border border-gray-200 dark:border-mocha-surface1 p-6 max-w-2xl w-11/12">
           <h3 class="text-lg font-semibold mb-3">API Key Created</h3>
-          <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+          <p class="mb-4 text-sm text-gray-600 dark:text-mocha-subtext0">
             Save this key now. You will not be able to see it again.
           </p>
           <div
-            class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700  p-3 mb-4 overflow-x-auto font-mono text-sm break-all"
+            class="bg-gray-100 dark:bg-mocha-base border border-gray-200 dark:border-mocha-surface1 p-3 mb-4 overflow-x-auto font-mono text-sm break-all"
             id="newApiKey"
           ></div>
-          <p class="mb-2 text-sm text-gray-600 dark:text-gray-400">
+          <p class="mb-2 text-sm text-gray-600 dark:text-mocha-subtext0">
             Use this key in your requests:
           </p>
-          <div class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700  p-3 mb-4 overflow-x-auto font-mono text-xs">
+          <div class="bg-gray-100 dark:bg-mocha-base border border-gray-200 dark:border-mocha-surface1 p-3 mb-4 overflow-x-auto font-mono text-xs">
             curl {env.BASE_URL}/proxy/v1/chat/completions \<br />
             {"  "}-H "Authorization: Bearer YOUR_API_KEY" \<br />
             {"  "}-H "Content-Type: application/json" \<br />

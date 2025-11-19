@@ -6,7 +6,7 @@ type CardProps = {
 export const Card = ({ children, class: className }: CardProps) => {
   return (
     <div
-      class={`border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-colors ${className || ""}`}
+      class={`border border-gray-200 dark:border-mocha-surface1 bg-white dark:bg-mocha-surface0 transition-colors ${className || ""}`}
     >
       {children}
     </div>
