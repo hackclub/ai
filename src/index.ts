@@ -7,14 +7,18 @@ import { bodyLimit } from "hono/body-limit";
 import { timeout } from "hono/timeout";
 import { secureHeaders } from "hono/secure-headers";
 import { HTTPException } from "hono/http-exception";
+import {
+  trimTrailingSlash,
+} from 'hono/trailing-slash'
+import type { RequestIdVariables } from "hono/request-id";
 import { env } from "./env";
 import auth from "./routes/auth";
 import proxy from "./routes/proxy";
 import api from "./routes/api";
+import docs from "./routes/docs";
 import dashboard from "./routes/dashboard";
 import { runMigrations } from "./migrate";
 import type { AppVariables } from "./types";
-import type { RequestIdVariables } from "hono/request-id";
 import { dns } from "bun";
 
 await runMigrations();
@@ -34,7 +38,7 @@ app.use(
 );
 app.use("/proxy/*", timeout(120000));
 
-app.use("/*", requestId());
+app.use("/*", requestId(), trimTrailingSlash());
 app.use("/*", csrf({ origin: env.BASE_URL }));
 
 if (env.NODE_ENV === "development") {
@@ -55,6 +59,7 @@ app.route("/", dashboard);
 app.route("/auth", auth);
 app.route("/proxy", proxy);
 app.route("/api", api);
+app.route("/docs", docs);
 
 console.log(`Server running on http://localhost:${env.PORT}`);
 

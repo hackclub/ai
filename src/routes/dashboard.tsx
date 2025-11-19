@@ -147,18 +147,4 @@ dashboard.get("/global", requireAuth, async (c) => {
   );
 });
 
-dashboard.get("/docs", requireAuth, async (c) => {
-  const user = c.get("user");
-  const allowedLanguageModels = getAllowedLanguageModels();
-  const allowedEmbeddingModels = getAllowedEmbeddingModels();
-
-  return c.html(
-    <Docs
-      user={user}
-      allowedLanguageModels={allowedLanguageModels}
-      allowedEmbeddingModels={allowedEmbeddingModels}
-    />,
-  );
-});
-
 export default dashboard;

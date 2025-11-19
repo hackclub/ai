@@ -19,7 +19,7 @@ export const Docs = ({
 
   return (
     <Layout title="API Documentation">
-      <Header title="hackai docs" user={user} showBackToDashboard />
+      {user && <Header title="hackai docs" user={user} showBackToDashboard />}
 
       <style dangerouslySetInnerHTML={{
         __html: `
