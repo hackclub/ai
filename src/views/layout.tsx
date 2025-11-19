@@ -55,6 +55,15 @@ export const Layout = ({
             `,
           }}
         />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+              @view-transition {
+                navigation: auto;
+              }
+            `,
+          }}
+        />
       </head>
       <body class="bg-brand-bg text-brand-text transition-colors duration-200 min-h-screen flex flex-col">
         {children}

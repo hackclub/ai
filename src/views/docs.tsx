@@ -21,8 +21,9 @@ export const Docs = ({
     <Layout title="API Documentation">
       {user && <Header title="hackai docs" user={user} showBackToDashboard />}
 
-      <style dangerouslySetInnerHTML={{
-        __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         /* Markdown Alert Styles */
         .markdown-alert {
           padding: 0.5rem 1rem;
@@ -64,23 +65,24 @@ export const Docs = ({
           background-color: transparent !important;
           color: inherit !important;
         }
-      `}} />
+      `,
+        }}
+      />
 
       <div class="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-12">
         {/* Sidebar TOC */}
         <aside class="lg:w-64 flex-shrink-0 hidden lg:block">
           <div class="sticky top-8">
-            <h3 class="font-semibold text-brand-heading mb-4">
-              On this page
-            </h3>
+            <h3 class="font-semibold text-brand-heading mb-4">On this page</h3>
             <nav class="space-y-1">
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
-                    ? "text-brand-heading font-medium"
-                    : "text-brand-text pl-4"
-                    }`}
+                  class={`block text-sm hover:text-brand-primary transition-colors ${
+                    item.level === 2
+                      ? "text-brand-heading font-medium"
+                      : "text-brand-text pl-4"
+                  }`}
                 >
                   {item.text}
                 </a>
