@@ -19,7 +19,7 @@ proxy.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
 // #region OpenAPI schemas & routes
 const ModelSchema = z
   .object({
-    id: z.string().openapi({ example: "google/gemini-3-pro-preview" }),
+    id: z.string().openapi({ example: allowedLanguageModels[0] }),
   })
   .openapi("Model");
 
@@ -47,7 +47,7 @@ const MessageSchema = z
 
 const ChatCompletionRequestSchema = z
   .object({
-    model: z.string().openapi({ example: "google/gemini-3-pro-preview" }),
+    model: z.string().openapi({ example: allowedLanguageModels[0] }),
     messages: z.array(MessageSchema),
     stream: z.boolean().optional().openapi({ example: false }),
   })
@@ -55,7 +55,7 @@ const ChatCompletionRequestSchema = z
 
 const EmbeddingsRequestSchema = z
   .object({
-    model: z.string().openapi({ example: "openai/text-embedding-3-small" }),
+    model: z.string().openapi({ example: allowedEmbeddingModels[0] }),
     input: z.union([z.string(), z.array(z.string())]).openapi({ example: "Hello world" }),
   })
   .openapi("EmbeddingsRequest");
