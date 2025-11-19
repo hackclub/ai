@@ -14,7 +14,7 @@ export const Docs = ({
 
   return (
     <Layout title="API Documentation">
-      <Header title="AI Proxy - API Docs" user={user} showBackToDashboard />
+      <Header title="hackai docs" user={user} showBackToDashboard />
 
       <div class="max-w-4xl mx-auto px-4 py-8 prose dark:prose-invert prose-sm sm:prose max-w-none">
         <h1 class="text-3xl font-bold mb-6">API Documentation</h1>

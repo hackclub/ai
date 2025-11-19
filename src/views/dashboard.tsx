@@ -22,7 +22,7 @@ export const Dashboard = ({
 
   return (
     <Layout title="Dashboard">
-      <Header title="AI Proxy" user={user} showGlobalStats />
+      <Header title="hackai" user={user} showGlobalStats />
 
       {showIdvBanner && <IdvBanner />}
 
