@@ -5,7 +5,10 @@ This is a lightweight AI proxy providing access to language models and embedding
 ## Quick Start
 
 ### Get an API key
+
 Create an API key from your [dashboard](/dashboard). Give it a descriptive name and make sure not to share it!
+
+<video controls width="100%" src="https://hc-cdn.hel1.your-objectstorage.com/s/v3/620e1c22bd7dd2b81ca871353636f8d0afa27fed_screen_recording_2025-11-19_at_21.40.33.mp4" class="shadow-md rounded-md" autoplay></video>
 
 ### Make your first request
 
@@ -61,7 +64,7 @@ API keys can be created and managed from your dashboard. You can have up to 50 a
 
 `POST /proxy/v1/chat/completions`
 
-Create a chat completion for the given conversation. Supports streaming and non-streaming modes.
+Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes.
 
 #### Request body
 ```json
@@ -133,11 +136,15 @@ List all available models. No authentication required.
 curl {{BASE_URL}}/proxy/v1/models
 ```
 
+#### Example response
+
+This endpoint is OpenAI compatible, so the response format is the same as the [OpenAI models endpoint](https://platform.openai.com/docs/api-reference/models/list).
+
 ### Token stats
 
 `GET /proxy/v1/stats`
 
-Get token usage statistics.
+Get token usage statistics for your account.
 
 #### Example request
 ```bash
