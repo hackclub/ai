@@ -56,7 +56,7 @@ export const Dashboard = ({
               {allowedLanguageModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-gray-100 dark:bg-mocha-surface1 text-gray-900 dark:text-mocha-text border-2 border-gray-300 dark:border-mocha-overlay0 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
@@ -86,7 +86,7 @@ export const Dashboard = ({
               {allowedEmbeddingModels.map((model: string) => {
                 return (
                   <div
-                    class="bg-gray-100 dark:bg-mocha-surface0 text-gray-900 dark:text-mocha-text border border-gray-200 dark:border-mocha-surface1 px-4 py-3 flex items-center gap-3 transition-colors"
+                    class="bg-gray-100 dark:bg-mocha-surface1 text-gray-900 dark:text-mocha-text border-2 border-gray-300 dark:border-mocha-overlay0 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
