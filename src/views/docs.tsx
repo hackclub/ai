@@ -14,8 +14,8 @@ export const Docs = ({
 
   const htmlContent = preRenderedHtml
     .replace(/{{BASE_URL}}/g, env.BASE_URL)
-    .replace(/{{FIRST_MODEL}}/g, exampleModel)
-    .replace(/{{EMBEDDING_MODEL}}/g, exampleEmbeddingModel);
+    .replace(/{{FIRST_LANGUAGE_MODEL}}/g, exampleModel)
+    .replace(/{{FIRST_EMBEDDING_MODEL}}/g, exampleEmbeddingModel);
 
   return (
     <Layout title="API Documentation">

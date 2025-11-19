@@ -21,7 +21,7 @@ curl {{BASE_URL}}/proxy/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "{{FIRST_MODEL}}",
+    "model": "{{FIRST_LANGUAGE_MODEL}}",
     "messages": [
       {"role": "user", "content": "Tell me a joke."}
     ]
@@ -39,7 +39,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: '{{FIRST_MODEL}}',
+  model: '{{FIRST_LANGUAGE_MODEL}}',
   messages: [
     { role: 'user', content: 'Tell me a joke.' }
   ],
@@ -89,7 +89,7 @@ Create a chat completion for the given conversation (aka prompting the AI). Supp
   "id": "chatcmpl-123",
   "object": "chat.completion",
   "created": 1677652288,
-  "model": "{{FIRST_MODEL}}",
+  "model": "{{FIRST_LANGUAGE_MODEL}}",
   "choices": [
     {
       "index": 0,
@@ -120,7 +120,7 @@ curl {{BASE_URL}}/proxy/v1/embeddings \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "text-embedding-3-large",
+    "model": "{{FIRST_EMBEDDING_MODEL}}",
     "input": "The quick brown fox jumps over the lazy dog"
   }'
 ```
