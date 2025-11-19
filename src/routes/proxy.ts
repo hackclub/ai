@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
 import { stream } from "hono/streaming";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
@@ -9,7 +9,138 @@ import { eq, sql } from "drizzle-orm";
 import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
 import type { AppVariables } from "../types";
 
-const proxy = new Hono<{ Variables: AppVariables }>();
+const proxy = new OpenAPIHono<{ Variables: AppVariables }>();
+
+proxy.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
+  type: "http",
+  scheme: "bearer",
+});
+
+// #region OpenAPI schemas & routes
+const ModelSchema = z
+  .object({
+    id: z.string().openapi({ example: "google/gemini-3-pro-preview" }),
+  })
+  .openapi("Model");
+
+const ModelsResponseSchema = z
+  .object({
+    data: z.array(ModelSchema),
+  })
+  .openapi("ModelsResponse");
+
+const StatsSchema = z
+  .object({
+    totalRequests: z.number().int().openapi({ example: 10 }),
+    totalTokens: z.number().int().openapi({ example: 12345 }),
+    totalPromptTokens: z.number().int().openapi({ example: 1000 }),
+    totalCompletionTokens: z.number().int().openapi({ example: 2000 }),
+  })
+  .openapi("Stats");
+
+const MessageSchema = z
+  .object({
+    role: z.string().openapi({ example: "user" }),
+    content: z.string().openapi({ example: "Hello" }),
+  })
+  .openapi("Message");
+
+const ChatCompletionRequestSchema = z
+  .object({
+    model: z.string().openapi({ example: "google/gemini-3-pro-preview" }),
+    messages: z.array(MessageSchema),
+    stream: z.boolean().optional().openapi({ example: false }),
+  })
+  .openapi("ChatCompletionRequest");
+
+const EmbeddingsRequestSchema = z
+  .object({
+    model: z.string().openapi({ example: "openai/text-embedding-3-small" }),
+    input: z.union([z.string(), z.array(z.string())]).openapi({ example: "Hello world" }),
+  })
+  .openapi("EmbeddingsRequest");
+
+const modelsRoute = createRoute({
+  method: "get",
+  path: "/v1/models",
+  summary: "Get Models",
+  security: [],
+  operationId: "getModels",
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: ModelsResponseSchema,
+        },
+      },
+      description: "List models",
+    },
+  },
+});
+
+const statsRoute = createRoute({
+  method: "get",
+  path: "/v1/stats",
+  security: [{ Bearer: [] }],
+  summary: "Get Stats",
+  operationId: "getStats",
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: StatsSchema,
+        },
+      },
+      description: "User stats",
+    },
+  },
+});
+
+const chatRoute = createRoute({
+  method: "post",
+  path: "/v1/chat/completions",
+  security: [{ Bearer: [] }],
+  operationId: "createChatCompletions",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: ChatCompletionRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Chat completions response",
+    },
+  },
+});
+
+const embeddingsRoute = createRoute({
+  method: "post",
+  path: "/v1/embeddings",
+  security: [{ Bearer: [] }],
+  operationId: "createEmbeddings",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: EmbeddingsRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Embeddings response",
+    },
+  },
+});
+
+// #endregion
 
 let modelsCache: { data: any; timestamp: number } | null = null;
 let modelsCacheFetch: Promise<any> | null = null;
@@ -23,7 +154,7 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path.endsWith("/v1/models")) {
+  if (c.req.path.endsWith("/v1/models") || c.req.path.endsWith("/openapi.json")) {
     return next();
   }
   return requireApiKey(c, next);
@@ -40,17 +171,17 @@ function getClientIp(c: any): string {
   );
 }
 
-proxy.get("/v1/models", async (c) => {
+proxy.openapi(modelsRoute, async (c) => {
   const now = Date.now();
 
   if (modelsCache && now - modelsCache.timestamp < CACHE_TTL) {
-    return c.json(modelsCache.data);
+    return c.json(modelsCache.data, 200);
   }
 
   if (modelsCacheFetch) {
     try {
       const data = await modelsCacheFetch;
-      return c.json(data);
+      return c.json(data, 200);
     } catch (error) {
       console.error("Models fetch error:", error);
       throw new HTTPException(500, { message: "Failed to fetch models" });
@@ -94,14 +225,14 @@ proxy.get("/v1/models", async (c) => {
 
   try {
     const data = await modelsCacheFetch;
-    return c.json(data);
+    return c.json(data, 200);
   } catch (error) {
     console.error("Models fetch error:", error);
     throw new HTTPException(500, { message: "Failed to fetch models" });
   }
 });
 
-proxy.get("/v1/stats", async (c) => {
+proxy.openapi(statsRoute, async (c) => {
   const user = c.get("user");
 
   const stats = await db
@@ -121,10 +252,11 @@ proxy.get("/v1/stats", async (c) => {
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
     },
+    200,
   );
 });
 
-proxy.post("/v1/chat/completions", async (c) => {
+proxy.openapi(chatRoute, async (c) => {
   const apiKey = c.get("apiKey");
   const user = c.get("user");
   const startTime = Date.now();
@@ -266,7 +398,7 @@ proxy.post("/v1/chat/completions", async (c) => {
   }
 });
 
-proxy.post("/v1/embeddings", async (c) => {
+proxy.openapi(embeddingsRoute, async (c) => {
   const apiKey = c.get("apiKey");
   const user = c.get("user");
   const startTime = Date.now();
@@ -340,6 +472,40 @@ proxy.post("/v1/embeddings", async (c) => {
 
     throw new HTTPException(500, { message: "Internal server error" });
   }
+});
+
+proxy.get("/openapi.json", async (c) => {
+  const doc = await proxy.getOpenAPI31Document(
+    {
+      openapi: "3.1.0",
+      info: { title: "Hack Club AI", version: "1.0.0" },
+    },
+    undefined,
+  );
+
+  const origin = new URL(c.req.url).origin;
+  doc.servers = [
+    {
+      url: `${origin}/proxy`,
+      description: "Base path",
+    },
+  ];
+
+  doc.info.description =
+    "Authentication: All endpoints require `Authorization: Bearer <token>` GET /v1/models is public.";
+
+  // bearer req by default
+  doc.security = [{ Bearer: [] }];
+
+  try {
+    if (doc.paths && doc.paths["/v1/models"] && doc.paths["/v1/models"].get) {
+      doc.paths["/v1/models"].get.security = [];
+    }
+  } catch (e) {
+   
+  }
+
+  return c.json(doc, 200);
 });
 
 export default proxy;

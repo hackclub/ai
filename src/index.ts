@@ -12,6 +12,7 @@ import auth from "./routes/auth";
 import proxy from "./routes/proxy";
 import api from "./routes/api";
 import dashboard from "./routes/dashboard";
+import { Scalar } from "@scalar/hono-api-reference";
 import { runMigrations } from "./migrate";
 import type { AppVariables } from "./types";
 import type { RequestIdVariables } from "hono/request-id";
@@ -55,6 +56,15 @@ app.route("/", dashboard);
 app.route("/auth", auth);
 app.route("/proxy", proxy);
 app.route("/api", api);
+
+// docs UI - generally at /docs, but I dropped it at /ui for now
+app.get(
+  "/ui",
+  Scalar({
+    url: "/proxy/openapi.json",
+    theme: "default",
+  }),
+);
 
 console.log(`Server running on http://localhost:${env.PORT}`);
 

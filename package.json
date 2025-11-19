@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@hono/arktype-validator": "^2.0.1",
+    "@hono/zod-openapi": "^1.1.5",
+    "@scalar/hono-api-reference": "^0.9.25",
     "arktype": "^2.1.26",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
