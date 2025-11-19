@@ -29,7 +29,9 @@ export const Dashboard = ({
       <div
         class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
       >
-        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Usage Statistics</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+          Usage Statistics
+        </h2>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <StatCard
             value={stats.totalRequests?.toLocaleString() || 0}
@@ -50,14 +52,14 @@ export const Dashboard = ({
         </div>
 
         <div class="mb-12">
-          <h2 class="text-2xl font-bold mb-6 text-brand-heading">Allowed Language Models</h2>
+          <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+            Allowed Language Models
+          </h2>
           <Card class="p-8">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {allowedLanguageModels.map((model: string) => {
                 return (
-                  <div
-                    class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm"
-                  >
+                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
                     <svg
                       class="w-6 h-6 flex-shrink-0 text-brand-primary"
                       fill="none"
@@ -80,14 +82,14 @@ export const Dashboard = ({
         </div>
 
         <div class="mb-12">
-          <h2 class="text-2xl font-bold mb-6 text-brand-heading">Allowed Embedding Models</h2>
+          <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+            Allowed Embedding Models
+          </h2>
           <Card class="p-8">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {allowedEmbeddingModels.map((model: string) => {
                 return (
-                  <div
-                    class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm"
-                  >
+                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
                     <svg
                       class="w-6 h-6 flex-shrink-0 text-brand-primary"
                       fill="none"
@@ -112,7 +114,11 @@ export const Dashboard = ({
         <div class="mb-12">
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-brand-heading">API Keys</h2>
-            <Button onclick="showCreateKeyModal()" variant="primary" class="rounded-full px-6">
+            <Button
+              onclick="showCreateKeyModal()"
+              variant="primary"
+              class="rounded-full px-6"
+            >
               Create New Key
             </Button>
           </div>
@@ -159,7 +165,9 @@ export const Dashboard = ({
           )}
         </div>
 
-        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Recent Requests</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+          Recent Requests
+        </h2>
         {recentLogs.length === 0 ? (
           <EmptyState message="No requests yet." />
         ) : (
@@ -170,12 +178,17 @@ export const Dashboard = ({
                 render: (row) => {
                   const date = new Date(row.timestamp);
                   const now = new Date();
-                  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+                  const diffInSeconds = Math.floor(
+                    (now.getTime() - date.getTime()) / 1000,
+                  );
 
                   if (diffInSeconds < 60) return "just now";
-                  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-                  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-                  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+                  if (diffInSeconds < 3600)
+                    return `${Math.floor(diffInSeconds / 60)}m ago`;
+                  if (diffInSeconds < 86400)
+                    return `${Math.floor(diffInSeconds / 3600)}h ago`;
+                  if (diffInSeconds < 604800)
+                    return `${Math.floor(diffInSeconds / 86400)}d ago`;
                   return date.toLocaleDateString();
                 },
               },
@@ -216,27 +229,39 @@ export const Dashboard = ({
       </Modal>
 
       <Modal id="keyCreatedModal" title="API Key Created">
-        <div class="bg-white border-2 border-brand-border p-8 rounded-3xl max-w-2xl w-11/12 shadow-2xl transform transition-all scale-100">
-          <h3 class="text-2xl font-bold mb-4 text-brand-heading">API Key Created</h3>
-          <p class="mb-6 text-brand-text">
-            Save this key now. You will not be able to see it again. <b>Don't share it or commit it to a public repo!</b>
-          </p>
-          <div
-            class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-sm break-all text-brand-primary font-bold"
-            id="newApiKey"
-          ></div>
-          <p class="mb-3 text-sm font-bold text-brand-heading">
-            Use this key in your requests:
-          </p>
-          <div class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-xs text-brand-text leading-relaxed">
-            <div class="whitespace-nowrap">curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
-            <div class="whitespace-nowrap pl-4">-H "Authorization: Bearer <span id="curlApiKey" class="font-bold text-brand-primary">YOUR_API_KEY</span>" \</div>
-            <div class="whitespace-nowrap pl-4">-H "Content-Type: application/json" \</div>
-            <div class="whitespace-nowrap pl-4">-d '{`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}'</div>
+        <p class="mb-6 text-brand-text">
+          Save this key now. You will not be able to see it again.{" "}
+          <b>Don't share it or commit it to a public repo!</b>
+        </p>
+        <div
+          class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-sm break-all text-brand-primary font-bold"
+          id="newApiKey"
+        ></div>
+        <p class="mb-3 text-sm font-bold text-brand-heading">
+          Use this key in your requests:
+        </p>
+        <div class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl overflow-x-auto font-mono text-xs text-brand-text leading-relaxed">
+          <div class="whitespace-nowrap">
+            curl {env.BASE_URL}/proxy/v1/chat/completions \
           </div>
-          <div class="flex justify-end">
-            <Button onclick="hideKeyCreatedModal()">Done</Button>
+          <div class="whitespace-nowrap pl-4">
+            -H "Authorization: Bearer{" "}
+            <span id="curlApiKey" class="font-bold text-brand-primary">
+              YOUR_API_KEY
+            </span>
+            " \
           </div>
+          <div class="whitespace-nowrap pl-4">
+            -H "Content-Type: application/json" \
+          </div>
+          <div class="whitespace-nowrap pl-4">
+            -d '
+            {`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}
+            '
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <Button onclick="hideKeyCreatedModal()">Done</Button>
         </div>
       </Modal>
 

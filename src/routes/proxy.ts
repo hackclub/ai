@@ -215,7 +215,7 @@ proxy.post("/v1/chat/completions", async (c) => {
                 completionTokens = parsed.usage.completion_tokens || 0;
                 totalTokens = parsed.usage.total_tokens || 0;
               }
-            } catch { }
+            } catch {}
           }
         }
       } finally {

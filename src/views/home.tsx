@@ -26,7 +26,9 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
           Sign in with Slack
         </a>
 
-        <h2 class="text-3xl font-bold mb-10 text-brand-heading">Featured Models</h2>
+        <h2 class="text-3xl font-bold mb-10 text-brand-heading">
+          Featured Models
+        </h2>
         <div class="relative w-full max-w-6xl mx-auto mb-20 overflow-hidden h-48">
           <div class="absolute inset-0 flex items-center gap-6 animate-carousel">
             {[...displayModels, ...displayModels].map((model, idx) => {
@@ -67,9 +69,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
           </div>
         </div>
 
-        <p class="text-brand-text/60 font-medium">
-          © 2025 Hack Club
-        </p>
+        <p class="text-brand-text/60 font-medium">© 2025 Hack Club</p>
       </div>
 
       <style

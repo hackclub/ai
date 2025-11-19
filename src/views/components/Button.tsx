@@ -13,14 +13,16 @@ export const Button = ({
   children,
   class: className,
 }: ButtonProps) => {
-  const baseClasses = "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95";
+  const baseClasses =
+    "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95";
 
   const variantClasses = {
     primary:
       "bg-brand-primary text-white hover:bg-brand-primary-hover shadow-lg hover:shadow-xl hover:-translate-y-0.5",
     secondary:
       "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
-    danger: "bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 hover:border-red-200",
+    danger:
+      "bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 hover:border-red-200",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className || ""}`;

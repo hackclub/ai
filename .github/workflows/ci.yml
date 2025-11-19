@@ -26,3 +26,5 @@ jobs:
 
       - name: Run knip
         run: bun run knip
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

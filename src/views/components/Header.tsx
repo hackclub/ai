@@ -10,16 +10,14 @@ type HeaderProps = {
   showGlobalStats?: boolean;
 };
 
-export const Header = ({
-  title,
-  user,
-  showBackToDashboard,
-}: HeaderProps) => {
+export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
   return (
     <header class="py-6 mb-8">
       <div class="max-w-6xl mx-auto px-4 flex justify-between items-center gap-4">
         <div class="flex items-center gap-3 flex-shrink-0">
-          <div class="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white font-bold text-xl transform -rotate-3">h</div>
+          <div class="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white font-bold text-xl transform -rotate-3">
+            h
+          </div>
           <h1 class="text-2xl md:text-3xl font-bold text-brand-heading tracking-tight">
             {title}
           </h1>
