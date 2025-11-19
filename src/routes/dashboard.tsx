@@ -7,7 +7,8 @@ import { eq, desc, sql, and, gt } from "drizzle-orm";
 import { Home } from "../views/home";
 import { Dashboard } from "../views/dashboard";
 import { Global } from "../views/global";
-import { Docs } from "../views/docs";
+import { RevokedView } from "../views/revoked";
+
 import {
   getAllowedLanguageModels,
   getAllowedEmbeddingModels,
@@ -55,7 +56,13 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
     })
     .from(apiKeys)
-    .where(eq(apiKeys.userId, user.id))
+    .where(
+      and(
+        eq(apiKeys.userId, user.id),
+        // show active keys and keys revoked within the last 7 days
+        sql`${apiKeys.revokedAt} IS NULL OR ${apiKeys.revokedAt} > NOW() - INTERVAL '7 days'`,
+      )
+    )
     .orderBy(desc(apiKeys.createdAt));
 
   const stats = await db
@@ -144,6 +151,35 @@ dashboard.get("/global", requireAuth, async (c) => {
       }
       modelStats={modelStats}
     />,
+  );
+});
+
+dashboard.get("/revoked", requireAuth, async (c) => {
+  const user = c.get("user");
+
+  // Get all revoked API keys for this user
+  const revokedKeys = await db
+    .select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      createdAt: apiKeys.createdAt,
+      revokedAt: apiKeys.revokedAt,
+      keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
+    })
+    .from(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.userId, user.id),
+        sql`${apiKeys.revokedAt} IS NOT NULL`
+      )
+    )
+    .orderBy(desc(apiKeys.revokedAt));
+
+  return c.html(
+    <RevokedView
+      user={user}
+      revokedKeys={revokedKeys}
+    />
   );
 });
 

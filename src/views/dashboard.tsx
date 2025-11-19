@@ -143,7 +143,7 @@ export const Dashboard = ({
                 },
                 {
                   header: "Status",
-                  render: (row) => (row.revokedAt ? "Revoked" : "Active"),
+                  render: (row) => (row.revokedAt ? "Recently Revoked" : "Active"),
                 },
                 {
                   header: "Actions",
@@ -163,6 +163,9 @@ export const Dashboard = ({
               rowClass={(row) => (row.revokedAt ? "opacity-50 grayscale" : "")}
             />
           )}
+          <a href="/revoked" class="text-sm text-brand-primary hover:underline mt-3 inline-block">
+            View revoked keys
+          </a>
         </div>
 
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">
