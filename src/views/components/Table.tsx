@@ -12,7 +12,7 @@ type TableProps = {
 
 export const Table = ({ columns, data, rowClass }: TableProps) => {
   return (
-    <div class="overflow-x-auto border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg transition-colors">
+    <div class="overflow-x-auto border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-colors">
       <table class="w-full border-collapse">
         <thead>
           <tr class="border-b border-gray-200 dark:border-gray-700">

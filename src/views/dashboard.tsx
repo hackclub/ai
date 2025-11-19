@@ -53,19 +53,10 @@ export const Dashboard = ({
           <h2 class="text-xl font-semibold mb-4">Allowed Language Models</h2>
           <Card class="p-6">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {allowedLanguageModels.map((model: string, index: number) => {
-                const colors = [
-                  "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800",
-                  "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800",
-                  "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800",
-                  "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800",
-                  "bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300 border-pink-200 dark:border-pink-800",
-                  "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
-                ];
-                const colorClass = colors[index % colors.length];
+              {allowedLanguageModels.map((model: string) => {
                 return (
                   <div
-                    class={`${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors`}
+                    class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
@@ -92,19 +83,10 @@ export const Dashboard = ({
           <h2 class="text-xl font-semibold mb-4">Allowed Embedding Models</h2>
           <Card class="p-6">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {allowedEmbeddingModels.map((model: string, index: number) => {
-                const colors = [
-                  "bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800",
-                  "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800",
-                  "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
-                  "bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800",
-                  "bg-violet-100 dark:bg-violet-900/30 text-violet-800 dark:text-violet-300 border-violet-200 dark:border-violet-800",
-                  "bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-800 dark:text-fuchsia-300 border-fuchsia-200 dark:border-fuchsia-800",
-                ];
-                const colorClass = colors[index % colors.length];
+              {allowedEmbeddingModels.map((model: string) => {
                 return (
                   <div
-                    class={`${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors`}
+                    class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-3 transition-colors"
                   >
                     <svg
                       class="w-5 h-5 flex-shrink-0"
@@ -142,7 +124,7 @@ export const Dashboard = ({
                 {
                   header: "Key",
                   render: (row) => (
-                    <code class="bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded text-xs">
+                    <code class="bg-gray-100 dark:bg-gray-900 px-2 py-1 text-xs">
                       {row.keyPreview}
                     </code>
                   ),
@@ -210,7 +192,7 @@ export const Dashboard = ({
             type="text"
             id="keyName"
             placeholder="My API Key"
-            class="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg text-sm focus:outline-none focus:border-gray-900 dark:focus:border-gray-500"
+            class="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900  text-sm focus:outline-none focus:border-gray-900 dark:focus:border-gray-500"
           />
         </div>
         <div class="flex gap-2 justify-end">
@@ -226,19 +208,19 @@ export const Dashboard = ({
         class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-50 items-center justify-center"
         style="display: none;"
       >
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 max-w-2xl w-11/12">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700  p-6 max-w-2xl w-11/12">
           <h3 class="text-lg font-semibold mb-3">API Key Created</h3>
           <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             Save this key now. You will not be able to see it again.
           </p>
           <div
-            class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mb-4 overflow-x-auto font-mono text-sm break-all"
+            class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700  p-3 mb-4 overflow-x-auto font-mono text-sm break-all"
             id="newApiKey"
           ></div>
           <p class="mb-2 text-sm text-gray-600 dark:text-gray-400">
             Use this key in your requests:
           </p>
-          <div class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mb-4 overflow-x-auto font-mono text-xs">
+          <div class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700  p-3 mb-4 overflow-x-auto font-mono text-xs">
             curl {env.BASE_URL}/proxy/v1/chat/completions \<br />
             {"  "}-H "Authorization: Bearer YOUR_API_KEY" \<br />
             {"  "}-H "Content-Type: application/json" \<br />

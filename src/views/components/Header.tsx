@@ -28,7 +28,7 @@ export const Header = ({
           {showBackToDashboard && (
             <a
               href="/dashboard"
-              class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-2 sm:px-3 md:px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-xs sm:text-sm transition-colors whitespace-nowrap"
+              class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 px-2 sm:px-3 md:px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs sm:text-sm transition-colors whitespace-nowrap"
               title="Back to Dashboard"
             >
               <span class="hidden sm:inline">Back to Dashboard</span>
@@ -42,7 +42,7 @@ export const Header = ({
             <img
               src={user.avatar}
               alt={user.name}
-              class="w-8 h-8 rounded-full flex-shrink-0"
+              class="w-8 h-8 flex-shrink-0"
             />
           )}
           <span class="hidden md:inline text-sm truncate max-w-[120px]">
@@ -50,7 +50,7 @@ export const Header = ({
           </span>
           <a
             href="/auth/logout"
-            class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+            class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
             title="Logout"
           >
             <svg

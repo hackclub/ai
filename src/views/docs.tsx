@@ -57,7 +57,7 @@ export const Docs = ({
             <h3 class="text-lg font-semibold mb-3 mt-6">
               2. Make Your First Request
             </h3>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -96,7 +96,7 @@ export const Docs = ({
               All API requests require authentication using an API key in the
               Authorization header as a Bearer token:
             </p>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>Authorization: Bearer YOUR_API_KEY</code>
               </pre>
@@ -131,7 +131,7 @@ export const Docs = ({
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Chat Completions</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">
+              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 text-sm font-mono">
                 POST
               </span>
               <code class="text-sm">/proxy/v1/chat/completions</code>
@@ -142,7 +142,7 @@ export const Docs = ({
             </p>
 
             <h4 class="font-semibold mb-2">Request Body</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+            <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
                 <code>{`{
   "model": "string",              // Required: Model ID
@@ -162,7 +162,7 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+            <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -185,7 +185,7 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`{
   "id": "chatcmpl-123",
@@ -214,12 +214,12 @@ export const Docs = ({
             <h4 class="font-semibold mb-2 mt-4">Streaming</h4>
             <p class="text-gray-600 dark:text-gray-400 mb-3">
               Set{" "}
-              <code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">
+              <code class="bg-gray-100 dark:bg-gray-800 px-1">
                 stream: true
               </code>{" "}
               to receive Server-Sent Events (SSE) instead of a single response:
             </p>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -237,7 +237,7 @@ export const Docs = ({
           <Card class="p-6 mb-6">
             <h3 class="text-xl font-semibold mb-2">Embeddings</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 rounded text-sm font-mono">
+              <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 px-2 py-1 text-sm font-mono">
                 POST
               </span>
               <code class="text-sm">/proxy/v1/embeddings</code>
@@ -247,7 +247,7 @@ export const Docs = ({
             </p>
 
             <h4 class="font-semibold mb-2">Request Body</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+            <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
                 <code>{`{
   "model": "string",              // Required: Embedding model ID
@@ -258,7 +258,7 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+            <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/embeddings \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -271,7 +271,7 @@ export const Docs = ({
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`{
   "object": "list",
@@ -296,7 +296,7 @@ export const Docs = ({
           <Card class="p-6">
             <h3 class="text-xl font-semibold mb-2">List Models</h3>
             <div class="flex items-center gap-2 mb-4">
-              <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-1 rounded text-sm font-mono">
+              <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-1 text-sm font-mono">
                 GET
               </span>
               <code class="text-sm">/proxy/v1/models</code>
@@ -306,14 +306,14 @@ export const Docs = ({
             </p>
 
             <h4 class="font-semibold mb-2">Example Request</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+            <div class="bg-gray-900  p-4 overflow-x-auto mb-4">
               <pre class="text-sm text-gray-100">
                 <code>{`curl ${env.BASE_URL}/proxy/v1/models`}</code>
               </pre>
             </div>
 
             <h4 class="font-semibold mb-2">Example Response</h4>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`{
   "object": "list",
@@ -363,7 +363,7 @@ export const Docs = ({
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedLanguageModels.map((model: string) => (
-                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
+                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
                     <code class="text-sm">{model}</code>
                   </div>
                 ))}
@@ -384,7 +384,7 @@ export const Docs = ({
             ) : (
               <div class="grid grid-cols-1 gap-2">
                 {allowedEmbeddingModels.map((model: string) => (
-                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
+                  <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2">
                     <code class="text-sm">{model}</code>
                   </div>
                 ))}
@@ -392,7 +392,7 @@ export const Docs = ({
             )}
           </Card>
 
-          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
+          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800  p-4 mt-4">
             <p class="text-sm text-blue-800 dark:text-blue-300">
               <strong>Note:</strong> If you request a model that is not in the
               allowed list, the API will automatically use the first allowed
@@ -422,7 +422,7 @@ export const Docs = ({
 
           <Card class="p-6 mb-6">
             <h3 class="text-lg font-semibold mb-3">Python (OpenAI SDK)</h3>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`from openai import OpenAI
 
@@ -447,7 +447,7 @@ print(response.choices[0].message.content)`}</code>
             <h3 class="text-lg font-semibold mb-3">
               JavaScript/TypeScript (OpenAI SDK)
             </h3>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`import OpenAI from 'openai';
 
@@ -470,7 +470,7 @@ console.log(response.choices[0].message.content);`}</code>
 
           <Card class="p-6">
             <h3 class="text-lg font-semibold mb-3">Streaming with Python</h3>
-            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <div class="bg-gray-900  p-4 overflow-x-auto">
               <pre class="text-sm text-gray-100">
                 <code>{`from openai import OpenAI
 
@@ -673,7 +673,7 @@ for chunk in stream:
           </Card>
         </section>
 
-        <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center">
+        <div class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700  p-6 text-center">
           <p class="text-gray-600 dark:text-gray-400">
             Need help? Check your{" "}
             <a

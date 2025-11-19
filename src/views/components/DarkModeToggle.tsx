@@ -2,7 +2,7 @@ export const DarkModeToggle = () => {
   return (
     <button
       onclick="toggleDarkMode()"
-      class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       aria-label="Toggle dark mode"
     >
       <svg

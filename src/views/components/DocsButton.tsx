@@ -2,7 +2,7 @@ export const DocsButton = () => {
   return (
     <a
       href="/docs"
-      class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
+      class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
       aria-label="View API documentation"
       title="API Documentation"
     >

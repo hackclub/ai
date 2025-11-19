@@ -12,7 +12,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
 
         <a
           href="/auth/login"
-          class="inline-block bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 text-sm transition-colors mb-12"
+          class="inline-block bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2 hover:bg-gray-700 dark:hover:bg-gray-200 text-sm transition-colors mb-12"
         >
           Sign in with Slack
         </a>
@@ -35,7 +35,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
               return (
                 <div
                   key={`${model}-${idx}`}
-                  class={`card-${idx} flex-shrink-0 ${colorClass} border rounded-lg px-4 py-3 flex items-center gap-3 transition-colors transform hover:scale-105`}
+                  class={`card-${idx} flex-shrink-0 ${colorClass} border px-4 py-3 flex items-center gap-3 transition-colors transform hover:scale-105`}
                   style={`--delay: ${delay}s; --dur: ${duration}s;`}
                 >
                   <svg
