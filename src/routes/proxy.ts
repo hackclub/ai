@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { requireApiKey, blockAICodingAgents } from "../middleware/auth";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
+import { eq, sql } from "drizzle-orm";
 import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
 import type { AppVariables } from "../types";
 
@@ -100,6 +101,29 @@ proxy.get("/v1/models", async (c) => {
   }
 });
 
+proxy.get("/v1/stats", async (c) => {
+  const user = c.get("user");
+
+  const stats = await db
+    .select({
+      totalRequests: sql<number>`COUNT(*)::int`,
+      totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
+      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
+      totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
+    })
+    .from(requestLogs)
+    .where(eq(requestLogs.userId, user.id));
+
+  return c.json(
+    stats[0] || {
+      totalRequests: 0,
+      totalTokens: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+    },
+  );
+});
+
 proxy.post("/v1/chat/completions", async (c) => {
   const apiKey = c.get("apiKey");
   const user = c.get("user");
@@ -191,7 +215,7 @@ proxy.post("/v1/chat/completions", async (c) => {
                 completionTokens = parsed.usage.completion_tokens || 0;
                 totalTokens = parsed.usage.total_tokens || 0;
               }
-            } catch {}
+            } catch { }
           }
         }
       } finally {
