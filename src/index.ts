@@ -7,9 +7,7 @@ import { bodyLimit } from "hono/body-limit";
 import { timeout } from "hono/timeout";
 import { secureHeaders } from "hono/secure-headers";
 import { HTTPException } from "hono/http-exception";
-import {
-  trimTrailingSlash,
-} from 'hono/trailing-slash'
+import { trimTrailingSlash } from "hono/trailing-slash";
 import type { RequestIdVariables } from "hono/request-id";
 import { env } from "./env";
 import auth from "./routes/auth";
