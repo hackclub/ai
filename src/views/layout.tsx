@@ -20,7 +20,7 @@ export const Layout = ({
           crossorigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
         <script src="https://cdn.tailwindcss.com"></script>
@@ -31,7 +31,7 @@ export const Layout = ({
                 theme: {
                   extend: {
                     fontFamily: {
-                      sans: ['IBM Plex Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                      sans: ['Google Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
                     },
                     colors: {
                       brand: {
