@@ -7,7 +7,7 @@ import { Table } from "./components/Table";
 export const Global = ({ user, globalStats, modelStats }: any) => {
   return (
     <Layout title="Global Statistics">
-      <Header title="AI Proxy - Global Stats" user={user} showBackToDashboard />
+      <Header title="hackai stats" user={user} showBackToDashboard />
 
       <div class="max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-xl font-semibold mb-4">

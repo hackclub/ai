@@ -3,7 +3,7 @@ import { Layout } from "./layout";
 export const Home = ({ models = [] }: { models?: string[] }) => {
   const displayModels = models.length > 0 ? models : [];
   return (
-    <Layout title="AI Proxy">
+    <Layout title="hackai!">
       <div class="text-center py-16 px-4">
         <h1 class="text-4xl font-semibold mb-4">Hack Club AI</h1>
         <p class="text-lg text-gray-600 dark:text-mocha-subtext0 mb-8">

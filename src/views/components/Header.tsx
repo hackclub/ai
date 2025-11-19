@@ -14,7 +14,6 @@ export const Header = ({
   title,
   user,
   showBackToDashboard,
-  showGlobalStats,
 }: HeaderProps) => {
   return (
     <header class="border-b border-gray-200 dark:border-mocha-surface1 py-3 sm:py-4 mb-6 sm:mb-8">
