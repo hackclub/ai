@@ -2,7 +2,7 @@ import { Button } from "./Button";
 
 export const IdvBanner = () => {
   return (
-    <div class="bg-red-50 border-l-4 border-red-500 mx-4 mt-4">
+    <div class="bg-red-100 border-l-4 border-red-500 mx-4 mt-4">
       <div class="max-w-6xl mx-auto px-4 py-4">
         <div class="flex items-center gap-4">
           <svg

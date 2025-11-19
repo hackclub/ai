@@ -29,72 +29,51 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
         <h2 class="text-3xl font-bold mb-10 text-brand-heading">
           Featured Models
         </h2>
-        <div class="relative w-full max-w-6xl mx-auto mb-20 overflow-hidden h-48">
-          <div class="absolute inset-0 flex items-center gap-6 animate-carousel">
-            {[...displayModels, ...displayModels].map((model, idx) => {
-              const delay = idx * 0.3;
-              const duration = 3 + (idx % 4);
-              const colors = [
-                "bg-blue-50 text-blue-700 border-blue-200",
-                "bg-purple-50 text-purple-700 border-purple-200",
-                "bg-green-50 text-green-700 border-green-200",
-                "bg-orange-50 text-orange-700 border-orange-200",
-                "bg-pink-50 text-pink-700 border-pink-200",
-                "bg-indigo-50 text-indigo-700 border-indigo-200",
-              ];
-              const colorClass = colors[idx % colors.length];
-              return (
-                <div
-                  key={`${model}-${idx}`}
-                  class={`flex-shrink-0 ${colorClass} border-2 px-6 py-4 rounded-2xl flex items-center gap-4 transition-all transform hover:scale-105 hover:shadow-md`}
-                  style={`--delay: ${delay}s; --dur: ${duration}s;`}
-                >
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl mx-auto mb-20">
+          {displayModels.map((model, idx) => {
+            const [provider, ...nameParts] = model.split('/');
+            const name = nameParts.join('/');
+
+            const tilts = ["rotate-1", "-rotate-1", "rotate-2", "-rotate-2"];
+            const tiltClass = tilts[idx % tilts.length];
+
+            return (
+              <div
+                key={model}
+                class={`
+                  ${tiltClass} hover:rotate-0
+                  bg-white border-2 border-brand-border/50 rounded-2xl p-6
+                  transition-all duration-300 ease-out
+                  group flex flex-col items-start gap-3
+                `}
+              >
+                <div class="flex items-center gap-2 w-full">
+                  <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-brand-bg text-brand-primary border border-brand-primary/20">
+                    {provider}
+                  </span>
+                  <div class="flex-grow" />
                   <svg
-                    class="w-6 h-6 flex-shrink-0 text-brand-primary"
+                    class="w-5 h-5 text-brand-text/40 group-hover:text-brand-primary transition-colors"
                     fill="none"
-                    stroke="currentColor"
                     viewBox="0 0 24 24"
-                    stroke-width="2.5"
+                    stroke="currentColor"
+                    stroke-width="2"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                    ></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  <span class="font-bold text-lg truncate">{model}</span>
                 </div>
-              );
-            })}
-          </div>
+
+                <h3 class="text-xl font-bold text-brand-heading break-all">
+                  {name}
+                </h3>
+              </div>
+            );
+          })}
         </div>
 
         <p class="text-brand-text/60 font-medium">© 2025 Hack Club</p>
       </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-          @keyframes carousel {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-          }
-          @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-          }
-          .animate-carousel {
-            animation: carousel 12s linear infinite;
-          }
-          .animate-carousel:hover {
-            animation-play-state: paused;
-          }
-          [class^="card-"] {
-            animation: float var(--dur) ease-in-out var(--delay) infinite;
-          }
-        `,
-        }}
-      />
     </Layout>
   );
 };
