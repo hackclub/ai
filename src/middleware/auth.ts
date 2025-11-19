@@ -94,7 +94,6 @@ export async function optionalAuth(
   await next();
 }
 
-
 export async function requireApiKey(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
