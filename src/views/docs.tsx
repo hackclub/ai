@@ -12,7 +12,6 @@ export const Docs = ({
   const exampleEmbeddingModel =
     allowedEmbeddingModels?.[0] || "text-embedding-3-large";
 
-  // Replace placeholders in the pre-rendered HTML
   const htmlContent = preRenderedHtml
     .replace(/{{BASE_URL}}/g, env.BASE_URL)
     .replace(/{{FIRST_MODEL}}/g, exampleModel)
@@ -105,16 +104,6 @@ export const Docs = ({
           />
         </main>
       </div>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            function toggleDarkMode() {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('darkMode', isDark);
-            }
-          `,
-        }}
-      />
     </Layout>
   );
 };

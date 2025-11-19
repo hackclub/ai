@@ -66,17 +66,6 @@ export const Global = ({ user, globalStats, modelStats }: any) => {
           />
         )}
       </div>
-
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            function toggleDarkMode() {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('darkMode', isDark);
-            }
-          `,
-        }}
-      />
     </Layout>
   );
 };
