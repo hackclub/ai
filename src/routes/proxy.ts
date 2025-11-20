@@ -1,12 +1,12 @@
-import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
-import { stream } from "hono/streaming";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { eq, sql } from "drizzle-orm";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
-import { requireApiKey, blockAICodingAgents } from "../middleware/auth";
+import { stream } from "hono/streaming";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
-import { eq, sql } from "drizzle-orm";
-import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
+import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import type { AppVariables } from "../types";
 
 const proxy = new OpenAPIHono<{ Variables: AppVariables }>();
@@ -50,20 +50,82 @@ const ChatCompletionRequestSchema = z
     model: z.string().openapi({ example: allowedLanguageModels[0] }),
     messages: z.array(MessageSchema),
     stream: z.boolean().optional().openapi({ example: false }),
+    temperature: z.number().optional().openapi({ example: 1.0 }),
+    max_tokens: z.number().nullable().optional().openapi({ example: null }),
+    top_p: z.number().optional().openapi({ example: 1.0 }),
   })
   .openapi("ChatCompletionRequest");
+
+const ChatCompletionResponseSchema = z
+  .object({
+    id: z.string().openapi({ example: "chatcmpl-123" }),
+    provider: z.string().optional().openapi({ example: "provider-name" }),
+    model: z.string().openapi({ example: allowedLanguageModels[0] }),
+    object: z.string().openapi({ example: "chat.completion" }),
+    created: z.number().int().openapi({ example: 1677652288 }),
+    choices: z.array(
+      z.object({
+        logprobs: z.null().optional().openapi({ example: null }),
+        finish_reason: z.string().openapi({ example: "stop" }),
+        native_finish_reason: z
+          .string()
+          .optional()
+          .openapi({ example: "stop" }),
+        index: z.number().int().openapi({ example: 0 }),
+        message: z.object({
+          role: z.string().openapi({ example: "assistant" }),
+          content: z.string().openapi({
+            example: "Hello there!",
+          }),
+          refusal: z.null().optional().openapi({ example: null }),
+        }),
+      }),
+    ),
+    system_fingerprint: z.string().optional().openapi({ example: "fp_12345" }),
+    usage: z.object({
+      prompt_tokens: z.number().int().openapi({ example: 10 }),
+      completion_tokens: z.number().int().openapi({ example: 10 }),
+      total_tokens: z.number().int().openapi({ example: 20 }),
+    }),
+  })
+  .openapi("ChatCompletionResponse");
 
 const EmbeddingsRequestSchema = z
   .object({
     model: z.string().openapi({ example: allowedEmbeddingModels[0] }),
-    input: z.union([z.string(), z.array(z.string())]).openapi({ example: "Hello world" }),
+    input: z
+      .union([z.string(), z.array(z.string())])
+      .openapi({ example: "Hello world" }),
   })
   .openapi("EmbeddingsRequest");
+
+const EmbeddingsResponseSchema = z
+  .object({
+    object: z.string().openapi({ example: "list" }),
+    data: z.array(
+      z.object({
+        object: z.string().openapi({ example: "embedding" }),
+        embedding: z.array(z.number()).openapi({ example: [0.1, 0.2, 0.3] }),
+        index: z.number().int().openapi({ example: 0 }),
+      }),
+    ),
+    model: z.string().openapi({ example: allowedEmbeddingModels[0] }),
+    usage: z.object({
+      prompt_tokens: z.number().int().openapi({ example: 10 }),
+      total_tokens: z.number().int().openapi({ example: 10 }),
+    }),
+    provider: z.string().optional().openapi({ example: "provider-name" }),
+    id: z.string().optional().openapi({ example: "emb-123" }),
+  })
+  .openapi("EmbeddingsResponse");
 
 const modelsRoute = createRoute({
   method: "get",
   path: "/v1/models",
-  summary: "Get Models",
+  summary: "Get Available Models",
+  description:
+    "List all available models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
+
   security: [],
   operationId: "getModels",
   responses: {
@@ -73,7 +135,7 @@ const modelsRoute = createRoute({
           schema: ModelsResponseSchema,
         },
       },
-      description: "List models",
+      description: "Successful response.",
     },
   },
 });
@@ -82,7 +144,9 @@ const statsRoute = createRoute({
   method: "get",
   path: "/v1/stats",
   security: [{ Bearer: [] }],
-  summary: "Get Stats",
+  summary: "Get Token Usage Statistics",
+  description:
+    "Get token usage statistics for your account. This includes total requests made, tokens consumed (prompt + completion), and breakdowns by token type. Useful for monitoring your API usage and costs.",
   operationId: "getStats",
   responses: {
     200: {
@@ -91,7 +155,7 @@ const statsRoute = createRoute({
           schema: StatsSchema,
         },
       },
-      description: "User stats",
+      description: "Successful response.",
     },
   },
 });
@@ -99,6 +163,9 @@ const statsRoute = createRoute({
 const chatRoute = createRoute({
   method: "post",
   path: "/v1/chat/completions",
+  summary: "Create Chat Completion",
+  description:
+    "Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes. Compatible with [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). You can use this to integrate with existing OpenAI-compatible libraries and tools.",
   security: [{ Bearer: [] }],
   operationId: "createChatCompletions",
   request: {
@@ -113,7 +180,12 @@ const chatRoute = createRoute({
   },
   responses: {
     200: {
-      description: "Chat completions response",
+      content: {
+        "application/json": {
+          schema: ChatCompletionResponseSchema,
+        },
+      },
+      description: "Successful response.",
     },
   },
 });
@@ -121,6 +193,9 @@ const chatRoute = createRoute({
 const embeddingsRoute = createRoute({
   method: "post",
   path: "/v1/embeddings",
+  summary: "Create Embeddings",
+  description:
+    "Generate vector embeddings from text input. You can then store these embeddings in a vector database like [Pinecone](https://www.pinecone.io/) or [pgvector](https://github.com/pgvector/pgvector). Compatible with [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create).",
   security: [{ Bearer: [] }],
   operationId: "createEmbeddings",
   request: {
@@ -135,7 +210,12 @@ const embeddingsRoute = createRoute({
   },
   responses: {
     200: {
-      description: "Embeddings response",
+      content: {
+        "application/json": {
+          schema: EmbeddingsResponseSchema,
+        },
+      },
+      description: "Successful response.",
     },
   },
 });
@@ -154,7 +234,10 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path.endsWith("/v1/models") || c.req.path.endsWith("/openapi.json")) {
+  if (
+    c.req.path.endsWith("/v1/models") ||
+    c.req.path.endsWith("/openapi.json")
+  ) {
     return next();
   }
   return requireApiKey(c, next);
@@ -475,7 +558,7 @@ proxy.openapi(embeddingsRoute, async (c) => {
 });
 
 proxy.get("/openapi.json", async (c) => {
-  const doc = await proxy.getOpenAPI31Document(
+  const doc = proxy.getOpenAPI31Document(
     {
       openapi: "3.1.0",
       info: { title: "Hack Club AI", version: "1.0.0" },
@@ -492,18 +575,16 @@ proxy.get("/openapi.json", async (c) => {
   ];
 
   doc.info.description =
-    "Authentication: All endpoints require `Authorization: Bearer <token>` GET /v1/models is public.";
+    "Authentication: All endpoints require `Authorization: Bearer <token>`.\n\n GET /v1/models is public.";
 
   // bearer req by default
   doc.security = [{ Bearer: [] }];
 
   try {
-    if (doc.paths && doc.paths["/v1/models"] && doc.paths["/v1/models"].get) {
+    if (doc.paths?.["/v1/models"]?.get) {
       doc.paths["/v1/models"].get.security = [];
     }
-  } catch (e) {
-   
-  }
+  } catch (e) {}
 
   return c.json(doc);
 });

@@ -1,22 +1,22 @@
+import { Scalar } from "@scalar/hono-api-reference";
+import { dns } from "bun";
 import { Hono } from "hono";
-import { logger } from "hono/logger";
+import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { csrf } from "hono/csrf";
-import { requestId } from "hono/request-id";
-import { bodyLimit } from "hono/body-limit";
-import { timeout } from "hono/timeout";
-import { secureHeaders } from "hono/secure-headers";
 import { HTTPException } from "hono/http-exception";
-import { env } from "./env";
-import auth from "./routes/auth";
-import proxy from "./routes/proxy";
-import api from "./routes/api";
-import dashboard from "./routes/dashboard";
-import { Scalar } from "@scalar/hono-api-reference";
-import { runMigrations } from "./migrate";
-import type { AppVariables } from "./types";
+import { logger } from "hono/logger";
 import type { RequestIdVariables } from "hono/request-id";
-import { dns } from "bun";
+import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
+import { timeout } from "hono/timeout";
+import { env } from "./env";
+import { runMigrations } from "./migrate";
+import api from "./routes/api";
+import auth from "./routes/auth";
+import dashboard from "./routes/dashboard";
+import proxy from "./routes/proxy";
+import type { AppVariables } from "./types";
 
 await runMigrations();
 dns.prefetch(env.OPENAI_API_URL, 443);
@@ -63,6 +63,8 @@ app.get(
   Scalar({
     url: "/proxy/openapi.json",
     theme: "default",
+    hideModels: true,
+    hideClientButton: true,
   }),
 );
 
