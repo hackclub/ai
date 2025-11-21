@@ -10,7 +10,7 @@ export const Modal = ({ id, title, children }: ModalProps) => {
   return (
     <div
       id={id}
-      class="fixed inset-0 bg-brand-heading/20 backdrop-blur-sm z-50 items-center justify-center"
+      class="fixed inset-0 bg-brand-heading/20 backdrop-blur-sm z-50 items-center justify-center transition-all duration-200"
       style="display: none;"
     >
       <div class="bg-white border-2 border-brand-border p-8 rounded-3xl max-w-xl w-11/12 shadow-2xl transform transition-all scale-100">

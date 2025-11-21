@@ -181,7 +181,7 @@ export const Dashboard = ({
                     !row.revokedAt && (
                       <Button
                         variant="danger"
-                        onclick={`revokeKey('${row.id}')`}
+                        onclick={`showRevokeModal('${row.id}')`}
                         class="px-3 text-xs"
                       >
                         Revoke
@@ -238,6 +238,97 @@ export const Dashboard = ({
         )}
       </div>
 
+      <CreateKeyModal allowedLanguageModels={allowedLanguageModels} />
+      <RevokeKeyModal />
+
+      {html`
+      <script>
+        function showCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'flex';
+        }
+
+        function hideCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'none';
+          document.getElementById('keyName').value = '';
+        }
+
+        function hideKeyCreatedModal() {
+          document.getElementById('keyCreatedModal').style.display = 'none';
+          location.reload();
+        }
+
+        async function createKey() {
+          const name = document.getElementById('keyName').value.trim();
+          if (!name) {
+            alert('Please enter a key name');
+            return;
+          }
+
+          try {
+            const response = await fetch('/api/keys', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to create key');
+            }
+
+            const data = await response.json();
+            document.getElementById('newApiKey').textContent = data.key;
+            document.getElementById('curlApiKey').textContent = data.key;
+
+            hideCreateKeyModal();
+            document.getElementById('keyCreatedModal').style.display = 'flex';
+          } catch (error) {
+            alert('Error creating API key');
+            console.error(error);
+          }
+        }
+
+        function showRevokeModal(keyId) {
+          document.getElementById('keyIdToRevoke').value = keyId;
+          document.getElementById('revokeKeyModal').style.display = 'flex';
+        }
+
+        function hideRevokeModal() {
+          document.getElementById('keyIdToRevoke').value = '';
+          document.getElementById('revokeKeyModal').style.display = 'none';
+        }
+
+        async function confirmRevokeKey() {
+          const keyId = document.getElementById('keyIdToRevoke').value;
+          if (!keyId) return;
+
+          try {
+            const response = await fetch('/api/keys/' + keyId, {
+              method: 'DELETE',
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to revoke key');
+            }
+
+            location.reload();
+          } catch (error) {
+            alert('Error revoking API key');
+            console.error(error);
+          }
+        }
+      </script>
+      `}
+    </Layout>
+  );
+};
+
+type CreateKeyModalProps = {
+  allowedLanguageModels: string[];
+};
+
+const CreateKeyModal = ({ allowedLanguageModels }: CreateKeyModalProps) => {
+  return (
+    <>
       <Modal id="createKeyModal" title="Create New API Key">
         <div class="mb-6">
           <label
@@ -300,75 +391,27 @@ export const Dashboard = ({
           <Button onclick="hideKeyCreatedModal()">Done</Button>
         </div>
       </Modal>
+    </>
+  );
+};
 
-      {html`
-      <script>
-        function showCreateKeyModal() {
-          document.getElementById('createKeyModal').style.display = 'flex';
-        }
-
-        function hideCreateKeyModal() {
-          document.getElementById('createKeyModal').style.display = 'none';
-          document.getElementById('keyName').value = '';
-        }
-
-        function hideKeyCreatedModal() {
-          document.getElementById('keyCreatedModal').style.display = 'none';
-          location.reload();
-        }
-
-        async function createKey() {
-          const name = document.getElementById('keyName').value.trim();
-          if (!name) {
-            alert('Please enter a key name');
-            return;
-          }
-
-          try {
-            const response = await fetch('/api/keys', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name }),
-            });
-
-            if (!response.ok) {
-              throw new Error('Failed to create key');
-            }
-
-            const data = await response.json();
-            document.getElementById('newApiKey').textContent = data.key;
-            document.getElementById('curlApiKey').textContent = data.key;
-
-            hideCreateKeyModal();
-            document.getElementById('keyCreatedModal').style.display = 'flex';
-          } catch (error) {
-            alert('Error creating API key');
-            console.error(error);
-          }
-        }
-
-        async function revokeKey(keyId) {
-          if (!confirm('You sure you want to revoke this API key? This action cannot be undone.')) {
-            return;
-          }
-
-          try {
-            const response = await fetch('/api/keys/' + keyId, {
-              method: 'DELETE',
-            });
-
-            if (!response.ok) {
-              throw new Error('Failed to revoke key');
-            }
-
-            location.reload();
-          } catch (error) {
-            alert('Error revoking API key');
-            console.error(error);
-          }
-        }
-      </script>
-      `}
-    </Layout>
+const RevokeKeyModal = () => {
+  return (
+    <Modal id="revokeKeyModal" title="Revoke API Key">
+      <p class="mb-6 text-brand-text">
+        Are you sure you want to revoke this API key? This action cannot be
+        undone and any applications using this key will stop working
+        immediately.
+      </p>
+      <input type="hidden" id="keyIdToRevoke" />
+      <div class="flex justify-end gap-3">
+        <Button variant="secondary" onclick="hideRevokeModal()">
+          Cancel
+        </Button>
+        <Button variant="danger" onclick="confirmRevokeKey()">
+          Revoke Key
+        </Button>
+      </div>
+    </Modal>
   );
 };
