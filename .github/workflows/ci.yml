@@ -24,6 +24,12 @@ jobs:
       - name: Run format check
         run: bun run format:check
 
+      - name: Run lints
+        run: bun run lint
+
+      - name: Run typecheck
+        run: bun run typecheck
+
       - name: Run knip
         run: bun run knip
         env:

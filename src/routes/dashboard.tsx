@@ -1,18 +1,14 @@
-import { Hono } from "hono";
 import * as Sentry from "@sentry/bun";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
 import { apiKeys, requestLogs, sessions } from "../db/schema";
-import { eq, desc, sql, and, gt } from "drizzle-orm";
-import { Home } from "../views/home";
-import { Dashboard } from "../views/dashboard";
-import {
-  allowedEmbeddingModels,
-  allowedLanguageModels,
-  env,
-} from "../env";
+import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
+import { Dashboard } from "../views/dashboard";
+import { Home } from "../views/home";
 
 const dashboard = new Hono<{ Variables: AppVariables }>();
 

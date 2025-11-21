@@ -1,14 +1,14 @@
-import { Layout } from "./layout";
 import { env } from "../env";
-import { Header } from "./components/Header";
-import { StatCard } from "./components/StatCard";
+import type { Stats, User } from "../types";
+import { Button } from "./components/Button";
 import { Card } from "./components/Card";
 import { EmptyState } from "./components/EmptyState";
-import { Table } from "./components/Table";
-import { Button } from "./components/Button";
-import { Modal } from "./components/Modal";
+import { Header } from "./components/Header";
 import { IdvBanner } from "./components/IdvBanner";
-import type { User, Stats } from "../types";
+import { Modal } from "./components/Modal";
+import { StatCard } from "./components/StatCard";
+import { Table } from "./components/Table";
+import { Layout } from "./layout";
 
 type DashboardApiKey = {
   id: string;
@@ -93,6 +93,7 @@ export const Dashboard = ({
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                       stroke-width="2.5"
+                      aria-hidden="true"
                     >
                       <path
                         stroke-linecap="round"
@@ -123,6 +124,7 @@ export const Dashboard = ({
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                       stroke-width="2.5"
+                      aria-hidden="true"
                     >
                       <path
                         stroke-linecap="round"
@@ -237,7 +239,10 @@ export const Dashboard = ({
 
       <Modal id="createKeyModal" title="Create New API Key">
         <div class="mb-6">
-          <label class="block text-sm font-bold text-brand-heading mb-2">
+          <label
+            class="block text-sm font-bold text-brand-heading mb-2"
+            for="keyName"
+          >
             Key Name
           </label>
           <input

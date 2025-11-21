@@ -1,9 +1,9 @@
-import { Layout } from "./layout";
+import type { Stats, User } from "../types";
+import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { StatCard } from "./components/StatCard";
-import { EmptyState } from "./components/EmptyState";
 import { Table } from "./components/Table";
-import type { User, Stats } from "../types";
+import { Layout } from "./layout";
 
 type ModelStats = Stats & { model: string };
 

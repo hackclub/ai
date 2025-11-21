@@ -1,4 +1,4 @@
-import type { users, apiKeys, requestLogs } from "./db/schema";
+import type { apiKeys, requestLogs, users } from "./db/schema";
 
 export type User = typeof users.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;

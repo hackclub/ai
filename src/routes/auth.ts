@@ -1,10 +1,10 @@
-import { Hono } from "hono";
 import * as Sentry from "@sentry/bun";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
-import { users, sessions } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { setCookie, getCookie } from "hono/cookie";
+import { sessions, users } from "../db/schema";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 

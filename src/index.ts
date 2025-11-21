@@ -1,26 +1,27 @@
 import "./instrument"; // Sentry
-import { Hono } from "hono";
 import * as Sentry from "@sentry/bun";
-import { logger } from "hono/logger";
+import { dns } from "bun";
+import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { csrf } from "hono/csrf";
-import { requestId } from "hono/request-id";
-import { bodyLimit } from "hono/body-limit";
-import { timeout } from "hono/timeout";
-import { secureHeaders } from "hono/secure-headers";
 import { HTTPException } from "hono/http-exception";
-import { trimTrailingSlash } from "hono/trailing-slash";
+import { logger } from "hono/logger";
 import type { RequestIdVariables } from "hono/request-id";
+import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
+import { timeout } from "hono/timeout";
+import { trimTrailingSlash } from "hono/trailing-slash";
+
 import { env } from "./env";
-import auth from "./routes/auth";
-import proxy from "./routes/proxy";
-import api from "./routes/api";
-import docs from "./routes/docs";
-import dashboard from "./routes/dashboard";
-import global from "./routes/global";
 import { runMigrations } from "./migrate";
+import api from "./routes/api";
+import auth from "./routes/auth";
+import dashboard from "./routes/dashboard";
+import docs from "./routes/docs";
+import global from "./routes/global";
+import proxy from "./routes/proxy";
 import type { AppVariables } from "./types";
-import { dns } from "bun";
 
 await runMigrations();
 dns.prefetch(env.OPENAI_API_URL, 443);

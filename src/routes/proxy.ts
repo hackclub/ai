@@ -1,15 +1,14 @@
-import { Hono, type Context } from "hono";
 import * as Sentry from "@sentry/bun";
-import { stream } from "hono/streaming";
+import { eq, sql } from "drizzle-orm";
+import { type Context, Hono } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
-import { requireApiKey, blockAICodingAgents } from "../middleware/auth";
+import { stream } from "hono/streaming";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
-import { eq, sql } from "drizzle-orm";
-import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
+import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import type { AppVariables } from "../types";
-
 
 interface OpenRouterModel {
   id: string;
@@ -38,7 +37,8 @@ interface OpenAIEmbeddingsResponse {
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
-let modelsCache: { data: OpenRouterModelsResponse; timestamp: number } | null = null;
+let modelsCache: { data: OpenRouterModelsResponse; timestamp: number } | null =
+  null;
 let modelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -192,7 +192,8 @@ proxy.post("/v1/chat/completions", async (c) => {
       );
 
       if (!isStreaming) {
-        const responseData = (await response.json()) as OpenAIChatCompletionResponse;
+        const responseData =
+          (await response.json()) as OpenAIChatCompletionResponse;
         const duration = Date.now() - startTime;
 
         const promptTokens = responseData.usage?.prompt_tokens || 0;
@@ -258,7 +259,7 @@ proxy.post("/v1/chat/completions", async (c) => {
                   completionTokens = parsed.usage.completion_tokens || 0;
                   totalTokens = parsed.usage.total_tokens || 0;
                 }
-              } catch { }
+              } catch {}
             }
           }
         } finally {

@@ -1,19 +1,19 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  transformerMetaHighlight,
+  transformerMetaWordHighlight,
+  transformerNotationDiff,
+  transformerNotationErrorLevel,
+  transformerNotationFocus,
+  transformerNotationHighlight,
+  transformerNotationWordHighlight,
+} from "@shikijs/transformers";
 import { Marked, Renderer } from "marked";
 import markedAlert from "marked-alert";
 import markedShiki from "marked-shiki";
 import { createHighlighter } from "shiki";
-import { readFileSync } from "fs";
-import { join } from "path";
-import {
-  transformerNotationDiff,
-  transformerNotationHighlight,
-  transformerNotationWordHighlight,
-  transformerNotationFocus,
-  transformerNotationErrorLevel,
-  transformerMetaHighlight,
-  transformerMetaWordHighlight,
-} from "@shikijs/transformers";
-import { env, allowedEmbeddingModels, allowedLanguageModels } from "../env";
+import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
 
 const highlighter = await createHighlighter({
   langs: ["bash", "javascript", "json", "markdown", "python", "typescript"],

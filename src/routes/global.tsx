@@ -1,12 +1,11 @@
-import { Hono } from "hono";
 import * as Sentry from "@sentry/bun";
-import { getCookie } from "hono/cookie";
-import { requireAuth } from "../middleware/auth";
-import { db } from "../db";
-import { apiKeys, requestLogs, sessions } from "../db/schema";
 import { desc, sql } from "drizzle-orm";
-import { Global } from "../views/global";
+import { Hono } from "hono";
+import { db } from "../db";
+import { requestLogs } from "../db/schema";
+import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
+import { Global } from "../views/global";
 
 const global = new Hono<{ Variables: AppVariables }>();
 

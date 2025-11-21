@@ -1,14 +1,14 @@
+import * as Sentry from "@sentry/bun";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
-import { db } from "../db";
-import { users, sessions, apiKeys } from "../db/schema";
-import { eq, and, isNull, gt } from "drizzle-orm";
-import type { AppVariables } from "../types";
 import blockedAppsConfig from "../config/blocked-apps.json";
 import blockedPromptsConfig from "../config/blocked-prompts.json";
+import { db } from "../db";
+import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
-import * as Sentry from "@sentry/bun";
+import type { AppVariables } from "../types";
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =

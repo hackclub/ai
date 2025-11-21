@@ -1,7 +1,7 @@
-import { Layout } from "./layout";
-import { Header } from "./components/Header";
 import { htmlContent as preRenderedHtml, toc } from "../lib/docs";
 import type { User } from "../types";
+import { Header } from "./components/Header";
+import { Layout } from "./layout";
 
 export const Docs = ({ user }: { user: User | null }) => {
   return (
@@ -35,10 +35,11 @@ export const Docs = ({ user }: { user: User | null }) => {
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
+                  class={`block text-sm hover:text-brand-primary transition-colors ${
+                    item.level === 2
                       ? "text-brand-heading font-medium"
                       : "text-brand-text pl-4"
-                    }`}
+                  }`}
                 >
                   {item.text}
                 </a>

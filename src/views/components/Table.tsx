@@ -1,4 +1,4 @@
-import { Child } from "hono/jsx";
+import type { Child } from "hono/jsx";
 
 type TableColumn<T> = {
   header: string;
@@ -26,12 +26,13 @@ export const Table = <T,>({ columns, data, rowClass }: TableProps<T>) => {
           </tr>
         </thead>
         <tbody>
-          {data.map((row, idx) => (
+          {data.map((row, _idx) => (
             <tr
               class={`border-b border-brand-border/50 hover:bg-brand-bg/30 transition-colors ${rowClass ? rowClass(row) : ""}`}
             >
               {columns.map((column) => (
                 <td class="py-2 px-4 text-sm text-brand-text font-medium">
+                  {/* biome-ignore lint/style/noNonNullAssertion: TODO */}
                   {column.render ? column.render(row) : row[column.key!]}
                 </td>
               ))}

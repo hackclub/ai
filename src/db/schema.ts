@@ -1,12 +1,12 @@
 import {
+  boolean,
+  index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  integer,
   uuid,
-  index,
-  jsonb,
-  boolean,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable(

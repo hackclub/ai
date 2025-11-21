@@ -1,12 +1,12 @@
-import { Hono } from "hono";
-import * as Sentry from "@sentry/bun";
 import { arktypeValidator } from "@hono/arktype-validator";
+import * as Sentry from "@sentry/bun";
 import { type } from "arktype";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
 import { apiKeys } from "../db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 
 const api = new Hono<{ Variables: AppVariables }>();

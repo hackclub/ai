@@ -1,4 +1,4 @@
-import { Child } from "hono/jsx";
+import type { Child } from "hono/jsx";
 
 type CardProps = {
   children: Child;
