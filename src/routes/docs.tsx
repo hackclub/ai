@@ -10,11 +10,7 @@ docs.get("/", optionalAuth, async (c) => {
   const user = c.get("user");
 
   return c.html(
-    <Docs
-      user={user}
-      allowedLanguageModels={allowedLanguageModels}
-      allowedEmbeddingModels={allowedEmbeddingModels}
-    />,
+    <Docs user={user} />,
   );
 });
 

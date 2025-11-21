@@ -1,7 +1,9 @@
+import { Child } from "hono/jsx";
+
 type ModalProps = {
   id: string;
   title: string;
-  children: any;
+  children: Child;
 };
 
 export const Modal = ({ id, title, children }: ModalProps) => {

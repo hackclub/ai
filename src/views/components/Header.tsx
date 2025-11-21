@@ -1,6 +1,8 @@
+import type { User } from "../../types";
+
 type HeaderProps = {
   title: string;
-  user: { name: string; avatar?: string };
+  user: User;
   showBackToDashboard?: boolean;
   showGlobalStats?: boolean;
 };
@@ -48,12 +50,12 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
           </a>
           <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
             <span class="text-sm font-medium text-brand-heading">
-              {user.name}
+              {user.name || "User"}
             </span>
             {user.avatar && (
               <img
-                src={user.avatar}
-                alt={user.name}
+                src={user.avatar || undefined}
+                alt={user.name || "User"}
                 class="w-10 h-10 rounded-full border-2 border-brand-border"
               />
             )}

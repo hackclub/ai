@@ -8,6 +8,33 @@ import { Table } from "./components/Table";
 import { Button } from "./components/Button";
 import { Modal } from "./components/Modal";
 import { IdvBanner } from "./components/IdvBanner";
+import type { User, Stats } from "../types";
+
+type DashboardApiKey = {
+  id: string;
+  name: string;
+  keyPreview: string;
+  createdAt: Date;
+  revokedAt: Date | null;
+};
+
+type DashboardRequestLog = {
+  timestamp: Date;
+  model: string;
+  totalTokens: number;
+  duration: number;
+  ip: string;
+};
+
+type DashboardProps = {
+  user: User;
+  apiKeys: DashboardApiKey[];
+  stats: Stats;
+  recentLogs: DashboardRequestLog[];
+  allowedLanguageModels: string[];
+  allowedEmbeddingModels: string[];
+  enforceIdv: boolean;
+};
 
 export const Dashboard = ({
   user,
@@ -17,7 +44,7 @@ export const Dashboard = ({
   allowedLanguageModels,
   allowedEmbeddingModels,
   enforceIdv,
-}: any) => {
+}: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
   return (

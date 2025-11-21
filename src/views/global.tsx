@@ -3,8 +3,17 @@ import { Header } from "./components/Header";
 import { StatCard } from "./components/StatCard";
 import { EmptyState } from "./components/EmptyState";
 import { Table } from "./components/Table";
+import type { User, Stats } from "../types";
 
-export const Global = ({ user, globalStats, modelStats }: any) => {
+type ModelStats = Stats & { model: string };
+
+type GlobalProps = {
+  user: User;
+  globalStats: Stats;
+  modelStats: ModelStats[];
+};
+
+export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
   return (
     <Layout title="Global Statistics">
       <Header title="hackai stats" user={user} showBackToDashboard />

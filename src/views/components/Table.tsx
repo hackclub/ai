@@ -1,16 +1,18 @@
-type TableColumn = {
+import { Child } from "hono/jsx";
+
+type TableColumn<T> = {
   header: string;
-  key?: string;
-  render?: (row: any) => any;
+  key?: keyof T;
+  render?: (row: T) => Child;
 };
 
-type TableProps = {
-  columns: TableColumn[];
-  data: any[];
-  rowClass?: (row: any) => string;
+type TableProps<T> = {
+  columns: TableColumn<T>[];
+  data: T[];
+  rowClass?: (row: T) => string;
 };
 
-export const Table = ({ columns, data, rowClass }: TableProps) => {
+export const Table = <T,>({ columns, data, rowClass }: TableProps<T>) => {
   return (
     <div class="overflow-x-auto border-2 border-brand-border bg-white rounded-2xl shadow-sm transition-colors">
       <table class="w-full border-collapse">

@@ -1,8 +1,10 @@
+import { Child } from "hono/jsx";
+
 type ButtonProps = {
   variant?: "primary" | "secondary" | "danger";
   onclick?: string;
   type?: "button" | "submit";
-  children: any;
+  children: Child;
   class?: string;
 };
 

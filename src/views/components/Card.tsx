@@ -1,5 +1,7 @@
+import { Child } from "hono/jsx";
+
 type CardProps = {
-  children: any;
+  children: Child;
   class?: string;
 };
 

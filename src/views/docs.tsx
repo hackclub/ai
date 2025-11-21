@@ -1,8 +1,9 @@
 import { Layout } from "./layout";
 import { Header } from "./components/Header";
 import { htmlContent as preRenderedHtml, toc } from "../lib/docs";
+import type { User } from "../types";
 
-export const Docs = ({ user }: any) => {
+export const Docs = ({ user }: { user: User | null }) => {
   return (
     <Layout title="API Documentation">
       {user && <Header title="hackai docs" user={user} showBackToDashboard />}
@@ -34,11 +35,10 @@ export const Docs = ({ user }: any) => {
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${
-                    item.level === 2
+                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
                       ? "text-brand-heading font-medium"
                       : "text-brand-text pl-4"
-                  }`}
+                    }`}
                 >
                   {item.text}
                 </a>

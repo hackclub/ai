@@ -8,6 +8,16 @@ import { setCookie, getCookie } from "hono/cookie";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
+interface IdentityCheckResponse {
+  result: string;
+}
+
+interface SlackOpenIDResponse {
+  ok: boolean;
+  id_token: string;
+  error?: string;
+}
+
 async function checkIdvStatus(
   slackId: string,
   email: string,
@@ -20,7 +30,7 @@ async function checkIdvStatus(
 
     const slackResponse = await fetch(urlBySlackId);
     if (slackResponse.ok) {
-      const data = (await slackResponse.json()) as any;
+      const data = (await slackResponse.json()) as IdentityCheckResponse;
       if (data.result === "verified_eligible") {
         return true;
       }
@@ -36,7 +46,7 @@ async function checkIdvStatus(
     const emailResponse = await fetch(urlByEmail);
     if (!emailResponse.ok) return false;
 
-    const data = (await emailResponse.json()) as any;
+    const data = (await emailResponse.json()) as IdentityCheckResponse;
     return data.result === "verified_eligible";
   } catch (error) {
     console.error("IDV check error:", error);
@@ -101,7 +111,7 @@ auth.get("/callback", async (c) => {
         });
       }
 
-      const responseJson = (await oidcResponse.json()) as any;
+      const responseJson = (await oidcResponse.json()) as SlackOpenIDResponse;
 
       if (!responseJson.ok) {
         console.error(responseJson);

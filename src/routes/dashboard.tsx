@@ -56,7 +56,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
           name: apiKeys.name,
           createdAt: apiKeys.createdAt,
           revokedAt: apiKeys.revokedAt,
-          keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
+          keyPreview: sql<string>`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
         })
         .from(apiKeys)
         .where(eq(apiKeys.userId, user.id))
@@ -113,7 +113,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       recentLogs={recentLogs}
       allowedLanguageModels={allowedLanguageModels}
       allowedEmbeddingModels={allowedEmbeddingModels}
-      enforceIdv={env.ENFORCE_IDV}
+      enforceIdv={env.ENFORCE_IDV || false}
     />,
   );
 });

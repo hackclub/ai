@@ -1,8 +1,10 @@
+import { Child } from "hono/jsx";
+
 export const Layout = ({
   children,
   title,
 }: {
-  children: any;
+  children: Child;
   title: string;
 }) => {
   return (

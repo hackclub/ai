@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import * as Sentry from "@sentry/bun";
 import { stream } from "hono/streaming";
 import { etag } from "hono/etag";
@@ -10,10 +10,36 @@ import { eq, sql } from "drizzle-orm";
 import { env, allowedLanguageModels, allowedEmbeddingModels } from "../env";
 import type { AppVariables } from "../types";
 
+
+interface OpenRouterModel {
+  id: string;
+  [key: string]: unknown;
+}
+
+interface OpenRouterModelsResponse {
+  data: OpenRouterModel[];
+}
+
+interface OpenAIUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+interface OpenAIChatCompletionResponse {
+  usage?: OpenAIUsage;
+  [key: string]: unknown;
+}
+
+interface OpenAIEmbeddingsResponse {
+  usage?: OpenAIUsage;
+  [key: string]: unknown;
+}
+
 const proxy = new Hono<{ Variables: AppVariables }>();
 
-let modelsCache: { data: any; timestamp: number } | null = null;
-let modelsCacheFetch: Promise<any> | null = null;
+let modelsCache: { data: OpenRouterModelsResponse; timestamp: number } | null = null;
+let modelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 const openRouterHeaders = {
@@ -32,7 +58,7 @@ proxy.use((c, next) => {
 
 proxy.use("/v1/models", etag());
 
-function getClientIp(c: any): string {
+function getClientIp(c: Context): string {
   return (
     c.req.header("CF-Connecting-IP") ||
     c.req.header("X-Forwarded-For")?.split(",")[0].trim() ||
@@ -69,7 +95,7 @@ proxy.get("/v1/models", async (c) => {
           },
         });
 
-        const data = (await response.json()) as any;
+        const data = (await response.json()) as OpenRouterModelsResponse;
 
         if (!response.ok || !data.data || !Array.isArray(data.data)) {
           modelsCacheFetch = null;
@@ -82,7 +108,7 @@ proxy.get("/v1/models", async (c) => {
         ];
 
         const allowedSet = new Set(allAllowedModels);
-        data.data = data.data.filter((model: any) => allowedSet.has(model.id));
+        data.data = data.data.filter((model) => allowedSet.has(model.id));
 
         modelsCache = { data, timestamp: now };
         modelsCacheFetch = null;
@@ -166,7 +192,7 @@ proxy.post("/v1/chat/completions", async (c) => {
       );
 
       if (!isStreaming) {
-        const responseData = (await response.json()) as any;
+        const responseData = (await response.json()) as OpenAIChatCompletionResponse;
         const duration = Date.now() - startTime;
 
         const promptTokens = responseData.usage?.prompt_tokens || 0;
@@ -193,7 +219,7 @@ proxy.post("/v1/chat/completions", async (c) => {
             .catch((err) => console.error("Logging error:", err));
         });
 
-        return c.json(responseData, response.status as any);
+        return c.json(responseData, response.status as 200);
       }
 
       return stream(c, async (stream) => {
@@ -232,7 +258,7 @@ proxy.post("/v1/chat/completions", async (c) => {
                   completionTokens = parsed.usage.completion_tokens || 0;
                   totalTokens = parsed.usage.total_tokens || 0;
                 }
-              } catch {}
+              } catch { }
             }
           }
         } finally {
@@ -316,7 +342,7 @@ proxy.post("/v1/embeddings", async (c) => {
         body: JSON.stringify(requestBody),
       });
 
-      const responseData = (await response.json()) as any;
+      const responseData = (await response.json()) as OpenAIEmbeddingsResponse;
       const duration = Date.now() - startTime;
 
       const promptTokens = responseData.usage?.prompt_tokens || 0;
@@ -342,7 +368,7 @@ proxy.post("/v1/embeddings", async (c) => {
           .catch((err) => console.error("Logging error:", err));
       });
 
-      return c.json(responseData, response.status as any);
+      return c.json(responseData, response.status as 200);
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error("Embeddings proxy error:", error);
