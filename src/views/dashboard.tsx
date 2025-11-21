@@ -316,6 +316,20 @@ export const Dashboard = ({
             console.error(error);
           }
         }
+
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape') {
+            if (document.getElementById('createKeyModal').style.display === 'flex') {
+              hideCreateKeyModal();
+            }
+            if (document.getElementById('keyCreatedModal').style.display === 'flex') {
+              hideKeyCreatedModal();
+            }
+            if (document.getElementById('revokeKeyModal').style.display === 'flex') {
+              hideRevokeModal();
+            }
+          }
+        });
       </script>
       `}
     </Layout>
