@@ -13,6 +13,7 @@ import {
   transformerMetaHighlight,
   transformerMetaWordHighlight,
 } from "@shikijs/transformers";
+import { env, allowedEmbeddingModels, allowedLanguageModels } from "../env"
 
 const highlighter = await createHighlighter({
   langs: ["bash", "javascript", "json", "markdown", "python", "typescript"],
@@ -20,7 +21,12 @@ const highlighter = await createHighlighter({
 });
 
 const docsPath = join(process.cwd(), "src", "docs.md");
-const markdownContent = readFileSync(docsPath, "utf-8");
+const exampleModel = allowedLanguageModels[0];
+const exampleEmbeddingModel = allowedEmbeddingModels[0];
+const markdownContent = readFileSync(docsPath, "utf-8")
+  .replace(/{{BASE_URL}}/g, env.BASE_URL)
+  .replace(/{{FIRST_LANGUAGE_MODEL}}/g, exampleModel)
+  .replace(/{{FIRST_EMBEDDING_MODEL}}/g, exampleEmbeddingModel);
 
 const toc: { id: string; text: string; level: number }[] = [];
 const tocRenderer = new Renderer();

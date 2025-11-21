@@ -1,22 +1,10 @@
 import { Layout } from "./layout";
 import { Header } from "./components/Header";
-import { env } from "../env";
 import { htmlContent as preRenderedHtml, toc } from "../lib/docs";
 
 export const Docs = ({
   user,
-  allowedLanguageModels,
-  allowedEmbeddingModels,
 }: any) => {
-  const exampleModel = allowedLanguageModels?.[0] || "gpt-4";
-  const exampleEmbeddingModel =
-    allowedEmbeddingModels?.[0] || "text-embedding-3-large";
-
-  const htmlContent = preRenderedHtml
-    .replace(/{{BASE_URL}}/g, env.BASE_URL)
-    .replace(/{{FIRST_LANGUAGE_MODEL}}/g, exampleModel)
-    .replace(/{{FIRST_EMBEDDING_MODEL}}/g, exampleEmbeddingModel);
-
   return (
     <Layout title="API Documentation">
       {user && <Header title="hackai docs" user={user} showBackToDashboard />}
@@ -78,11 +66,10 @@ export const Docs = ({
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${
-                    item.level === 2
-                      ? "text-brand-heading font-medium"
-                      : "text-brand-text pl-4"
-                  }`}
+                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
+                    ? "text-brand-heading font-medium"
+                    : "text-brand-text pl-4"
+                    }`}
                 >
                   {item.text}
                 </a>
@@ -102,7 +89,7 @@ export const Docs = ({
               prose-code:text-brand-heading
               prose-a:text-brand-primary hover:prose-a:text-brand-primary-hover
               prose-pre:bg-transparent prose-pre:p-0"
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            dangerouslySetInnerHTML={{ __html: preRenderedHtml }}
           />
         </main>
       </div>
