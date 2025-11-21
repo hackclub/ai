@@ -1,12 +1,14 @@
+import * as Sentry from "@sentry/bun";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
-import { db } from "../db";
-import { users, sessions, apiKeys } from "../db/schema";
-import { eq, and, isNull, gt } from "drizzle-orm";
-import type { AppVariables } from "../types";
 import blockedAppsConfig from "../config/blocked-apps.json";
+import blockedPromptsConfig from "../config/blocked-prompts.json";
+import { db } from "../db";
+import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
+import type { AppVariables } from "../types";
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
@@ -31,6 +33,25 @@ export async function blockAICodingAgents(c: Context, next: Next) {
     }
   }
 
+  if (c.req.method === "POST") {
+    try {
+      const clone = c.req.raw.clone();
+      const body = await clone.text();
+
+      for (const blockedPrompt of blockedPromptsConfig.blockedPrompts) {
+        if (body.includes(blockedPrompt)) {
+          throw new HTTPException(403, {
+            message: BLOCKED_MESSAGE,
+            res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
+          });
+        }
+      }
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      // Ignore JSON parse errors or other issues, let the route handle validation
+    }
+  }
+
   await next();
 }
 
@@ -38,25 +59,87 @@ export async function requireAuth(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
 ) {
+  return Sentry.startSpan({ name: "middleware.requireAuth" }, async () => {
+    const sessionToken = getCookie(c, "session_token");
+
+    if (!sessionToken) {
+      return c.redirect("/");
+    }
+
+    const [result] = await Sentry.startSpan(
+      { name: "db.select.session" },
+      async () => {
+        return await db
+          .select({
+            user: users,
+          })
+          .from(sessions)
+          .innerJoin(users, eq(sessions.userId, users.id))
+          .where(
+            and(
+              eq(sessions.token, sessionToken),
+              gt(sessions.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+      },
+    );
+
+    if (!result) {
+      return c.redirect("/");
+    }
+
+    if (result.user.isBanned) {
+      throw new HTTPException(403, {
+        message: "You are banned from using this service.",
+      });
+    }
+
+    c.set("user", result.user);
+    if (env.SENTRY_DSN) {
+      Sentry.setUser({
+        email: result.user.email || undefined,
+        slackId: result.user.slackId,
+        name: result.user.name,
+      });
+    }
+    await next();
+  });
+}
+
+export async function optionalAuth(
+  c: Context<{ Variables: AppVariables }>,
+  next: Next,
+) {
   const sessionToken = getCookie(c, "session_token");
 
   if (!sessionToken) {
-    return c.redirect("/");
+    await next();
+    return;
   }
 
-  const [result] = await db
-    .select({
-      user: users,
-    })
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(
-      and(eq(sessions.token, sessionToken), gt(sessions.expiresAt, new Date())),
-    )
-    .limit(1);
+  const [result] = await Sentry.startSpan(
+    { name: "db.select.session" },
+    async () => {
+      return await db
+        .select({
+          user: users,
+        })
+        .from(sessions)
+        .innerJoin(users, eq(sessions.userId, users.id))
+        .where(
+          and(
+            eq(sessions.token, sessionToken),
+            gt(sessions.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+    },
+  );
 
   if (!result) {
-    return c.redirect("/");
+    await next();
+    return;
   }
 
   c.set("user", result.user);
@@ -67,37 +150,50 @@ export async function requireApiKey(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
 ) {
-  const authHeader = c.req.header("Authorization");
+  return Sentry.startSpan({ name: "middleware.requireApiKey" }, async () => {
+    const authHeader = c.req.header("Authorization");
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new HTTPException(401, { message: "Authentication required" });
-  }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
 
-  const key = authHeader.substring(7);
+    const key = authHeader.substring(7);
 
-  const [apiKey] = await db
-    .select({
-      apiKey: apiKeys,
-      user: users,
-    })
-    .from(apiKeys)
-    .innerJoin(users, eq(apiKeys.userId, users.id))
-    .where(and(eq(apiKeys.key, key), isNull(apiKeys.revokedAt)))
-    .limit(1);
+    const [apiKey] = await Sentry.startSpan(
+      { name: "db.select.apiKey" },
+      async () => {
+        return await db
+          .select({
+            apiKey: apiKeys,
+            user: users,
+          })
+          .from(apiKeys)
+          .innerJoin(users, eq(apiKeys.userId, users.id))
+          .where(and(eq(apiKeys.key, key), isNull(apiKeys.revokedAt)))
+          .limit(1);
+      },
+    );
 
-  if (!apiKey) {
-    throw new HTTPException(401, { message: "Authentication failed" });
-  }
+    if (!apiKey) {
+      throw new HTTPException(401, { message: "Authentication failed" });
+    }
 
-  c.set("apiKey", apiKey.apiKey);
-  c.set("user", apiKey.user);
+    c.set("apiKey", apiKey.apiKey);
+    c.set("user", apiKey.user);
 
-  if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
-    throw new HTTPException(403, {
-      message:
-        "Identity verification required. Please verify at https://identity.hackclub.com",
-    });
-  }
+    if (apiKey.user.isBanned) {
+      throw new HTTPException(403, {
+        message: "You are banned from using this service.",
+      });
+    }
 
-  await next();
+    if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
+      throw new HTTPException(403, {
+        message:
+          "Identity verification required. Please verify at https://identity.hackclub.com",
+      });
+    }
+
+    await next();
+  });
 }

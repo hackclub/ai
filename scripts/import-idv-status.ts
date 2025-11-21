@@ -1,6 +1,6 @@
+import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { users } from "../src/db/schema";
-import { eq } from "drizzle-orm";
 
 async function checkIdvStatus(
   slackId: string,

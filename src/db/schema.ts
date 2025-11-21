@@ -1,12 +1,12 @@
 import {
+  boolean,
+  index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
-  integer,
   uuid,
-  index,
-  jsonb,
-  boolean,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
@@ -20,6 +20,7 @@ export const users = pgTable(
     avatar: text("avatar"),
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
+    isBanned: boolean("is_banned").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -83,6 +84,7 @@ export const requestLogs = pgTable(
       table.timestamp.desc(),
     ),
     index("request_logs_model_idx").on(table.model),
+    index("request_logs_user_id_idx").on(table.userId),
   ],
 );
 

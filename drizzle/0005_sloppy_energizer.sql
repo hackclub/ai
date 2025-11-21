@@ -1,0 +1,1 @@
+CREATE INDEX "request_logs_user_id_idx" ON "request_logs" USING btree ("user_id");

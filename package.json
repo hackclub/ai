@@ -11,16 +11,25 @@
     "db:studio": "drizzle-kit studio",
     "format:check": "biome format",
     "format": "biome format --fix",
+    "typecheck": "tsc --noEmit",
+    "ty": "npm run typecheck",
+    "lint": "biome check",
     "knip": "knip"
   },
   "dependencies": {
     "@hono/arktype-validator": "^2.0.1",
     "@hono/zod-openapi": "^1.1.5",
     "@scalar/hono-api-reference": "^0.9.25",
+    "@sentry/bun": "^10.26.0",
+    "@shikijs/transformers": "^3.15.0",
     "arktype": "^2.1.26",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
-    "postgres": "^3.4.7"
+    "marked": "^17.0.0",
+    "marked-alert": "^2.1.2",
+    "marked-shiki": "^1.2.1",
+    "postgres": "^3.4.7",
+    "shiki": "^3.15.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",

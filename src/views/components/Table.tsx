@@ -1,16 +1,18 @@
-type TableColumn = {
+import type { Child } from "hono/jsx";
+
+type TableColumn<T> = {
   header: string;
-  key?: string;
-  render?: (row: any) => any;
+  key?: keyof T;
+  render?: (row: T) => Child;
 };
 
-type TableProps = {
-  columns: TableColumn[];
-  data: any[];
-  rowClass?: (row: any) => string;
+type TableProps<T> = {
+  columns: TableColumn<T>[];
+  data: T[];
+  rowClass?: (row: T) => string;
 };
 
-export const Table = ({ columns, data, rowClass }: TableProps) => {
+export const Table = <T,>({ columns, data, rowClass }: TableProps<T>) => {
   return (
     <div class="overflow-x-auto border-2 border-brand-border bg-white rounded-2xl shadow-sm transition-colors">
       <table class="w-full border-collapse">
@@ -24,12 +26,13 @@ export const Table = ({ columns, data, rowClass }: TableProps) => {
           </tr>
         </thead>
         <tbody>
-          {data.map((row, idx) => (
+          {data.map((row, _idx) => (
             <tr
               class={`border-b border-brand-border/50 hover:bg-brand-bg/30 transition-colors ${rowClass ? rowClass(row) : ""}`}
             >
               {columns.map((column) => (
                 <td class="py-2 px-4 text-sm text-brand-text font-medium">
+                  {/* biome-ignore lint/style/noNonNullAssertion: TODO */}
                   {column.render ? column.render(row) : row[column.key!]}
                 </td>
               ))}

@@ -2,14 +2,15 @@ import { Button } from "./Button";
 
 export const IdvBanner = () => {
   return (
-    <div class="bg-red-50 dark:bg-mocha-red/30 border-l-4 border-red-500 mx-4 mt-4">
-      <div class="max-w-6xl mx-auto px-4 py-4">
+    <div class="bg-red-100 border-l-4 border-red-500 mx-4 mt-4">
+      <div class="max-w-7xl mx-auto px-4 py-4">
         <div class="flex items-center gap-4">
           <svg
             class="w-6 h-6 text-red-500 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <path
               stroke-linecap="round"
@@ -19,10 +20,10 @@ export const IdvBanner = () => {
             ></path>
           </svg>
           <div class="flex-1">
-            <h3 class="text-sm font-semibold text-red-800 dark:text-mocha-red">
+            <h3 class="text-sm font-semibold text-red-800">
               Identity Verification Required
             </h3>
-            <p class="text-sm text-red-700 dark:text-mocha-red mt-1">
+            <p class="text-sm text-red-700 mt-1">
               You must verify your identity to use the API. API requests are
               currently blocked. Once you're done, sign out and sign back in.
             </p>
@@ -39,6 +40,7 @@ export const IdvBanner = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   stroke-linecap="round"

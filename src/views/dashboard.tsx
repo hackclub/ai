@@ -1,13 +1,30 @@
-import { Layout } from "./layout";
+import { html } from "hono/html";
 import { env } from "../env";
-import { Header } from "./components/Header";
-import { StatCard } from "./components/StatCard";
+import type {
+  DashboardApiKey,
+  DashboardRequestLog,
+  Stats,
+  User,
+} from "../types";
+import { Button } from "./components/Button";
 import { Card } from "./components/Card";
 import { EmptyState } from "./components/EmptyState";
-import { Table } from "./components/Table";
-import { Button } from "./components/Button";
-import { Modal } from "./components/Modal";
+import { Header } from "./components/Header";
 import { IdvBanner } from "./components/IdvBanner";
+import { Modal } from "./components/Modal";
+import { StatCard } from "./components/StatCard";
+import { Table } from "./components/Table";
+import { Layout } from "./layout";
+
+type DashboardProps = {
+  user: User;
+  apiKeys: DashboardApiKey[];
+  stats: Stats;
+  recentLogs: DashboardRequestLog[];
+  allowedLanguageModels: string[];
+  allowedEmbeddingModels: string[];
+  enforceIdv: boolean;
+};
 
 export const Dashboard = ({
   user,
@@ -17,7 +34,7 @@ export const Dashboard = ({
   allowedLanguageModels,
   allowedEmbeddingModels,
   enforceIdv,
-}: any) => {
+}: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
   return (
@@ -27,12 +44,12 @@ export const Dashboard = ({
       {showIdvBanner && <IdvBanner />}
 
       <div
-        class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
+        class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
       >
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">
           Usage Statistics
         </h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-12">
           <StatCard
             value={stats.totalRequests?.toLocaleString() || 0}
             label="Total Requests"
@@ -55,17 +72,18 @@ export const Dashboard = ({
           <h2 class="text-2xl font-bold mb-6 text-brand-heading">
             Allowed Language Models
           </h2>
-          <Card class="p-8">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
               {allowedLanguageModels.map((model: string) => {
                 return (
-                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
+                  <div class="bg-brand-primary text-white sm:bg-brand-bg sm:text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
                     <svg
-                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary hidden sm:flex"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                       stroke-width="2.5"
+                      aria-hidden="true"
                     >
                       <path
                         stroke-linecap="round"
@@ -85,17 +103,18 @@ export const Dashboard = ({
           <h2 class="text-2xl font-bold mb-6 text-brand-heading">
             Allowed Embedding Models
           </h2>
-          <Card class="p-8">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
               {allowedEmbeddingModels.map((model: string) => {
                 return (
-                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
+                  <div class="bg-brand-primary text-white sm:bg-brand-bg sm:text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
                     <svg
-                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary hidden sm:flex"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                       stroke-width="2.5"
+                      aria-hidden="true"
                     >
                       <path
                         stroke-linecap="round"
@@ -142,25 +161,19 @@ export const Dashboard = ({
                   render: (row) => new Date(row.createdAt).toLocaleDateString(),
                 },
                 {
-                  header: "Status",
-                  render: (row) => (row.revokedAt ? "Revoked" : "Active"),
-                },
-                {
                   header: "Actions",
-                  render: (row) =>
-                    !row.revokedAt && (
-                      <Button
-                        variant="danger"
-                        onclick={`revokeKey('${row.id}')`}
-                        class="px-3 text-xs"
-                      >
-                        Revoke
-                      </Button>
-                    ),
+                  render: (row) => (
+                    <Button
+                      variant="danger"
+                      onclick={`showRevokeModal('${row.id}')`}
+                      class="px-3 text-xs"
+                    >
+                      Revoke
+                    </Button>
+                  ),
                 },
               ]}
               data={apiKeys}
-              rowClass={(row) => (row.revokedAt ? "opacity-50 grayscale" : "")}
             />
           )}
         </div>
@@ -208,9 +221,117 @@ export const Dashboard = ({
         )}
       </div>
 
+      <CreateKeyModal allowedLanguageModels={allowedLanguageModels} />
+      <RevokeKeyModal />
+
+      {html`
+      <script>
+        function showCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'flex';
+        }
+
+        function hideCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'none';
+          document.getElementById('keyName').value = '';
+        }
+
+        function hideKeyCreatedModal() {
+          document.getElementById('keyCreatedModal').style.display = 'none';
+          location.reload();
+        }
+
+        async function createKey() {
+          const name = document.getElementById('keyName').value.trim();
+          if (!name) {
+            alert('Please enter a key name');
+            return;
+          }
+
+          try {
+            const response = await fetch('/api/keys', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to create key');
+            }
+
+            const data = await response.json();
+            document.getElementById('newApiKey').textContent = data.key;
+            document.getElementById('curlApiKey').textContent = data.key;
+
+            hideCreateKeyModal();
+            document.getElementById('keyCreatedModal').style.display = 'flex';
+          } catch (error) {
+            alert('Error creating API key');
+            console.error(error);
+          }
+        }
+
+        function showRevokeModal(keyId) {
+          document.getElementById('keyIdToRevoke').value = keyId;
+          document.getElementById('revokeKeyModal').style.display = 'flex';
+        }
+
+        function hideRevokeModal() {
+          document.getElementById('keyIdToRevoke').value = '';
+          document.getElementById('revokeKeyModal').style.display = 'none';
+        }
+
+        async function confirmRevokeKey() {
+          const keyId = document.getElementById('keyIdToRevoke').value;
+          if (!keyId) return;
+
+          try {
+            const response = await fetch('/api/keys/' + keyId, {
+              method: 'DELETE',
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to revoke key');
+            }
+
+            location.reload();
+          } catch (error) {
+            alert('Error revoking API key');
+            console.error(error);
+          }
+        }
+
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape') {
+            if (document.getElementById('createKeyModal').style.display === 'flex') {
+              hideCreateKeyModal();
+            }
+            if (document.getElementById('keyCreatedModal').style.display === 'flex') {
+              hideKeyCreatedModal();
+            }
+            if (document.getElementById('revokeKeyModal').style.display === 'flex') {
+              hideRevokeModal();
+            }
+          }
+        });
+      </script>
+      `}
+    </Layout>
+  );
+};
+
+type CreateKeyModalProps = {
+  allowedLanguageModels: string[];
+};
+
+const CreateKeyModal = ({ allowedLanguageModels }: CreateKeyModalProps) => {
+  return (
+    <>
       <Modal id="createKeyModal" title="Create New API Key">
         <div class="mb-6">
-          <label class="block text-sm font-bold text-brand-heading mb-2">
+          <label
+            class="block text-sm font-bold text-brand-heading mb-2"
+            for="keyName"
+          >
             Key Name
           </label>
           <input
@@ -255,8 +376,11 @@ export const Dashboard = ({
             -H "Content-Type: application/json" \
           </div>
           <div class="whitespace-nowrap pl-4">
-            -d '
-            {`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}
+            -d '{`{"model": "`}
+            <span class="font-bold text-brand-primary">
+              {allowedLanguageModels[0]}
+            </span>
+            {`", "messages": [{"role": "user", "content": "Tell me a joke!"}]}`}
             '
           </div>
         </div>
@@ -264,78 +388,27 @@ export const Dashboard = ({
           <Button onclick="hideKeyCreatedModal()">Done</Button>
         </div>
       </Modal>
+    </>
+  );
+};
 
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            function showCreateKeyModal() {
-              document.getElementById('createKeyModal').style.display = 'flex';
-            }
-
-            function hideCreateKeyModal() {
-              document.getElementById('createKeyModal').style.display = 'none';
-              document.getElementById('keyName').value = '';
-            }
-
-            function hideKeyCreatedModal() {
-              document.getElementById('keyCreatedModal').style.display = 'none';
-              location.reload();
-            }
-
-            async function createKey() {
-              const name = document.getElementById('keyName').value.trim();
-              if (!name) {
-                alert('Please enter a key name');
-                return;
-              }
-
-              try {
-                const response = await fetch('/api/keys', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name }),
-                });
-
-                if (!response.ok) {
-                  throw new Error('Failed to create key');
-                }
-
-                const data = await response.json();
-                document.getElementById('newApiKey').textContent = data.key;
-                // Update the curl command with the new key
-                document.getElementById('curlApiKey').textContent = data.key;
-                
-                hideCreateKeyModal();
-                document.getElementById('keyCreatedModal').style.display = 'flex';
-              } catch (error) {
-                alert('Error creating API key');
-                console.error(error);
-              }
-            }
-
-            async function revokeKey(keyId) {
-              if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) {
-                return;
-              }
-
-              try {
-                const response = await fetch('/api/keys/' + keyId, {
-                  method: 'DELETE',
-                });
-
-                if (!response.ok) {
-                  throw new Error('Failed to revoke key');
-                }
-
-                location.reload();
-              } catch (error) {
-                alert('Error revoking API key');
-                console.error(error);
-              }
-            }
-          `,
-        }}
-      />
-    </Layout>
+const RevokeKeyModal = () => {
+  return (
+    <Modal id="revokeKeyModal" title="Revoke API Key">
+      <p class="mb-6 text-brand-text">
+        Are you sure you want to revoke this API key? This action cannot be
+        undone and any applications using this key will stop working
+        immediately.
+      </p>
+      <input type="hidden" id="keyIdToRevoke" />
+      <div class="flex justify-end gap-3">
+        <Button variant="secondary" onclick="hideRevokeModal()">
+          Cancel
+        </Button>
+        <Button variant="danger" onclick="confirmRevokeKey()">
+          Revoke Key
+        </Button>
+      </div>
+    </Modal>
   );
 };

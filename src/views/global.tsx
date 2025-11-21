@@ -1,19 +1,28 @@
-import { Layout } from "./layout";
+import type { Stats, User } from "../types";
+import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { StatCard } from "./components/StatCard";
-import { EmptyState } from "./components/EmptyState";
 import { Table } from "./components/Table";
+import { Layout } from "./layout";
 
-export const Global = ({ user, globalStats, modelStats }: any) => {
+type ModelStats = Stats & { model: string };
+
+type GlobalProps = {
+  user: User;
+  globalStats: Stats;
+  modelStats: ModelStats[];
+};
+
+export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
   return (
     <Layout title="Global Statistics">
       <Header title="hackai stats" user={user} showBackToDashboard />
 
-      <div class="max-w-6xl mx-auto px-4 py-8">
-        <h2 class="text-xl font-semibold mb-4">
+      <div class="w-full max-w-6xl mx-auto px-4 py-8">
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
           Global Usage Statistics (All Users)
         </h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-12">
           <StatCard
             value={globalStats.totalRequests?.toLocaleString() || 0}
             label="Total Requests"
@@ -32,7 +41,9 @@ export const Global = ({ user, globalStats, modelStats }: any) => {
           />
         </div>
 
-        <h2 class="text-xl font-semibold mb-4">Usage by Model</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+          Usage by Model
+        </h2>
         {modelStats.length === 0 ? (
           <EmptyState message="No usage data yet." />
         ) : (
@@ -66,17 +77,6 @@ export const Global = ({ user, globalStats, modelStats }: any) => {
           />
         )}
       </div>
-
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            function toggleDarkMode() {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('darkMode', isDark);
-            }
-          `,
-        }}
-      />
     </Layout>
   );
 };
