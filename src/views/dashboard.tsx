@@ -1,6 +1,11 @@
 import { html } from "hono/html";
 import { env } from "../env";
-import type { Stats, User } from "../types";
+import type {
+  DashboardApiKey,
+  DashboardRequestLog,
+  Stats,
+  User,
+} from "../types";
 import { Button } from "./components/Button";
 import { Card } from "./components/Card";
 import { EmptyState } from "./components/EmptyState";
@@ -10,22 +15,6 @@ import { Modal } from "./components/Modal";
 import { StatCard } from "./components/StatCard";
 import { Table } from "./components/Table";
 import { Layout } from "./layout";
-
-type DashboardApiKey = {
-  id: string;
-  name: string;
-  keyPreview: string;
-  createdAt: Date;
-  revokedAt: Date | null;
-};
-
-type DashboardRequestLog = {
-  timestamp: Date;
-  model: string;
-  totalTokens: number;
-  duration: number;
-  ip: string;
-};
 
 type DashboardProps = {
   user: User;
