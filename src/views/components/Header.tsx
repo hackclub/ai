@@ -33,6 +33,12 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
             </a>
           )}
           <a
+            href="https://hackclub.slack.com/archives/C099S1LLFFU"
+            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+          >
+            Support/Bug Reports
+          </a>
+          <a
             href="/docs"
             class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
           >

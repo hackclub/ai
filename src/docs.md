@@ -48,6 +48,26 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0].message.content);
 ```
 
+#### Python (OpenAI SDK)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_API_KEY",
+    base_url="{{BASE_URL}}/proxy/v1"
+)
+
+response = client.chat.completions.create(
+    model="{{FIRST_LANGUAGE_MODEL}}",
+    messages=[
+        {"role": "user", "content": "Tell me a joke."}
+    ]
+)
+
+print(response.choices[0].message["content"])
+```
+
 ## Authentication
 
 All API requests require authentication using an API key in the Authorization header as a Bearer token:
