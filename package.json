@@ -9,7 +9,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "formatcheck": "biome format",
+    "format:check": "biome format",
     "format": "biome format --fix",
     "typecheck": "tsc --noEmit",
     "ty": "npm run typecheck",
