@@ -49,7 +49,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
                 `}
               >
                 <div class="flex items-center gap-2 w-full">
-                  <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-brand-bg text-brand-primary border border-brand-primary/20">
+                  <span class="px-3 py-1 rounded-full text-xs font-bold tracking-wider bg-brand-bg text-brand-primary border border-brand-primary/20">
                     {provider}
                   </span>
                   <div class="flex-grow" />

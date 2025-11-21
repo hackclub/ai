@@ -7,6 +7,7 @@ import { eq, and, isNull, gt } from "drizzle-orm";
 import type { AppVariables } from "../types";
 import blockedAppsConfig from "../config/blocked-apps.json";
 import { env } from "../env";
+import * as Sentry from "@sentry/bun";
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
@@ -60,6 +61,13 @@ export async function requireAuth(
   }
 
   c.set("user", result.user);
+  if (env.SENTRY_DSN) {
+    Sentry.setUser({
+      email: result.user.email || undefined,
+      slackId: result.user.slackId,
+      name: result.user.name
+    });
+  }
   await next();
 }
 

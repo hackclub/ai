@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@hono/arktype-validator": "^2.0.1",
+    "@sentry/bun": "^10.26.0",
     "@shikijs/transformers": "^3.15.0",
     "@types/marked": "^6.0.0",
     "arktype": "^2.1.26",

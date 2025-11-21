@@ -13,6 +13,7 @@ const envSchema = type({
   ALLOWED_EMBEDDING_MODELS: "string",
   "NODE_ENV?": "'development' | 'production' | 'test'",
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
+  "SENTRY_DSN?": "string"
 });
 
 const result = envSchema(process.env);

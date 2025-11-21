@@ -1,4 +1,6 @@
+import "./instrument"; // Sentry
 import { Hono } from "hono";
+import * as Sentry from "@sentry/bun";
 import { logger } from "hono/logger";
 import { serveStatic } from "hono/bun";
 import { csrf } from "hono/csrf";
@@ -50,6 +52,9 @@ app.onError((err, c) => {
     return err.getResponse();
   }
   console.error("Unhandled error:", err);
+  if (env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
   return c.json({ error: "Internal server error" }, 500);
 });
 
