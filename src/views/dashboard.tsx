@@ -161,25 +161,19 @@ export const Dashboard = ({
                   render: (row) => new Date(row.createdAt).toLocaleDateString(),
                 },
                 {
-                  header: "Status",
-                  render: (row) => (row.revokedAt ? "Revoked" : "Active"),
-                },
-                {
                   header: "Actions",
-                  render: (row) =>
-                    !row.revokedAt && (
-                      <Button
-                        variant="danger"
-                        onclick={`showRevokeModal('${row.id}')`}
-                        class="px-3 text-xs"
-                      >
-                        Revoke
-                      </Button>
-                    ),
+                  render: (row) => (
+                    <Button
+                      variant="danger"
+                      onclick={`showRevokeModal('${row.id}')`}
+                      class="px-3 text-xs"
+                    >
+                      Revoke
+                    </Button>
+                  ),
                 },
               ]}
               data={apiKeys}
-              rowClass={(row) => (row.revokedAt ? "opacity-50 grayscale" : "")}
             />
           )}
         </div>

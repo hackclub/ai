@@ -9,7 +9,7 @@ export type DashboardRequestLog = Pick<
 >;
 export type DashboardApiKey = Pick<
   ApiKey,
-  "id" | "name" | "createdAt" | "revokedAt"
+  "id" | "name" | "createdAt"
 > & {
   keyPreview: string;
 };

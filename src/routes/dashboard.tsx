@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/bun";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { db } from "../db";
@@ -51,11 +51,10 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
           id: apiKeys.id,
           name: apiKeys.name,
           createdAt: apiKeys.createdAt,
-          revokedAt: apiKeys.revokedAt,
-          keyPreview: sql<string>`CONCAT(SUBSTRING(${apiKeys.key}, 1, 16), '...')`,
+          keyPreview: sql<string>`CONCAT(SUBSTRING(${apiKeys.key}, 1, 24), '...')`,
         })
         .from(apiKeys)
-        .where(eq(apiKeys.userId, user.id))
+        .where(and(eq(apiKeys.userId, user.id), isNull(apiKeys.revokedAt)))
         .orderBy(desc(apiKeys.createdAt));
     },
   );
