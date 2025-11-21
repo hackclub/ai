@@ -1,3 +1,4 @@
+import { html } from "hono/html";
 import { env } from "../env";
 import type { Stats, User } from "../types";
 import { Button } from "./components/Button";
@@ -300,77 +301,74 @@ export const Dashboard = ({
         </div>
       </Modal>
 
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            function showCreateKeyModal() {
-              document.getElementById('createKeyModal').style.display = 'flex';
+      {html`
+      <script>
+        function showCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'flex';
+        }
+
+        function hideCreateKeyModal() {
+          document.getElementById('createKeyModal').style.display = 'none';
+          document.getElementById('keyName').value = '';
+        }
+
+        function hideKeyCreatedModal() {
+          document.getElementById('keyCreatedModal').style.display = 'none';
+          location.reload();
+        }
+
+        async function createKey() {
+          const name = document.getElementById('keyName').value.trim();
+          if (!name) {
+            alert('Please enter a key name');
+            return;
+          }
+
+          try {
+            const response = await fetch('/api/keys', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to create key');
             }
 
-            function hideCreateKeyModal() {
-              document.getElementById('createKeyModal').style.display = 'none';
-              document.getElementById('keyName').value = '';
+            const data = await response.json();
+            document.getElementById('newApiKey').textContent = data.key;
+            document.getElementById('curlApiKey').textContent = data.key;
+
+            hideCreateKeyModal();
+            document.getElementById('keyCreatedModal').style.display = 'flex';
+          } catch (error) {
+            alert('Error creating API key');
+            console.error(error);
+          }
+        }
+
+        async function revokeKey(keyId) {
+          if (!confirm('You sure you want to revoke this API key? This action cannot be undone.')) {
+            return;
+          }
+
+          try {
+            const response = await fetch('/api/keys/' + keyId, {
+              method: 'DELETE',
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to revoke key');
             }
 
-            function hideKeyCreatedModal() {
-              document.getElementById('keyCreatedModal').style.display = 'none';
-              location.reload();
-            }
-
-            async function createKey() {
-              const name = document.getElementById('keyName').value.trim();
-              if (!name) {
-                alert('Please enter a key name');
-                return;
-              }
-
-              try {
-                const response = await fetch('/api/keys', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name }),
-                });
-
-                if (!response.ok) {
-                  throw new Error('Failed to create key');
-                }
-
-                const data = await response.json();
-                document.getElementById('newApiKey').textContent = data.key;
-                // Update the curl command with the new key
-                document.getElementById('curlApiKey').textContent = data.key;
-                
-                hideCreateKeyModal();
-                document.getElementById('keyCreatedModal').style.display = 'flex';
-              } catch (error) {
-                alert('Error creating API key');
-                console.error(error);
-              }
-            }
-
-            async function revokeKey(keyId) {
-              if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) {
-                return;
-              }
-
-              try {
-                const response = await fetch('/api/keys/' + keyId, {
-                  method: 'DELETE',
-                });
-
-                if (!response.ok) {
-                  throw new Error('Failed to revoke key');
-                }
-
-                location.reload();
-              } catch (error) {
-                alert('Error revoking API key');
-                console.error(error);
-              }
-            }
-          `,
-        }}
-      />
+            location.reload();
+          } catch (error) {
+            alert('Error revoking API key');
+            console.error(error);
+          }
+        }
+      </script>
+      `}
     </Layout>
   );
 };

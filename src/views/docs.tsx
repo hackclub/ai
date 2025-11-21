@@ -1,3 +1,4 @@
+import { html } from "hono/html";
 import { htmlContent as preRenderedHtml, toc } from "../lib/docs";
 import type { User } from "../types";
 import { Header } from "./components/Header";
@@ -8,10 +9,9 @@ export const Docs = ({ user }: { user: User | null }) => {
     <Layout title="API Documentation">
       {user && <Header title="hackai docs" user={user} showBackToDashboard />}
 
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        /* codeblock styles */
+      {html`
+      <style>
+      /* codeblock styles */
         pre.shiki {
           background-color: #2d2d2d !important;
           padding: 1rem;
@@ -22,9 +22,7 @@ export const Docs = ({ user }: { user: User | null }) => {
           background-color: transparent !important;
           color: inherit !important;
         }
-        `,
-        }}
-      />
+      </style>`}
 
       <div class="max-w-7xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-12">
         {/* Sidebar TOC */}
