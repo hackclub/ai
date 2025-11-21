@@ -59,7 +59,7 @@ export const Dashboard = ({
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {allowedLanguageModels.map((model: string) => {
                 return (
-                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
+                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
                     <svg
                       class="w-6 h-6 flex-shrink-0 text-brand-primary"
                       fill="none"
