@@ -84,7 +84,7 @@ export const requestLogs = pgTable(
       table.timestamp.desc(),
     ),
     index("request_logs_model_idx").on(table.model),
-    index("request_logs_user_id_idx").on(table.userId)
+    index("request_logs_user_id_idx").on(table.userId),
   ],
 );
 

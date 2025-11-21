@@ -6,6 +6,7 @@ import { users, sessions, apiKeys } from "../db/schema";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import type { AppVariables } from "../types";
 import blockedAppsConfig from "../config/blocked-apps.json";
+import blockedPromptsConfig from "../config/blocked-prompts.json";
 import { env } from "../env";
 import * as Sentry from "@sentry/bun";
 
@@ -29,6 +30,25 @@ export async function blockAICodingAgents(c: Context, next: Next) {
         message: BLOCKED_MESSAGE,
         res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
       });
+    }
+  }
+
+  if (c.req.method === "POST") {
+    try {
+      const clone = c.req.raw.clone();
+      const body = await clone.text();
+
+      for (const blockedPrompt of blockedPromptsConfig.blockedPrompts) {
+        if (body.includes(blockedPrompt)) {
+          throw new HTTPException(403, {
+            message: BLOCKED_MESSAGE,
+            res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
+          });
+        }
+      }
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      // Ignore JSON parse errors or other issues, let the route handle validation
     }
   }
 
@@ -70,7 +90,9 @@ export async function requireAuth(
     }
 
     if (result.user.isBanned) {
-      throw new HTTPException(403, { message: "You are banned from using this service." });
+      throw new HTTPException(403, {
+        message: "You are banned from using this service.",
+      });
     }
 
     c.set("user", result.user);
@@ -160,7 +182,9 @@ export async function requireApiKey(
     c.set("user", apiKey.user);
 
     if (apiKey.user.isBanned) {
-      throw new HTTPException(403, { message: "You are banned from using this service." });
+      throw new HTTPException(403, {
+        message: "You are banned from using this service.",
+      });
     }
 
     if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
