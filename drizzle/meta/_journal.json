@@ -36,6 +36,20 @@
       "when": 1763420299858,
       "tag": "0004_unique_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1763718998151,
+      "tag": "0005_sloppy_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1763719322709,
+      "tag": "0006_lame_dakota_north",
+      "breakpoints": true
     }
   ]
 }

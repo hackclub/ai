@@ -69,6 +69,10 @@ export async function requireAuth(
       return c.redirect("/");
     }
 
+    if (result.user.isBanned) {
+      throw new HTTPException(403, { message: "You are banned from using this service." });
+    }
+
     c.set("user", result.user);
     if (env.SENTRY_DSN) {
       Sentry.setUser({
@@ -154,6 +158,10 @@ export async function requireApiKey(
 
     c.set("apiKey", apiKey.apiKey);
     c.set("user", apiKey.user);
+
+    if (apiKey.user.isBanned) {
+      throw new HTTPException(403, { message: "You are banned from using this service." });
+    }
 
     if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
       throw new HTTPException(403, {
