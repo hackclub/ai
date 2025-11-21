@@ -33,10 +33,11 @@ export const Docs = ({ user }: { user: User | null }) => {
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
-                    ? "text-brand-heading font-medium"
-                    : "text-brand-text pl-4"
-                    }`}
+                  class={`block text-sm hover:text-brand-primary transition-colors ${
+                    item.level === 2
+                      ? "text-brand-heading font-medium"
+                      : "text-brand-text pl-4"
+                  }`}
                 >
                   {item.text}
                 </a>

@@ -41,7 +41,9 @@ export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
           />
         </div>
 
-        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Usage by Model</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+          Usage by Model
+        </h2>
         {modelStats.length === 0 ? (
           <EmptyState message="No usage data yet." />
         ) : (
