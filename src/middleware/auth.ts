@@ -39,36 +39,46 @@ export async function requireAuth(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
 ) {
-  const sessionToken = getCookie(c, "session_token");
+  return Sentry.startSpan({ name: "middleware.requireAuth" }, async () => {
+    const sessionToken = getCookie(c, "session_token");
 
-  if (!sessionToken) {
-    return c.redirect("/");
-  }
+    if (!sessionToken) {
+      return c.redirect("/");
+    }
 
-  const [result] = await db
-    .select({
-      user: users,
-    })
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(
-      and(eq(sessions.token, sessionToken), gt(sessions.expiresAt, new Date())),
-    )
-    .limit(1);
+    const [result] = await Sentry.startSpan(
+      { name: "db.select.session" },
+      async () => {
+        return await db
+          .select({
+            user: users,
+          })
+          .from(sessions)
+          .innerJoin(users, eq(sessions.userId, users.id))
+          .where(
+            and(
+              eq(sessions.token, sessionToken),
+              gt(sessions.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+      },
+    );
 
-  if (!result) {
-    return c.redirect("/");
-  }
+    if (!result) {
+      return c.redirect("/");
+    }
 
-  c.set("user", result.user);
-  if (env.SENTRY_DSN) {
-    Sentry.setUser({
-      email: result.user.email || undefined,
-      slackId: result.user.slackId,
-      name: result.user.name,
-    });
-  }
-  await next();
+    c.set("user", result.user);
+    if (env.SENTRY_DSN) {
+      Sentry.setUser({
+        email: result.user.email || undefined,
+        slackId: result.user.slackId,
+        name: result.user.name,
+      });
+    }
+    await next();
+  });
 }
 
 export async function optionalAuth(
@@ -82,16 +92,24 @@ export async function optionalAuth(
     return;
   }
 
-  const [result] = await db
-    .select({
-      user: users,
-    })
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(
-      and(eq(sessions.token, sessionToken), gt(sessions.expiresAt, new Date())),
-    )
-    .limit(1);
+  const [result] = await Sentry.startSpan(
+    { name: "db.select.session" },
+    async () => {
+      return await db
+        .select({
+          user: users,
+        })
+        .from(sessions)
+        .innerJoin(users, eq(sessions.userId, users.id))
+        .where(
+          and(
+            eq(sessions.token, sessionToken),
+            gt(sessions.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+    },
+  );
 
   if (!result) {
     await next();
@@ -106,37 +124,44 @@ export async function requireApiKey(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
 ) {
-  const authHeader = c.req.header("Authorization");
+  return Sentry.startSpan({ name: "middleware.requireApiKey" }, async () => {
+    const authHeader = c.req.header("Authorization");
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new HTTPException(401, { message: "Authentication required" });
-  }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
 
-  const key = authHeader.substring(7);
+    const key = authHeader.substring(7);
 
-  const [apiKey] = await db
-    .select({
-      apiKey: apiKeys,
-      user: users,
-    })
-    .from(apiKeys)
-    .innerJoin(users, eq(apiKeys.userId, users.id))
-    .where(and(eq(apiKeys.key, key), isNull(apiKeys.revokedAt)))
-    .limit(1);
+    const [apiKey] = await Sentry.startSpan(
+      { name: "db.select.apiKey" },
+      async () => {
+        return await db
+          .select({
+            apiKey: apiKeys,
+            user: users,
+          })
+          .from(apiKeys)
+          .innerJoin(users, eq(apiKeys.userId, users.id))
+          .where(and(eq(apiKeys.key, key), isNull(apiKeys.revokedAt)))
+          .limit(1);
+      },
+    );
 
-  if (!apiKey) {
-    throw new HTTPException(401, { message: "Authentication failed" });
-  }
+    if (!apiKey) {
+      throw new HTTPException(401, { message: "Authentication failed" });
+    }
 
-  c.set("apiKey", apiKey.apiKey);
-  c.set("user", apiKey.user);
+    c.set("apiKey", apiKey.apiKey);
+    c.set("user", apiKey.user);
 
-  if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
-    throw new HTTPException(403, {
-      message:
-        "Identity verification required. Please verify at https://identity.hackclub.com",
-    });
-  }
+    if (env.ENFORCE_IDV && !apiKey.user.skipIdv && !apiKey.user.isIdvVerified) {
+      throw new HTTPException(403, {
+        message:
+          "Identity verification required. Please verify at https://identity.hackclub.com",
+      });
+    }
 
-  await next();
+    await next();
+  });
 }

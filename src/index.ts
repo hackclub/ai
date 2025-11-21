@@ -52,9 +52,7 @@ app.onError((err, c) => {
     return err.getResponse();
   }
   console.error("Unhandled error:", err);
-  if (env.SENTRY_DSN) {
-    Sentry.captureException(err);
-  }
+  Sentry.captureException(err);
   return c.json({ error: "Internal server error" }, 500);
 });
 

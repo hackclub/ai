@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import * as Sentry from "@sentry/bun";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { users, sessions } from "../db/schema";
@@ -65,141 +66,166 @@ function parseJwt(slackIdToken: string) {
 }
 
 auth.get("/login", (c) => {
-  const clientId = env.SLACK_CLIENT_ID;
-  const redirectUri = `${env.BASE_URL}/auth/callback`;
-  const slackAuthUrl = `https://hackclub.slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=openid,profile,email&redirect_uri=${redirectUri}`;
-  return c.redirect(slackAuthUrl);
+  return Sentry.startSpan({ name: "GET /login" }, () => {
+    const clientId = env.SLACK_CLIENT_ID;
+    const redirectUri = `${env.BASE_URL}/auth/callback`;
+    const slackAuthUrl = `https://hackclub.slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=openid,profile,email&redirect_uri=${redirectUri}`;
+    return c.redirect(slackAuthUrl);
+  });
 });
 
 auth.get("/callback", async (c) => {
-  const code = c.req.query("code");
+  return Sentry.startSpan({ name: "GET /callback" }, async () => {
+    const code = c.req.query("code");
 
-  if (!code) {
-    return c.redirect("/");
-  }
+    if (!code) {
+      return c.redirect("/");
+    }
 
-  try {
-    const exchangeUrl = new URL("https://slack.com/api/openid.connect.token");
-    const exchangeSearchParams = exchangeUrl.searchParams;
-    exchangeSearchParams.append("client_id", env.SLACK_CLIENT_ID);
-    exchangeSearchParams.append("client_secret", env.SLACK_CLIENT_SECRET);
-    exchangeSearchParams.append("code", code);
-    exchangeSearchParams.append(
-      "redirect_uri",
-      `${env.BASE_URL}/auth/callback`,
-    );
+    try {
+      const exchangeUrl = new URL("https://slack.com/api/openid.connect.token");
+      const exchangeSearchParams = exchangeUrl.searchParams;
+      exchangeSearchParams.append("client_id", env.SLACK_CLIENT_ID);
+      exchangeSearchParams.append("client_secret", env.SLACK_CLIENT_SECRET);
+      exchangeSearchParams.append("code", code);
+      exchangeSearchParams.append(
+        "redirect_uri",
+        `${env.BASE_URL}/auth/callback`,
+      );
 
-    const oidcResponse = await fetch(exchangeUrl, { method: "POST" });
+      const oidcResponse = await fetch(exchangeUrl, { method: "POST" });
 
-    if (oidcResponse.status !== 200) {
-      throw new HTTPException(400, {
-        message: "Bad Slack OpenID response status",
+      if (oidcResponse.status !== 200) {
+        throw new HTTPException(400, {
+          message: "Bad Slack OpenID response status",
+        });
+      }
+
+      const responseJson = (await oidcResponse.json()) as any;
+
+      if (!responseJson.ok) {
+        console.error(responseJson);
+        throw new HTTPException(401, {
+          message:
+            responseJson.error === "invalid_code"
+              ? "Invalid Slack OAuth code"
+              : "Bad Slack OpenID response",
+        });
+      }
+
+      const jwt = parseJwt(responseJson.id_token);
+      const slackId = jwt["https://slack.com/user_id"];
+      const slackTeamId = jwt["https://slack.com/team_id"];
+      const avatarUrl = jwt.picture;
+      const displayName = jwt.name;
+      const email = jwt.email;
+
+      if (slackTeamId !== env.SLACK_TEAM_ID) {
+        throw new HTTPException(403, {
+          message: "Access denied: Invalid workspace",
+        });
+      }
+
+      let [user] = await Sentry.startSpan(
+        { name: "db.select.userBySlackId" },
+        async () => {
+          return await db
+            .select()
+            .from(users)
+            .where(eq(users.slackId, slackId))
+            .limit(1);
+        },
+      );
+
+      const isIdvVerified = await checkIdvStatus(slackId, email);
+
+      if (!user) {
+        [user] = await Sentry.startSpan(
+          { name: "db.insert.user" },
+          async () => {
+            return await db
+              .insert(users)
+              .values({
+                slackId,
+                slackTeamId,
+                email,
+                name: displayName,
+                avatar: avatarUrl,
+                isIdvVerified,
+              })
+              .returning();
+          },
+        );
+      } else {
+        [user] = await Sentry.startSpan(
+          { name: "db.update.user" },
+          async () => {
+            return await db
+              .update(users)
+              .set({
+                email,
+                name: displayName,
+                avatar: avatarUrl,
+                isIdvVerified,
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, user.id))
+              .returning();
+          },
+        );
+      }
+
+      const sessionToken = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      await Sentry.startSpan({ name: "db.insert.session" }, async () => {
+        await db.insert(sessions).values({
+          userId: user.id,
+          token: sessionToken,
+          expiresAt,
+        });
       });
-    }
 
-    const responseJson = (await oidcResponse.json()) as any;
-
-    if (!responseJson.ok) {
-      console.error(responseJson);
-      throw new HTTPException(401, {
-        message:
-          responseJson.error === "invalid_code"
-            ? "Invalid Slack OAuth code"
-            : "Bad Slack OpenID response",
+      setCookie(c, "session_token", sessionToken, {
+        httpOnly: true,
+        secure: env.NODE_ENV === "production",
+        sameSite: "Lax",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
       });
+
+      return c.redirect("/dashboard");
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+      console.error("Auth error:", error);
+      throw new HTTPException(500, { message: "Authentication error" });
     }
-
-    const jwt = parseJwt(responseJson.id_token);
-    const slackId = jwt["https://slack.com/user_id"];
-    const slackTeamId = jwt["https://slack.com/team_id"];
-    const avatarUrl = jwt.picture;
-    const displayName = jwt.name;
-    const email = jwt.email;
-
-    if (slackTeamId !== env.SLACK_TEAM_ID) {
-      throw new HTTPException(403, {
-        message: "Access denied: Invalid workspace",
-      });
-    }
-
-    let [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.slackId, slackId))
-      .limit(1);
-
-    const isIdvVerified = await checkIdvStatus(slackId, email);
-
-    if (!user) {
-      [user] = await db
-        .insert(users)
-        .values({
-          slackId,
-          slackTeamId,
-          email,
-          name: displayName,
-          avatar: avatarUrl,
-          isIdvVerified,
-        })
-        .returning();
-    } else {
-      [user] = await db
-        .update(users)
-        .set({
-          email,
-          name: displayName,
-          avatar: avatarUrl,
-          isIdvVerified,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, user.id))
-        .returning();
-    }
-
-    const sessionToken = crypto.randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await db.insert(sessions).values({
-      userId: user.id,
-      token: sessionToken,
-      expiresAt,
-    });
-
-    setCookie(c, "session_token", sessionToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "Lax",
-      maxAge: 60 * 60 * 24 * 30,
-      path: "/",
-    });
-
-    return c.redirect("/dashboard");
-  } catch (error) {
-    if (error instanceof HTTPException) {
-      throw error;
-    }
-    console.error("Auth error:", error);
-    throw new HTTPException(500, { message: "Authentication error" });
-  }
+  });
 });
 
 auth.get("/logout", async (c) => {
-  const sessionToken = getCookie(c, "session_token");
+  return Sentry.startSpan({ name: "GET /logout" }, async () => {
+    const sessionToken = getCookie(c, "session_token");
 
-  if (sessionToken) {
-    await db.delete(sessions).where(eq(sessions.token, sessionToken));
-  }
+    if (sessionToken) {
+      await Sentry.startSpan({ name: "db.delete.session" }, async () => {
+        await db.delete(sessions).where(eq(sessions.token, sessionToken));
+      });
+    }
 
-  setCookie(c, "session_token", "", {
-    httpOnly: true,
-    secure: env.NODE_ENV === "production",
-    sameSite: "Lax",
-    maxAge: 0,
-    path: "/",
+    setCookie(c, "session_token", "", {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "Lax",
+      maxAge: 0,
+      path: "/",
+    });
+
+    return c.redirect("/");
   });
-
-  return c.redirect("/");
 });
 
 export default auth;
