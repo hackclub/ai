@@ -13,7 +13,7 @@ import {
   transformerMetaHighlight,
   transformerMetaWordHighlight,
 } from "@shikijs/transformers";
-import { env, allowedEmbeddingModels, allowedLanguageModels } from "../env"
+import { env, allowedEmbeddingModels, allowedLanguageModels } from "../env";
 
 const highlighter = await createHighlighter({
   langs: ["bash", "javascript", "json", "markdown", "python", "typescript"],

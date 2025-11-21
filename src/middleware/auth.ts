@@ -65,7 +65,7 @@ export async function requireAuth(
     Sentry.setUser({
       email: result.user.email || undefined,
       slackId: result.user.slackId,
-      name: result.user.name
+      name: result.user.name,
     });
   }
   await next();
