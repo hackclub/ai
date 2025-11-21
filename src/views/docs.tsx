@@ -10,37 +10,7 @@ export const Docs = ({ user }: any) => {
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        /* Markdown Alert Styles */
-        .markdown-alert {
-          padding: 0.5rem 1rem;
-          margin-bottom: 1rem;
-          border-left-width: 4px;
-          border-radius: 0.25rem;
-        }
-        
-        .markdown-alert-title {
-          display: flex;
-          align-items: center;
-          font-weight: 600;
-          margin-bottom: 0.25rem;
-        }
-
-        .markdown-alert-note { background-color: #eff6ff; border-left-color: #3b82f6; color: #1e40af; }
-        .markdown-alert-note .markdown-alert-title { color: #1e40af; }
-
-        .markdown-alert-tip { background-color: #f0fdf4; border-left-color: #22c55e; color: #15803d; }
-        .markdown-alert-tip .markdown-alert-title { color: #15803d; }
-
-        .markdown-alert-important { background-color: #faf5ff; border-left-color: #a855f7; color: #7e22ce; }
-        .markdown-alert-important .markdown-alert-title { color: #7e22ce; }
-
-        .markdown-alert-warning { background-color: #fefce8; border-left-color: #eab308; color: #854d0e; }
-        .markdown-alert-warning .markdown-alert-title { color: #854d0e; }
-
-        .markdown-alert-caution { background-color: #fef2f2; border-left-color: #ef4444; color: #991b1b; }
-        .markdown-alert-caution .markdown-alert-title { color: #991b1b; }
-
-        /* Shiki Code Block Styles */
+        /* codeblock styles */
         pre.shiki {
           background-color: #2d2d2d !important;
           padding: 1rem;
@@ -51,7 +21,7 @@ export const Docs = ({ user }: any) => {
           background-color: transparent !important;
           color: inherit !important;
         }
-      `,
+        `,
         }}
       />
 
@@ -64,11 +34,10 @@ export const Docs = ({ user }: any) => {
               {toc.map((item) => (
                 <a
                   href={`#${item.id}`}
-                  class={`block text-sm hover:text-brand-primary transition-colors ${
-                    item.level === 2
-                      ? "text-brand-heading font-medium"
-                      : "text-brand-text pl-4"
-                  }`}
+                  class={`block text-sm hover:text-brand-primary transition-colors ${item.level === 2
+                    ? "text-brand-heading font-medium"
+                    : "text-brand-text pl-4"
+                    }`}
                 >
                   {item.text}
                 </a>
