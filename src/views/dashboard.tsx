@@ -255,8 +255,11 @@ export const Dashboard = ({
             -H "Content-Type: application/json" \
           </div>
           <div class="whitespace-nowrap pl-4">
-            -d '
-            {`{"model": "`}<span class="font-bold text-brand-primary">{allowedLanguageModels[0]}</span>{`", "messages": [{"role": "user", "content": "Tell me a joke!"}]}`}
+            -d '{`{"model": "`}
+            <span class="font-bold text-brand-primary">
+              {allowedLanguageModels[0]}
+            </span>
+            {`", "messages": [{"role": "user", "content": "Tell me a joke!"}]}`}
             '
           </div>
         </div>

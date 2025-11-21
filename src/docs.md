@@ -8,7 +8,7 @@ This is a lightweight AI proxy providing access to language models and embedding
 
 Create an API key from your [dashboard](/dashboard). Give it a descriptive name and make sure not to share it!
 
-<video controls width="100%" src="https://hc-cdn.hel1.your-objectstorage.com/s/v3/620e1c22bd7dd2b81ca871353636f8d0afa27fed_screen_recording_2025-11-19_at_21.40.33.mp4" class="shadow-md rounded-md" autoplay></video>
+<video controls width="100%" src="https://hc-cdn.hel1.your-objectstorage.com/s/v3/620e1c22bd7dd2b81ca871353636f8d0afa27fed_screen_recording_2025-11-19_at_21.40.33.mp4" class="shadow-md rounded-md" autoplay muted></video>
 
 ### Make your first request
 
