@@ -256,7 +256,7 @@ export const Dashboard = ({
           </div>
           <div class="whitespace-nowrap pl-4">
             -d '
-            {`{"model": "${allowedLanguageModels?.[0] || "gpt-4"}", "messages": [{"role": "user", "content": "Hello"}]}`}
+            {`{"model": "`}<span class="font-bold text-brand-primary">{allowedLanguageModels[0]}</span>{`", "messages": [{"role": "user", "content": "Tell me a joke!"}]}`}
             '
           </div>
         </div>
