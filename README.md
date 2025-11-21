@@ -7,6 +7,8 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 - chat and embedding model support
 - global analytics
 - usage statistic logging
+- (optional) sentry support
+- coding tool (e.g. copilot, cursor) blocking
 
 is it the best code? probably not. but hey, it works!
 
@@ -40,4 +42,6 @@ DATABASE_URL=
 BASE_URL=https://ai.hackclub.com
 NODE_ENV=production # not needed for docker compose
 PORT=54321 # not needed for docker compose
+
+SENTRY_DSN= # sentry.io support (optional)
 ```
