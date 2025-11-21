@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { csrf } from "hono/csrf";
+import { showRoutes } from "hono/dev";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import type { RequestIdVariables } from "hono/request-id";
@@ -65,7 +66,7 @@ app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
 
-console.log(`Server running on http://localhost:${env.PORT}`);
+showRoutes(app);
 
 export default {
   port: env.PORT,

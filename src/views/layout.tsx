@@ -1,5 +1,5 @@
-import type { Child } from "hono/jsx";
 import { html } from "hono/html";
+import type { Child } from "hono/jsx";
 
 export const Layout = ({
   children,
