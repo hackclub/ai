@@ -18,11 +18,11 @@ export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
     <Layout title="Global Statistics">
       <Header title="hackai stats" user={user} showBackToDashboard />
 
-      <div class="max-w-6xl mx-auto px-4 py-8">
-        <h2 class="text-xl font-semibold mb-4">
+      <div class="w-full max-w-6xl mx-auto px-4 py-8">
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">
           Global Usage Statistics (All Users)
         </h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-12">
           <StatCard
             value={globalStats.totalRequests?.toLocaleString() || 0}
             label="Total Requests"
@@ -41,7 +41,7 @@ export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
           />
         </div>
 
-        <h2 class="text-xl font-semibold mb-4">Usage by Model</h2>
+        <h2 class="text-2xl font-bold mb-6 text-brand-heading">Usage by Model</h2>
         {modelStats.length === 0 ? (
           <EmptyState message="No usage data yet." />
         ) : (

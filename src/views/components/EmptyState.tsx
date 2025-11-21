@@ -7,7 +7,7 @@ type EmptyStateProps = {
 export const EmptyState = ({ message }: EmptyStateProps) => {
   return (
     <Card class="p-8">
-      <p class="text-center text-lg font-semibold">{message}</p>
+      <p class="text-center sm:text-lg font-semibold">{message}</p>
     </Card>
   );
 };

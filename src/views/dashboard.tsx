@@ -44,12 +44,12 @@ export const Dashboard = ({
       {showIdvBanner && <IdvBanner />}
 
       <div
-        class={`max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
+        class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner && "grayscale opacity-20"}`}
       >
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">
           Usage Statistics
         </h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-12">
           <StatCard
             value={stats.totalRequests?.toLocaleString() || 0}
             label="Total Requests"
@@ -72,13 +72,13 @@ export const Dashboard = ({
           <h2 class="text-2xl font-bold mb-6 text-brand-heading">
             Allowed Language Models
           </h2>
-          <Card class="p-8">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
               {allowedLanguageModels.map((model: string) => {
                 return (
-                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
+                  <div class="bg-brand-primary text-white sm:bg-brand-bg sm:text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
                     <svg
-                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary hidden sm:flex"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -103,13 +103,13 @@ export const Dashboard = ({
           <h2 class="text-2xl font-bold mb-6 text-brand-heading">
             Allowed Embedding Models
           </h2>
-          <Card class="p-8">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
               {allowedEmbeddingModels.map((model: string) => {
                 return (
-                  <div class="bg-brand-bg text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02] hover:shadow-sm">
+                  <div class="bg-brand-primary text-white sm:bg-brand-bg sm:text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4 transition-all hover:scale-[1.02]">
                     <svg
-                      class="w-6 h-6 flex-shrink-0 text-brand-primary"
+                      class="w-6 h-6 flex-shrink-0 text-brand-primary hidden sm:flex"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
