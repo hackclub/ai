@@ -5,8 +5,8 @@ import { type } from "arktype";
 import { HTTPException } from "hono/http-exception";
 import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
-import { apiKeys, requestLogs } from "../db/schema";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { apiKeys } from "../db/schema";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import type { AppVariables } from "../types";
 
 const api = new Hono<{ Variables: AppVariables }>();
@@ -60,31 +60,6 @@ api.post("/keys", arktypeValidator("json", createKeySchema), async (c) => {
   });
 });
 
-api.get("/keys", async (c) => {
-  return Sentry.startSpan({ name: "GET /keys" }, async () => {
-    const user = c.get("user");
-
-    const keys = await Sentry.startSpan(
-      { name: "db.select.apiKeys" },
-      async () => {
-        return await db
-          .select({
-            id: apiKeys.id,
-            name: apiKeys.name,
-            createdAt: apiKeys.createdAt,
-            revokedAt: apiKeys.revokedAt,
-            keyPreview: sql`CONCAT(SUBSTRING(${apiKeys.key}, 1, 10), '...')`,
-          })
-          .from(apiKeys)
-          .where(eq(apiKeys.userId, user.id))
-          .orderBy(desc(apiKeys.createdAt));
-      },
-    );
-
-    return c.json(keys);
-  });
-});
-
 api.delete("/keys/:id", async (c) => {
   return Sentry.startSpan({ name: "DELETE /keys/:id" }, async () => {
     const user = c.get("user");
@@ -102,7 +77,7 @@ api.delete("/keys/:id", async (c) => {
     );
 
     if (!apiKey) {
-      throw new HTTPException(404, { message: "Operation failed" });
+      throw new HTTPException(400, { message: "Operation failed" });
     }
 
     await Sentry.startSpan({ name: "db.update.revokeApiKey" }, async () => {
@@ -113,51 +88,6 @@ api.delete("/keys/:id", async (c) => {
     });
 
     return c.json({ success: true });
-  });
-});
-
-api.get("/stats", async (c) => {
-  return Sentry.startSpan({ name: "GET /stats" }, async () => {
-    const user = c.get("user");
-
-    const stats = await Sentry.startSpan(
-      { name: "db.select.userStats" },
-      async () => {
-        return await db
-          .select({
-            totalRequests: sql<number>`COUNT(*)::int`,
-            totalTokens: sql<number>`SUM(${requestLogs.totalTokens})::int`,
-            totalPromptTokens: sql<number>`SUM(${requestLogs.promptTokens})::int`,
-            totalCompletionTokens: sql<number>`SUM(${requestLogs.completionTokens})::int`,
-          })
-          .from(requestLogs)
-          .where(eq(requestLogs.userId, user.id));
-      },
-    );
-
-    const recentLogs = await Sentry.startSpan(
-      { name: "db.select.recentLogs" },
-      async () => {
-        return await db
-          .select({
-            id: requestLogs.id,
-            model: requestLogs.model,
-            totalTokens: requestLogs.totalTokens,
-            timestamp: requestLogs.timestamp,
-            duration: requestLogs.duration,
-            ip: requestLogs.ip,
-          })
-          .from(requestLogs)
-          .where(eq(requestLogs.userId, user.id))
-          .orderBy(desc(requestLogs.timestamp))
-          .limit(50);
-      },
-    );
-
-    return c.json({
-      stats: stats[0],
-      recentLogs,
-    });
   });
 });
 

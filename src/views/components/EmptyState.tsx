@@ -4,8 +4,8 @@ type EmptyStateProps = {
 
 export const EmptyState = ({ message }: EmptyStateProps) => {
   return (
-    <div class="border border-gray-200 bg-white p-6 transition-colors">
-      <p class="text-sm text-gray-600">{message}</p>
+    <div class="border-2 border-brand-border bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+      <p class="text-brand-text font-medium">{message}</p>
     </div>
   );
 };

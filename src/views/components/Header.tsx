@@ -1,7 +1,3 @@
-import { GlobalStatsButton } from "./GlobalStatsButton";
-import { DocsButton } from "./DocsButton";
-import { Button } from "./Button";
-
 type HeaderProps = {
   title: string;
   user: { name: string; avatar?: string };

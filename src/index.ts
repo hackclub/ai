@@ -17,6 +17,7 @@ import proxy from "./routes/proxy";
 import api from "./routes/api";
 import docs from "./routes/docs";
 import dashboard from "./routes/dashboard";
+import global from "./routes/global";
 import { runMigrations } from "./migrate";
 import type { AppVariables } from "./types";
 import { dns } from "bun";
@@ -61,6 +62,7 @@ app.route("/auth", auth);
 app.route("/proxy", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
+app.route("/global", global);
 
 console.log(`Server running on http://localhost:${env.PORT}`);
 
