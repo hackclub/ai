@@ -1,7 +1,7 @@
 import { type } from "arktype";
 import { allowedEmbeddingModels, allowedLanguageModels } from "./env";
 
-export const ModelSchema = type({
+const ModelSchema = type({
   id: type("string").describe(
     `The ID of the model you want to use - e.g. ${allowedLanguageModels[0]}`,
   ),
@@ -87,12 +87,12 @@ export const StatsSchema = type({
   ),
 });
 
-export const TextContentSchema = type({
+const TextContentSchema = type({
   type: type("'text'").describe("The type of the content part"),
   text: type("string").describe("The text content"),
 });
 
-export const ImageContentSchema = type({
+const ImageContentSchema = type({
   type: type("'image_url'").describe("The type of the content part"),
   image_url: type({
     url: type("string").describe("The URL of the image"),
@@ -100,9 +100,9 @@ export const ImageContentSchema = type({
   }).describe("The image URL details"),
 });
 
-export const ContentPartSchema = TextContentSchema.or(ImageContentSchema);
+const ContentPartSchema = TextContentSchema.or(ImageContentSchema);
 
-export const MessageSchema = type({
+const MessageSchema = type({
   role: type("string").describe("The role of the message sender"),
   content: type("string")
     .or(ContentPartSchema.array())
