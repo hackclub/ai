@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import * as Sentry from "@sentry/bun";
 import { eq, sql } from "drizzle-orm";
-import { type Context } from "hono";
+import type { Context } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
@@ -644,7 +644,7 @@ proxy.get("/openapi.json", async (c) => {
     if (doc.paths?.["/v1/models"]?.get) {
       doc.paths["/v1/models"].get.security = [];
     }
-  } catch (e) {}
+  } catch (_e) {}
 
   return c.json(doc);
 });
