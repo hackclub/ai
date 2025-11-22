@@ -36,8 +36,7 @@ const proxy = new Hono<{ Variables: AppVariables }>();
 // #region OpenAPI schemas & routes
 
 const modelsRoute = describeRoute({
-  tags: ["Models"],
-  summary: "Get Available Models",
+  summary: "Get available models",
   description:
     "List all available models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
   responses: {
@@ -53,8 +52,7 @@ const modelsRoute = describeRoute({
 });
 
 const statsRoute = describeRoute({
-  tags: ["Stats"],
-  summary: "Get Token Usage Statistics",
+  summary: "Get token usage statistics",
   description:
     "Get token usage statistics for your account. This includes total requests made, tokens consumed (prompt + completion), and breakdowns by token type. Useful for monitoring your API usage and costs.",
   security: [{ Bearer: [] }],
@@ -71,8 +69,7 @@ const statsRoute = describeRoute({
 });
 
 const chatRoute = describeRoute({
-  tags: ["Chat"],
-  summary: "Create Chat Completion",
+  summary: "Create chat completion",
   description:
     "Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes. Compatible with [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). You can use this to integrate with existing OpenAI-compatible libraries and tools.",
   security: [{ Bearer: [] }],
@@ -89,8 +86,7 @@ const chatRoute = describeRoute({
 });
 
 const embeddingsRoute = describeRoute({
-  tags: ["Embeddings"],
-  summary: "Create Embeddings",
+  summary: "Create embeddings",
   description:
     "Generate vector embeddings from text input. You can then store these embeddings in a vector database like [Pinecone](https://www.pinecone.io/) or [pgvector](https://github.com/pgvector/pgvector). Compatible with [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create).",
   security: [{ Bearer: [] }],
@@ -339,7 +335,7 @@ proxy.post(
                     completionTokens = parsed.usage.completion_tokens || 0;
                     totalTokens = parsed.usage.total_tokens || 0;
                   }
-                } catch {}
+                } catch { }
               }
             }
           } finally {
