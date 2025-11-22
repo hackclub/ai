@@ -5,6 +5,8 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 - slack auth
 - API keys
 - chat and embedding model support
+- moderation model support
+  - (OpenAI's one is free, but it needs an active balance to be able to use it. if you don't want to/can't add payment details to OpenAI's portal and buy credits, we've got you covered.) 
 - global analytics
 - usage statistic logging
 - (optional) sentry support
