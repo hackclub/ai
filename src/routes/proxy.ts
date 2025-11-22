@@ -1,41 +1,112 @@
 import * as Sentry from "@sentry/bun";
+import type { type } from "arktype";
 import { eq, sql } from "drizzle-orm";
-import { type Context, Hono } from "hono";
+import { type Context, Hono, type TypedResponse } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
+import {
+  describeRoute,
+  openAPIRouteHandler,
+  resolver,
+  validator,
+} from "hono-openapi";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
+import {
+  ChatCompletionRequestSchema,
+  ChatCompletionResponseSchema,
+  EmbeddingsRequestSchema,
+  EmbeddingsResponseSchema,
+  ModelsResponseSchema,
+  StatsSchema,
+} from "../openapi";
 import type { AppVariables } from "../types";
 
-interface OpenRouterModel {
-  id: string;
-  [key: string]: unknown;
-}
-
-interface OpenRouterModelsResponse {
-  data: OpenRouterModel[];
-}
-
-interface OpenAIUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface OpenAIChatCompletionResponse {
-  usage?: OpenAIUsage;
-  [key: string]: unknown;
-}
-
-interface OpenAIEmbeddingsResponse {
-  usage?: OpenAIUsage;
-  [key: string]: unknown;
-}
+type OpenAIChatCompletionResponse = type.infer<
+  typeof ChatCompletionResponseSchema
+>;
+type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
+type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 const proxy = new Hono<{ Variables: AppVariables }>();
+
+// #region OpenAPI schemas & routes
+
+const modelsRoute = describeRoute({
+  tags: ["Models"],
+  summary: "Get Available Models",
+  description:
+    "List all available models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(ModelsResponseSchema),
+        },
+      },
+    },
+  },
+});
+
+const statsRoute = describeRoute({
+  tags: ["Stats"],
+  summary: "Get Token Usage Statistics",
+  description:
+    "Get token usage statistics for your account. This includes total requests made, tokens consumed (prompt + completion), and breakdowns by token type. Useful for monitoring your API usage and costs.",
+  security: [{ Bearer: [] }],
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(StatsSchema),
+        },
+      },
+    },
+  },
+});
+
+const chatRoute = describeRoute({
+  tags: ["Chat"],
+  summary: "Create Chat Completion",
+  description:
+    "Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes. Compatible with [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). You can use this to integrate with existing OpenAI-compatible libraries and tools.",
+  security: [{ Bearer: [] }],
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(ChatCompletionResponseSchema),
+        },
+      },
+    },
+  },
+});
+
+const embeddingsRoute = describeRoute({
+  tags: ["Embeddings"],
+  summary: "Create Embeddings",
+  description:
+    "Generate vector embeddings from text input. You can then store these embeddings in a vector database like [Pinecone](https://www.pinecone.io/) or [pgvector](https://github.com/pgvector/pgvector). Compatible with [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create).",
+  security: [{ Bearer: [] }],
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(EmbeddingsResponseSchema),
+        },
+      },
+    },
+  },
+});
+
+// #endregion
 
 let modelsCache: { data: OpenRouterModelsResponse; timestamp: number } | null =
   null;
@@ -50,7 +121,10 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path.endsWith("/v1/models")) {
+  if (
+    c.req.path.endsWith("/v1/models") ||
+    c.req.path.endsWith("/openapi.json")
+  ) {
     return next();
   }
   return requireApiKey(c, next);
@@ -67,7 +141,7 @@ function getClientIp(c: Context): string {
   );
 }
 
-proxy.get("/v1/models", async (c) => {
+proxy.get("/v1/models", modelsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /v1/models" }, async () => {
     const now = Date.now();
 
@@ -130,7 +204,7 @@ proxy.get("/v1/models", async (c) => {
   });
 });
 
-proxy.get("/v1/stats", async (c) => {
+proxy.get("/v1/stats", statsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /v1/stats" }, async () => {
     const user = c.get("user");
 
@@ -156,116 +230,57 @@ proxy.get("/v1/stats", async (c) => {
         totalPromptTokens: 0,
         totalCompletionTokens: 0,
       },
+      200,
     );
   });
 });
 
-proxy.post("/v1/chat/completions", async (c) => {
-  return Sentry.startSpan({ name: "POST /v1/chat/completions" }, async () => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
+proxy.post(
+  "/v1/chat/completions",
+  chatRoute,
+  validator("json", ChatCompletionRequestSchema),
+  async (c) => {
+    return Sentry.startSpan({ name: "POST /v1/chat/completions" }, async () => {
+      const apiKey = c.get("apiKey");
+      const user = c.get("user");
+      const startTime = Date.now();
 
-    try {
-      const requestBody = await c.req.json();
+      try {
+        const requestBody = c.req.valid("json");
 
-      const allowedSet = new Set(allowedLanguageModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedLanguageModels[0];
-      }
-
-      requestBody.user = `user_${user.id}`;
-
-      const isStreaming = requestBody.stream === true;
-
-      const response = await fetch(
-        `${env.OPENAI_API_URL}/v1/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-            ...openRouterHeaders,
-          },
-          body: JSON.stringify(requestBody),
-        },
-      );
-
-      if (!isStreaming) {
-        const responseData =
-          (await response.json()) as OpenAIChatCompletionResponse;
-        const duration = Date.now() - startTime;
-
-        const promptTokens = responseData.usage?.prompt_tokens || 0;
-        const completionTokens = responseData.usage?.completion_tokens || 0;
-        const totalTokens = responseData.usage?.total_tokens || 0;
-
-        Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-          await db
-            .insert(requestLogs)
-            .values({
-              apiKeyId: apiKey.id,
-              userId: user.id,
-              slackId: user.slackId,
-              model: requestBody.model,
-              promptTokens,
-              completionTokens,
-              totalTokens,
-              request: requestBody,
-              response: responseData,
-              ip: getClientIp(c),
-              timestamp: new Date(),
-              duration,
-            })
-            .catch((err) => console.error("Logging error:", err));
-        });
-
-        return c.json(responseData, response.status as 200);
-      }
-
-      return stream(c, async (stream) => {
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("No response body");
+        const allowedSet = new Set(allowedLanguageModels);
+        if (!allowedSet.has(requestBody.model)) {
+          requestBody.model = allowedLanguageModels[0];
         }
 
-        const decoder = new TextDecoder();
-        const chunks: string[] = [];
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let totalTokens = 0;
+        // @ts-expect-error: user is not in schema but we need to pass it
+        requestBody.user = `user_${user.id}`;
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        const isStreaming = requestBody.stream === true;
 
-            const chunk = decoder.decode(value, { stream: true });
-            chunks.push(chunk);
+        const response = await fetch(
+          `${env.OPENAI_API_URL}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+              ...openRouterHeaders,
+            },
+            body: JSON.stringify(requestBody),
+          },
+        );
 
-            await stream.write(value);
-
-            const lines = chunk
-              .split("\n")
-              .filter((line) => line.trim().startsWith("data: "));
-            for (const line of lines) {
-              const data = line.replace(/^data: /, "").trim();
-              if (data === "[DONE]") continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.usage) {
-                  promptTokens = parsed.usage.prompt_tokens || 0;
-                  completionTokens = parsed.usage.completion_tokens || 0;
-                  totalTokens = parsed.usage.total_tokens || 0;
-                }
-              } catch {}
-            }
-          }
-        } finally {
+        if (!isStreaming) {
+          const responseData =
+            (await response.json()) as OpenAIChatCompletionResponse;
           const duration = Date.now() - startTime;
 
-          Sentry.startSpan({ name: "db.insert.requestLogStream" }, async () => {
+          const promptTokens = responseData.usage?.prompt_tokens || 0;
+          const completionTokens = responseData.usage?.completion_tokens || 0;
+          const totalTokens = responseData.usage?.total_tokens || 0;
+
+          Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
             await db
               .insert(requestLogs)
               .values({
@@ -277,128 +292,233 @@ proxy.post("/v1/chat/completions", async (c) => {
                 completionTokens,
                 totalTokens,
                 request: requestBody,
-                response: { stream: true, chunks: chunks.join("") },
+                response: responseData,
                 ip: getClientIp(c),
                 timestamp: new Date(),
                 duration,
               })
               .catch((err) => console.error("Logging error:", err));
           });
+
+          return c.json(responseData, response.status as 200);
         }
-      });
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Proxy error:", error);
 
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
+        return stream(c, async (stream) => {
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error("No response body");
+          }
 
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  });
-});
+          const decoder = new TextDecoder();
+          const chunks: string[] = [];
+          let promptTokens = 0;
+          let completionTokens = 0;
+          let totalTokens = 0;
 
-proxy.post("/v1/embeddings", async (c) => {
-  return Sentry.startSpan({ name: "POST /v1/embeddings" }, async () => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-    try {
-      const requestBody = await c.req.json();
+              const chunk = decoder.decode(value, { stream: true });
+              chunks.push(chunk);
 
-      const allowedSet = new Set(allowedEmbeddingModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedEmbeddingModels[0];
+              await stream.write(value);
+
+              const lines = chunk
+                .split("\n")
+                .filter((line) => line.trim().startsWith("data: "));
+              for (const line of lines) {
+                const data = line.replace(/^data: /, "").trim();
+                if (data === "[DONE]") continue;
+
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.usage) {
+                    promptTokens = parsed.usage.prompt_tokens || 0;
+                    completionTokens = parsed.usage.completion_tokens || 0;
+                    totalTokens = parsed.usage.total_tokens || 0;
+                  }
+                } catch {}
+              }
+            }
+          } finally {
+            const duration = Date.now() - startTime;
+
+            Sentry.startSpan(
+              { name: "db.insert.requestLogStream" },
+              async () => {
+                await db
+                  .insert(requestLogs)
+                  .values({
+                    apiKeyId: apiKey.id,
+                    userId: user.id,
+                    slackId: user.slackId,
+                    model: requestBody.model,
+                    promptTokens,
+                    completionTokens,
+                    totalTokens,
+                    request: requestBody,
+                    response: { stream: true, chunks: chunks.join("") },
+                    ip: getClientIp(c),
+                    timestamp: new Date(),
+                    duration,
+                  })
+                  .catch((err) => console.error("Logging error:", err));
+              },
+            );
+          }
+        }) as unknown as TypedResponse<OpenAIChatCompletionResponse, 200>;
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error("Proxy error:", error);
+
+        Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+          await db
+            .insert(requestLogs)
+            .values({
+              apiKeyId: apiKey.id,
+              userId: user.id,
+              slackId: user.slackId,
+              model: "unknown",
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+              request: {},
+              response: {
+                error: error instanceof Error ? error.message : "Unknown error",
+              },
+              ip: getClientIp(c),
+              timestamp: new Date(),
+              duration,
+            })
+            .catch((err) => console.error("Logging error:", err));
+        });
+
+        throw new HTTPException(500, { message: "Internal server error" });
       }
+    });
+  },
+);
 
-      requestBody.user = `user_${user.id}`;
+proxy.post(
+  "/v1/embeddings",
+  embeddingsRoute,
+  validator("json", EmbeddingsRequestSchema),
+  async (c) => {
+    return Sentry.startSpan({ name: "POST /v1/embeddings" }, async () => {
+      const apiKey = c.get("apiKey");
+      const user = c.get("user");
+      const startTime = Date.now();
 
-      const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
+      try {
+        const requestBody = c.req.valid("json");
+
+        const allowedSet = new Set(allowedEmbeddingModels);
+        if (!allowedSet.has(requestBody.model)) {
+          requestBody.model = allowedEmbeddingModels[0];
+        }
+
+        // @ts-expect-error: user is not in schema but we need to pass it
+        requestBody.user = `user_${user.id}`;
+
+        const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+            ...openRouterHeaders,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        const responseData =
+          (await response.json()) as OpenAIEmbeddingsResponse;
+        const duration = Date.now() - startTime;
+
+        const promptTokens = responseData.usage?.prompt_tokens || 0;
+        const totalTokens = responseData.usage?.total_tokens || 0;
+
+        Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
+          await db
+            .insert(requestLogs)
+            .values({
+              apiKeyId: apiKey.id,
+              userId: user.id,
+              slackId: user.slackId,
+              model: requestBody.model,
+              promptTokens,
+              completionTokens: 0,
+              totalTokens,
+              request: requestBody,
+              response: responseData,
+              ip: getClientIp(c),
+              timestamp: new Date(),
+              duration,
+            })
+            .catch((err) => console.error("Logging error:", err));
+        });
+
+        return c.json(responseData, response.status as 200);
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error("Embeddings proxy error:", error);
+
+        Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+          await db
+            .insert(requestLogs)
+            .values({
+              apiKeyId: apiKey.id,
+              userId: user.id,
+              slackId: user.slackId,
+              model: "unknown",
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+              request: {},
+              response: {
+                error: error instanceof Error ? error.message : "Unknown error",
+              },
+              ip: getClientIp(c),
+              timestamp: new Date(),
+              duration,
+            })
+            .catch((err) => console.error("Logging error:", err));
+        });
+
+        throw new HTTPException(500, { message: "Internal server error" });
+      }
+    });
+  },
+);
+
+proxy.get(
+  "/openapi.json",
+  openAPIRouteHandler(proxy, {
+    documentation: {
+      info: {
+        title: "Hack Club AI",
+        version: "1.0.0",
+        description:
+          "Authentication: All endpoints require `Authorization: Bearer <token>`.\n\n GET /v1/models is public.",
+      },
+      servers: [
+        {
+          url: "https://ai.hackclub.com/proxy",
+          description: "Production",
         },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = (await response.json()) as OpenAIEmbeddingsResponse;
-      const duration = Date.now() - startTime;
-
-      const promptTokens = responseData.usage?.prompt_tokens || 0;
-      const totalTokens = responseData.usage?.total_tokens || 0;
-
-      Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: requestBody.model,
-            promptTokens,
-            completionTokens: 0,
-            totalTokens,
-            request: requestBody,
-            response: responseData,
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      return c.json(responseData, response.status as 200);
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Embeddings proxy error:", error);
-
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  });
-});
+      ],
+      security: [{ Bearer: [] }],
+      components: {
+        securitySchemes: {
+          Bearer: {
+            type: "http",
+            scheme: "bearer",
+          },
+        },
+      },
+    },
+  }),
+);
 
 export default proxy;

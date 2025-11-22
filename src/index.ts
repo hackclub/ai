@@ -1,9 +1,11 @@
+import { Scalar } from "@scalar/hono-api-reference";
 import "./instrument"; // Sentry
 import * as Sentry from "@sentry/bun";
 import { dns } from "bun";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
+import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { showRoutes } from "hono/dev";
 import { HTTPException } from "hono/http-exception";
@@ -43,6 +45,27 @@ app.use("/proxy/*", timeout(120000));
 
 app.use("/*", requestId(), trimTrailingSlash());
 app.use("/*", csrf({ origin: env.BASE_URL }));
+app.use(
+  "/proxy/*",
+  cors({
+    origin: (origin) => {
+      if (
+        origin === env.BASE_URL ||
+        origin === "https://ai.hackclub.dev" ||
+        (env.NODE_ENV === "development" &&
+          origin.startsWith("http://localhost"))
+      ) {
+        return origin;
+      }
+      return env.BASE_URL; // Default to production domain
+    },
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Title"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+    credentials: true,
+  }),
+);
 
 if (env.NODE_ENV === "development") {
   app.use("*", logger());
@@ -65,8 +88,19 @@ app.route("/proxy", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
+app.get(
+  "/ui",
+  Scalar({
+    url: "/proxy/openapi.json",
+    theme: "default",
+    hideModels: true,
+    hideClientButton: true,
+  }),
+);
 
 showRoutes(app);
+
+console.log(`Server running on http://localhost:${env.PORT}`);
 
 export default {
   port: env.PORT,
