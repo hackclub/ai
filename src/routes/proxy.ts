@@ -5,6 +5,7 @@ import { type Context, Hono, type TypedResponse } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
+import { proxy as honoProxy } from "hono/proxy";
 import {
   describeRoute,
   openAPIRouteHandler,
@@ -518,7 +519,7 @@ proxy.post(
       try {
         const requestBody = c.req.valid("json");
 
-        const response = await fetch(env.OPENAI_MODERATION_API_URL, {
+        return honoProxy(env.OPENAI_MODERATION_API_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -526,11 +527,6 @@ proxy.post(
           },
           body: JSON.stringify(requestBody),
         });
-
-        const responseData =
-          (await response.json()) as OpenAIModerationResponse;
-
-        return c.json(responseData, response.status as 200);
       } catch (error) {
         console.error("Moderations proxy error:", error);
         throw new HTTPException(500, { message: "Internal server error" });
