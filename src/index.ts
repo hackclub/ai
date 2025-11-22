@@ -21,7 +21,7 @@ import api from "./routes/api";
 import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
 import docs from "./routes/docs";
-import globalRoute from "./routes/global";
+import global from "./routes/global";
 import proxy from "./routes/proxy";
 import type { AppVariables } from "./types";
 
@@ -65,7 +65,7 @@ app.route("/auth", auth);
 app.route("/proxy", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
-app.route("/global", globalRoute);
+app.route("/global", global);
 
 // docs UI - generally at /docs, but I dropped it at /ui for now
 app.get(

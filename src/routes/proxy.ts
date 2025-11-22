@@ -1,7 +1,8 @@
-import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { describeRoute, openAPIRouteHandler, resolver, validator } from "hono-openapi";
+
 import * as Sentry from "@sentry/bun";
 import { eq, sql } from "drizzle-orm";
-import type { Context } from "hono";
+import { type Context, Hono, type TypedResponse } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
@@ -9,240 +10,95 @@ import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
+import {
+  ChatCompletionRequestSchema,
+  ChatCompletionResponseSchema,
+  EmbeddingsRequestSchema,
+  EmbeddingsResponseSchema,
+  ModelsResponseSchema,
+  StatsSchema,
+} from "../openapi";
 import type { AppVariables } from "../types";
 
-interface OpenRouterModel {
-  id: string;
-  [key: string]: unknown;
-}
+import type { type } from "arktype";
 
-interface OpenRouterModelsResponse {
-  data: OpenRouterModel[];
-}
+type OpenAIChatCompletionResponse = type.infer<
+  typeof ChatCompletionResponseSchema
+>;
+type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
+type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
-interface OpenAIUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface OpenAIChatCompletionResponse {
-  usage?: OpenAIUsage;
-  [key: string]: unknown;
-}
-
-interface OpenAIEmbeddingsResponse {
-  usage?: OpenAIUsage;
-  [key: string]: unknown;
-}
-
-const proxy = new OpenAPIHono<{ Variables: AppVariables }>();
-
-proxy.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
-  type: "http",
-  scheme: "bearer",
-});
+const proxy = new Hono<{ Variables: AppVariables }>();
 
 // #region OpenAPI schemas & routes
-const ModelSchema = z
-  .object({
-    id: z.string().openapi({ example: allowedLanguageModels[0] }),
-  })
-  .openapi("Model");
 
-const ModelsResponseSchema = z
-  .object({
-    data: z.array(ModelSchema),
-  })
-  .openapi("ModelsResponse");
-
-const StatsSchema = z
-  .object({
-    totalRequests: z.number().int().openapi({ example: 10 }),
-    totalTokens: z.number().int().openapi({ example: 12345 }),
-    totalPromptTokens: z.number().int().openapi({ example: 1000 }),
-    totalCompletionTokens: z.number().int().openapi({ example: 2000 }),
-  })
-  .openapi("Stats");
-
-const MessageSchema = z
-  .object({
-    role: z.string().openapi({ example: "user" }),
-    content: z.string().openapi({ example: "Hello" }),
-  })
-  .openapi("Message");
-
-const ChatCompletionRequestSchema = z
-  .object({
-    model: z.string().openapi({ example: allowedLanguageModels[0] }),
-    messages: z.array(MessageSchema),
-    stream: z.boolean().optional().openapi({ example: false }),
-    temperature: z.number().optional().openapi({ example: 1.0 }),
-    max_tokens: z.number().nullable().optional().openapi({ example: null }),
-    top_p: z.number().optional().openapi({ example: 1.0 }),
-  })
-  .openapi("ChatCompletionRequest");
-
-const ChatCompletionResponseSchema = z
-  .object({
-    id: z.string().openapi({ example: "chatcmpl-123" }),
-    provider: z.string().optional().openapi({ example: "provider-name" }),
-    model: z.string().openapi({ example: allowedLanguageModels[0] }),
-    object: z.string().openapi({ example: "chat.completion" }),
-    created: z.number().int().openapi({ example: 1677652288 }),
-    choices: z.array(
-      z.object({
-        logprobs: z.null().optional().openapi({ example: null }),
-        finish_reason: z.string().openapi({ example: "stop" }),
-        native_finish_reason: z
-          .string()
-          .optional()
-          .openapi({ example: "stop" }),
-        index: z.number().int().openapi({ example: 0 }),
-        message: z.object({
-          role: z.string().openapi({ example: "assistant" }),
-          content: z.string().openapi({
-            example: "Hello there!",
-          }),
-          refusal: z.null().optional().openapi({ example: null }),
-        }),
-      }),
-    ),
-    system_fingerprint: z.string().optional().openapi({ example: "fp_12345" }),
-    usage: z.object({
-      prompt_tokens: z.number().int().openapi({ example: 10 }),
-      completion_tokens: z.number().int().openapi({ example: 10 }),
-      total_tokens: z.number().int().openapi({ example: 20 }),
-    }),
-  })
-  .openapi("ChatCompletionResponse");
-
-const EmbeddingsRequestSchema = z
-  .object({
-    model: z.string().openapi({ example: allowedEmbeddingModels[0] }),
-    input: z
-      .union([z.string(), z.array(z.string())])
-      .openapi({ example: "Hello world" }),
-  })
-  .openapi("EmbeddingsRequest");
-
-const EmbeddingsResponseSchema = z
-  .object({
-    object: z.string().openapi({ example: "list" }),
-    data: z.array(
-      z.object({
-        object: z.string().openapi({ example: "embedding" }),
-        embedding: z.array(z.number()).openapi({ example: [0.1, 0.2, 0.3] }),
-        index: z.number().int().openapi({ example: 0 }),
-      }),
-    ),
-    model: z.string().openapi({ example: allowedEmbeddingModels[0] }),
-    usage: z.object({
-      prompt_tokens: z.number().int().openapi({ example: 10 }),
-      total_tokens: z.number().int().openapi({ example: 10 }),
-    }),
-    provider: z.string().optional().openapi({ example: "provider-name" }),
-    id: z.string().optional().openapi({ example: "emb-123" }),
-  })
-  .openapi("EmbeddingsResponse");
-
-const modelsRoute = createRoute({
-  method: "get",
-  path: "/v1/models",
+const modelsRoute = describeRoute({
+  tags: ["Models"],
   summary: "Get Available Models",
   description:
     "List all available models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
-
-  security: [],
-  operationId: "getModels",
   responses: {
     200: {
+      description: "Successful response.",
       content: {
         "application/json": {
-          schema: ModelsResponseSchema,
+          schema: resolver(ModelsResponseSchema),
         },
       },
-      description: "Successful response.",
     },
   },
 });
 
-const statsRoute = createRoute({
-  method: "get",
-  path: "/v1/stats",
-  security: [{ Bearer: [] }],
+const statsRoute = describeRoute({
+  tags: ["Stats"],
   summary: "Get Token Usage Statistics",
   description:
     "Get token usage statistics for your account. This includes total requests made, tokens consumed (prompt + completion), and breakdowns by token type. Useful for monitoring your API usage and costs.",
-  operationId: "getStats",
+  security: [{ Bearer: [] }],
   responses: {
     200: {
+      description: "Successful response.",
       content: {
         "application/json": {
-          schema: StatsSchema,
+          schema: resolver(StatsSchema),
         },
       },
-      description: "Successful response.",
     },
   },
 });
 
-const chatRoute = createRoute({
-  method: "post",
-  path: "/v1/chat/completions",
+const chatRoute = describeRoute({
+  tags: ["Chat"],
   summary: "Create Chat Completion",
   description:
     "Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes. Compatible with [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). You can use this to integrate with existing OpenAI-compatible libraries and tools.",
   security: [{ Bearer: [] }],
-  operationId: "createChatCompletions",
-  request: {
-    body: {
-      content: {
-        "application/json": {
-          schema: ChatCompletionRequestSchema,
-        },
-      },
-      required: true,
-    },
-  },
   responses: {
     200: {
+      description: "Successful response.",
       content: {
         "application/json": {
-          schema: ChatCompletionResponseSchema,
+          schema: resolver(ChatCompletionResponseSchema),
         },
       },
-      description: "Successful response.",
     },
   },
 });
 
-const embeddingsRoute = createRoute({
-  method: "post",
-  path: "/v1/embeddings",
+const embeddingsRoute = describeRoute({
+  tags: ["Embeddings"],
   summary: "Create Embeddings",
   description:
     "Generate vector embeddings from text input. You can then store these embeddings in a vector database like [Pinecone](https://www.pinecone.io/) or [pgvector](https://github.com/pgvector/pgvector). Compatible with [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create).",
   security: [{ Bearer: [] }],
-  operationId: "createEmbeddings",
-  request: {
-    body: {
-      content: {
-        "application/json": {
-          schema: EmbeddingsRequestSchema,
-        },
-      },
-      required: true,
-    },
-  },
   responses: {
     200: {
+      description: "Successful response.",
       content: {
         "application/json": {
-          schema: EmbeddingsResponseSchema,
+          schema: resolver(EmbeddingsResponseSchema),
         },
       },
-      description: "Successful response.",
     },
   },
 });
@@ -282,7 +138,7 @@ function getClientIp(c: Context): string {
   );
 }
 
-proxy.openapi(modelsRoute, async (c) => {
+proxy.get("/v1/models", modelsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /v1/models" }, async () => {
     const now = Date.now();
 
@@ -345,7 +201,7 @@ proxy.openapi(modelsRoute, async (c) => {
   });
 });
 
-proxy.openapi(statsRoute, async (c) => {
+proxy.get("/v1/stats", statsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /v1/stats" }, async () => {
     const user = c.get("user");
 
@@ -376,27 +232,198 @@ proxy.openapi(statsRoute, async (c) => {
   });
 });
 
-proxy.openapi(chatRoute, async (c) => {
-  return Sentry.startSpan({ name: "POST /v1/chat/completions" }, async () => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
+proxy.post(
+  "/v1/chat/completions",
+  chatRoute,
+  validator("json", ChatCompletionRequestSchema),
+  async (c) => {
+    return Sentry.startSpan(
+      { name: "POST /v1/chat/completions" },
+      async () => {
+        const apiKey = c.get("apiKey");
+        const user = c.get("user");
+        const startTime = Date.now();
 
-    try {
-      const requestBody = await c.req.json();
+        try {
+          const requestBody = c.req.valid("json");
 
-      const allowedSet = new Set(allowedLanguageModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedLanguageModels[0];
-      }
+          const allowedSet = new Set(allowedLanguageModels);
+          if (!allowedSet.has(requestBody.model)) {
+            requestBody.model = allowedLanguageModels[0];
+          }
 
-      requestBody.user = `user_${user.id}`;
+          // @ts-expect-error: user is not in schema but we need to pass it
+          requestBody.user = `user_${user.id}`;
 
-      const isStreaming = requestBody.stream === true;
+          const isStreaming = requestBody.stream === true;
 
-      const response = await fetch(
-        `${env.OPENAI_API_URL}/v1/chat/completions`,
-        {
+          const response = await fetch(
+            `${env.OPENAI_API_URL}/v1/chat/completions`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+                ...openRouterHeaders,
+              },
+              body: JSON.stringify(requestBody),
+            },
+          );
+
+          if (!isStreaming) {
+            const responseData =
+              (await response.json()) as OpenAIChatCompletionResponse;
+            const duration = Date.now() - startTime;
+
+            const promptTokens = responseData.usage?.prompt_tokens || 0;
+            const completionTokens = responseData.usage?.completion_tokens || 0;
+            const totalTokens = responseData.usage?.total_tokens || 0;
+
+            Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
+              await db
+                .insert(requestLogs)
+                .values({
+                  apiKeyId: apiKey.id,
+                  userId: user.id,
+                  slackId: user.slackId,
+                  model: requestBody.model,
+                  promptTokens,
+                  completionTokens,
+                  totalTokens,
+                  request: requestBody,
+                  response: responseData,
+                  ip: getClientIp(c),
+                  timestamp: new Date(),
+                  duration,
+                })
+                .catch((err) => console.error("Logging error:", err));
+            });
+
+            return c.json(responseData, response.status as 200);
+          }
+
+          return stream(c, async (stream) => {
+            const reader = response.body?.getReader();
+            if (!reader) {
+              throw new Error("No response body");
+            }
+
+            const decoder = new TextDecoder();
+            const chunks: string[] = [];
+            let promptTokens = 0;
+            let completionTokens = 0;
+            let totalTokens = 0;
+
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                chunks.push(chunk);
+
+                await stream.write(value);
+
+                const lines = chunk
+                  .split("\n")
+                  .filter((line) => line.trim().startsWith("data: "));
+                for (const line of lines) {
+                  const data = line.replace(/^data: /, "").trim();
+                  if (data === "[DONE]") continue;
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.usage) {
+                      promptTokens = parsed.usage.prompt_tokens || 0;
+                      completionTokens = parsed.usage.completion_tokens || 0;
+                      totalTokens = parsed.usage.total_tokens || 0;
+                    }
+                  } catch { }
+                }
+              }
+            } finally {
+              const duration = Date.now() - startTime;
+
+              Sentry.startSpan(
+                { name: "db.insert.requestLogStream" },
+                async () => {
+                  await db
+                    .insert(requestLogs)
+                    .values({
+                      apiKeyId: apiKey.id,
+                      userId: user.id,
+                      slackId: user.slackId,
+                      model: requestBody.model,
+                      promptTokens,
+                      completionTokens,
+                      totalTokens,
+                      request: requestBody,
+                      response: { stream: true, chunks: chunks.join("") },
+                      ip: getClientIp(c),
+                      timestamp: new Date(),
+                      duration,
+                    })
+                    .catch((err) => console.error("Logging error:", err));
+                },
+              );
+            }
+          }) as unknown as TypedResponse<OpenAIChatCompletionResponse, 200>;
+        } catch (error) {
+          const duration = Date.now() - startTime;
+          console.error("Proxy error:", error);
+
+          Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+            await db
+              .insert(requestLogs)
+              .values({
+                apiKeyId: apiKey.id,
+                userId: user.id,
+                slackId: user.slackId,
+                model: "unknown",
+                promptTokens: 0,
+                completionTokens: 0,
+                totalTokens: 0,
+                request: {},
+                response: {
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                },
+                ip: getClientIp(c),
+                timestamp: new Date(),
+                duration,
+              })
+              .catch((err) => console.error("Logging error:", err));
+          });
+
+          throw new HTTPException(500, { message: "Internal server error" });
+        }
+      },
+    );
+  },
+);
+
+proxy.post(
+  "/v1/embeddings",
+  embeddingsRoute,
+  validator("json", EmbeddingsRequestSchema),
+  async (c) => {
+    return Sentry.startSpan({ name: "POST /v1/embeddings" }, async () => {
+      const apiKey = c.get("apiKey");
+      const user = c.get("user");
+      const startTime = Date.now();
+
+      try {
+        const requestBody = c.req.valid("json");
+
+        const allowedSet = new Set(allowedEmbeddingModels);
+        if (!allowedSet.has(requestBody.model)) {
+          requestBody.model = allowedEmbeddingModels[0];
+        }
+
+        // @ts-expect-error: user is not in schema but we need to pass it
+        requestBody.user = `user_${user.id}`;
+
+        const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -404,16 +431,13 @@ proxy.openapi(chatRoute, async (c) => {
             ...openRouterHeaders,
           },
           body: JSON.stringify(requestBody),
-        },
-      );
+        });
 
-      if (!isStreaming) {
         const responseData =
-          (await response.json()) as OpenAIChatCompletionResponse;
+          (await response.json()) as OpenAIEmbeddingsResponse;
         const duration = Date.now() - startTime;
 
         const promptTokens = responseData.usage?.prompt_tokens || 0;
-        const completionTokens = responseData.usage?.completion_tokens || 0;
         const totalTokens = responseData.usage?.total_tokens || 0;
 
         Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
@@ -425,7 +449,7 @@ proxy.openapi(chatRoute, async (c) => {
               slackId: user.slackId,
               model: requestBody.model,
               promptTokens,
-              completionTokens,
+              completionTokens: 0,
               totalTokens,
               request: requestBody,
               response: responseData,
@@ -436,217 +460,66 @@ proxy.openapi(chatRoute, async (c) => {
             .catch((err) => console.error("Logging error:", err));
         });
 
-        return c.json(responseData as any, response.status as 200);
+        return c.json(responseData, response.status as 200);
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error("Embeddings proxy error:", error);
+
+        Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+          await db
+            .insert(requestLogs)
+            .values({
+              apiKeyId: apiKey.id,
+              userId: user.id,
+              slackId: user.slackId,
+              model: "unknown",
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+              request: {},
+              response: {
+                error: error instanceof Error ? error.message : "Unknown error",
+              },
+              ip: getClientIp(c),
+              timestamp: new Date(),
+              duration,
+            })
+            .catch((err) => console.error("Logging error:", err));
+        });
+
+        throw new HTTPException(500, { message: "Internal server error" });
       }
+    });
+  },
+);
 
-      return stream(c, async (stream) => {
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("No response body");
-        }
-
-        const decoder = new TextDecoder();
-        const chunks: string[] = [];
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let totalTokens = 0;
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            chunks.push(chunk);
-
-            await stream.write(value);
-
-            const lines = chunk
-              .split("\n")
-              .filter((line) => line.trim().startsWith("data: "));
-            for (const line of lines) {
-              const data = line.replace(/^data: /, "").trim();
-              if (data === "[DONE]") continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.usage) {
-                  promptTokens = parsed.usage.prompt_tokens || 0;
-                  completionTokens = parsed.usage.completion_tokens || 0;
-                  totalTokens = parsed.usage.total_tokens || 0;
-                }
-              } catch {}
-            }
-          }
-        } finally {
-          const duration = Date.now() - startTime;
-
-          Sentry.startSpan({ name: "db.insert.requestLogStream" }, async () => {
-            await db
-              .insert(requestLogs)
-              .values({
-                apiKeyId: apiKey.id,
-                userId: user.id,
-                slackId: user.slackId,
-                model: requestBody.model,
-                promptTokens,
-                completionTokens,
-                totalTokens,
-                request: requestBody,
-                response: { stream: true, chunks: chunks.join("") },
-                ip: getClientIp(c),
-                timestamp: new Date(),
-                duration,
-              })
-              .catch((err) => console.error("Logging error:", err));
-          });
-        }
-      }) as any;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Proxy error:", error);
-
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  });
-});
-
-proxy.openapi(embeddingsRoute, async (c) => {
-  return Sentry.startSpan({ name: "POST /v1/embeddings" }, async () => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
-
-    try {
-      const requestBody = await c.req.json();
-
-      const allowedSet = new Set(allowedEmbeddingModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedEmbeddingModels[0];
-      }
-
-      requestBody.user = `user_${user.id}`;
-
-      const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
+proxy.get(
+  "/openapi.json",
+  openAPIRouteHandler(proxy, {
+    documentation: {
+      info: {
+        title: "Hack Club AI",
+        version: "1.0.0",
+        description:
+          "Authentication: All endpoints require `Authorization: Bearer <token>`.\n\n GET /v1/models is public.",
+      },
+      servers: [
+        {
+          url: "https://ai.hackclub.com/proxy",
+          description: "Production",
         },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = (await response.json()) as OpenAIEmbeddingsResponse;
-      const duration = Date.now() - startTime;
-
-      const promptTokens = responseData.usage?.prompt_tokens || 0;
-      const totalTokens = responseData.usage?.total_tokens || 0;
-
-      Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: requestBody.model,
-            promptTokens,
-            completionTokens: 0,
-            totalTokens,
-            request: requestBody,
-            response: responseData,
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      return c.json(responseData as any, response.status as 200);
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Embeddings proxy error:", error);
-
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            ip: getClientIp(c),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  });
-});
-
-proxy.get("/openapi.json", async (c) => {
-  const doc = proxy.getOpenAPI31Document(
-    {
-      openapi: "3.1.0",
-      info: { title: "Hack Club AI", version: "1.0.0" },
+      ],
+      security: [{ Bearer: [] }],
+      components: {
+        securitySchemes: {
+          Bearer: {
+            type: "http",
+            scheme: "bearer",
+          },
+        },
+      },
     },
-    undefined,
-  );
-
-  const origin = new URL(c.req.url).origin;
-  doc.servers = [
-    {
-      url: `${origin}/proxy`,
-      description: "Base path",
-    },
-  ];
-
-  doc.info.description =
-    "Authentication: All endpoints require `Authorization: Bearer <token>`.\n\n GET /v1/models is public.";
-
-  // bearer req by default
-  doc.security = [{ Bearer: [] }];
-
-  try {
-    if (doc.paths?.["/v1/models"]?.get) {
-      doc.paths["/v1/models"].get.security = [];
-    }
-  } catch (_e) {}
-
-  return c.json(doc);
-});
+  }),
+);
 
 export default proxy;
