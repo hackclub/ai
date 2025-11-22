@@ -26,6 +26,8 @@ ALLOWED_LANGUAGE_MODELS=qwen/qwen3-32b,moonshotai/kimi-k2-thinking,openai/gpt-os
 # you should not commit these - although i hope you know that already!
 OPENAI_API_KEY=
 OPENAI_API_URL=https://openrouter.ai/api
+OPENAI_MODERATION_API_KEY=
+OPENAI_MODERATION_API_URL=https://api.openai.com/v1/moderations
 
 # get these from https://api.slack.com/apps
 SLACK_CLIENT_ID=

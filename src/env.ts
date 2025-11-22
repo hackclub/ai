@@ -9,6 +9,8 @@ const envSchema = type({
   SLACK_TEAM_ID: "string",
   OPENAI_API_URL: "string",
   OPENAI_API_KEY: "string",
+  OPENAI_MODERATION_API_KEY: "string",
+  OPENAI_MODERATION_API_URL: "string",
   ALLOWED_LANGUAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
   "NODE_ENV?": "'development' | 'production' | 'test'",

@@ -218,3 +218,45 @@ export const EmbeddingsResponseSchema = type({
     "provider?": type("string").describe("The provider of the mode (e.g. Groq)"),
     "id?": type("string").describe("The ID of the embeddings"),
 });
+
+export const ModerationRequestSchema = type({
+    input: type("string|string[]")
+        .or(
+            type({
+                type: type("'text'"),
+                text: type("string"),
+            })
+                .or({
+                    type: type("'image_url'"),
+                    image_url: type({
+                        url: type("string"),
+                    }),
+                })
+                .array(),
+        )
+        .describe("The input text or image to classify"),
+    "model?": type("string").describe(
+        "The model to use for moderation. Defaults to omni-moderation-latest.",
+    ),
+});
+
+export const ModerationResponseSchema = type({
+    id: type("string").describe("The unique identifier for the moderation request"),
+    model: type("string").describe("The model used for moderation"),
+    results: type({
+        flagged: type("boolean").describe(
+            "Whether the content violates OpenAI's usage policies",
+        ),
+        categories: type("unknown").describe(
+            "A dictionary of category names and boolean flags",
+        ),
+        category_scores: type("unknown").describe(
+            "A dictionary of category names and scores",
+        ),
+        "category_applied_input_types?": type("unknown").describe(
+            "A dictionary of category names and applied input types",
+        ),
+    })
+        .array()
+        .describe("The list of moderation results"),
+});

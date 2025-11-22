@@ -182,6 +182,80 @@ curl {{BASE_URL}}/proxy/v1/stats \
 }
 ```
 
+### Moderations
+
+`POST /proxy/v1/moderations`
+
+Classify if text or image is potentially inappropriate (e.g. hate speech, violence, NSFW etc.).
+
+#### Example request
+```bash
+curl {{BASE_URL}}/proxy/v1/moderations \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "I want to kill them."
+  }'
+```
+
+#### Example response
+```json
+{
+  "id": "modr-5558",
+  "model": "omni-moderation-latest",
+  "results": [
+    {
+      "flagged": true,
+      "categories": {
+        "harassment": false,
+        "harassment/threatening": false,
+        "sexual": false,
+        "hate": false,
+        "hate/threatening": false,
+        "illicit": false,
+        "illicit/violent": false,
+        "self-harm/intent": false,
+        "self-harm/instructions": false,
+        "self-harm": false,
+        "sexual/minors": false,
+        "violence": true,
+        "violence/graphic": false
+      },
+      "category_scores": {
+        "harassment": 0.00931199284235665,
+        "harassment/threatening": 0.0010557750118175314,
+        "sexual": 0.00022343624199449989,
+        "hate": 0.0012502891624031056,
+        "hate/threatening": 0.00001941131867789626,
+        "illicit": 0.003784135086979151,
+        "illicit/violent": 0.000025315637215092633,
+        "self-harm/intent": 0.00022388481049310266,
+        "self-harm/instructions": 2.5466403947055455e-6,
+        "self-harm": 0.000014768038336604361,
+        "sexual/minors": 0.00022343624199449989,
+        "violence": 0.92988795999336092,
+        "violence/graphic": 4.264746818557914e-6
+      },
+      "category_applied_input_types": {
+        "harassment": ["text"],
+        "harassment/threatening": ["text"],
+        "sexual": ["text"],
+        "hate": ["text"],
+        "hate/threatening": ["text"],
+        "illicit": ["text"],
+        "illicit/violent": ["text"],
+        "self-harm/intent": ["text"],
+        "self-harm/instructions": ["text"],
+        "self-harm": ["text"],
+        "sexual/minors": ["text"],
+        "violence": ["text"],
+        "violence/graphic": ["text"]
+      }
+    }
+  ]
+}
+```
+
 ## Rules
 
 - **For teens.** This service is for teens 18 and under only. Hack Club is a charity - please do not abuse this service.

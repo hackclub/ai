@@ -21,6 +21,8 @@ import {
   EmbeddingsRequestSchema,
   EmbeddingsResponseSchema,
   ModelsResponseSchema,
+  ModerationRequestSchema,
+  ModerationResponseSchema,
   StatsSchema,
 } from "../openapi";
 import type { AppVariables } from "../types";
@@ -29,6 +31,7 @@ type OpenAIChatCompletionResponse = type.infer<
   typeof ChatCompletionResponseSchema
 >;
 type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
+type OpenAIModerationResponse = type.infer<typeof ModerationResponseSchema>;
 type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 const proxy = new Hono<{ Variables: AppVariables }>();
@@ -96,6 +99,23 @@ const embeddingsRoute = describeRoute({
       content: {
         "application/json": {
           schema: resolver(EmbeddingsResponseSchema),
+        },
+      },
+    },
+  },
+});
+
+const moderationsRoute = describeRoute({
+  summary: "Create moderation",
+  description:
+    "Classify if the text and/or image inputted is potentially inappropriate (e.g. hate speech, violence, NSFW etc.). Compatible with [OpenAI Moderations API](https://platform.openai.com/docs/api-reference/moderations/create).",
+  security: [{ Bearer: [] }],
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(ModerationResponseSchema),
         },
       },
     },
@@ -482,6 +502,37 @@ proxy.post(
             .catch((err) => console.error("Logging error:", err));
         });
 
+        throw new HTTPException(500, { message: "Internal server error" });
+      }
+    });
+  },
+);
+
+proxy.post(
+  "/v1/moderations",
+  moderationsRoute,
+  validator("json", ModerationRequestSchema),
+  async (c) => {
+    return Sentry.startSpan({ name: "POST /v1/moderations" }, async () => {
+      // We don't log moderations requests
+      try {
+        const requestBody = c.req.valid("json");
+
+        const response = await fetch(env.OPENAI_MODERATION_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        const responseData =
+          (await response.json()) as OpenAIModerationResponse;
+
+        return c.json(responseData, response.status as 200);
+      } catch (error) {
+        console.error("Moderations proxy error:", error);
         throw new HTTPException(500, { message: "Internal server error" });
       }
     });
