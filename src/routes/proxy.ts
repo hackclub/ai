@@ -4,8 +4,8 @@ import { eq, sql } from "drizzle-orm";
 import { type Context, Hono, type TypedResponse } from "hono";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
-import { stream } from "hono/streaming";
 import { proxy as honoProxy } from "hono/proxy";
+import { stream } from "hono/streaming";
 import {
   describeRoute,
   openAPIRouteHandler,
@@ -32,7 +32,6 @@ type OpenAIChatCompletionResponse = type.infer<
   typeof ChatCompletionResponseSchema
 >;
 type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
-type OpenAIModerationResponse = type.infer<typeof ModerationResponseSchema>;
 type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 const proxy = new Hono<{ Variables: AppVariables }>();
@@ -356,7 +355,7 @@ proxy.post(
                     completionTokens = parsed.usage.completion_tokens || 0;
                     totalTokens = parsed.usage.total_tokens || 0;
                   }
-                } catch { }
+                } catch {}
               }
             }
           } finally {
