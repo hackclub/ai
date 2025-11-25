@@ -2,7 +2,7 @@
 
 this is a lightweight LLM proxy, that amongst other things, implements:
 
-- slack auth
+- hack club auth
 - API keys
 - chat and embedding model support
 - moderation model support
@@ -31,10 +31,9 @@ OPENAI_API_URL=https://openrouter.ai/api
 OPENAI_MODERATION_API_KEY=
 OPENAI_MODERATION_API_URL=https://api.openai.com/v1/moderations
 
-# get these from https://api.slack.com/apps
-SLACK_CLIENT_ID=
-SLACK_CLIENT_SECRET=
-SLACK_TEAM_ID=T0266FRGM
+# get these from https://account.hackclub.com
+HACK_CLUB_CLIENT_ID=
+HACK_CLUB_CLIENT_SECRET=
 
 # check that users are ID verified?
 ENFORCE_IDV=true

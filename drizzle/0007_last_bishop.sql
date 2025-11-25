@@ -1,0 +1,1 @@
+ALTER TABLE "users" DROP COLUMN "slack_team_id";

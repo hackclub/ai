@@ -14,7 +14,7 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     slackId: text("slack_id").notNull().unique(),
-    slackTeamId: text("slack_team_id").notNull(),
+
     email: text("email"),
     name: text("name"),
     avatar: text("avatar"),

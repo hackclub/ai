@@ -8,10 +8,12 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/ai_proxy
       PORT: 51735
-      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID}
-      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}
+      HACK_CLUB_CLIENT_ID: ${HACK_CLUB_CLIENT_ID}
+      HACK_CLUB_CLIENT_SECRET: ${HACK_CLUB_CLIENT_SECRET}
       OPENAI_API_URL: ${OPENAI_API_URL:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODERATION_API_KEY: ${OPENAI_MODERATION_API_KEY}
+      OPENAI_MODERATION_API_URL: ${OPENAI_MODERATION_API_URL}
       NODE_ENV: ${NODE_ENV:-production}
     depends_on:
       db:

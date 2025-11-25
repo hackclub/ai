@@ -23,7 +23,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
           href="/auth/login"
           class="inline-block bg-brand-primary text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-brand-primary-hover hover:-translate-y-1 transition-all duration-300 mb-20"
         >
-          Sign in with Slack
+          Sign in with Hack Club
         </a>
 
         <h2 class="text-3xl font-bold mb-10 text-brand-heading">

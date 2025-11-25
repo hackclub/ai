@@ -8,79 +8,33 @@ import { sessions, users } from "../db/schema";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
-interface IdentityCheckResponse {
-  result: string;
+interface HackClubIdentityResponse {
+  identity: {
+    id: string;
+    slack_id: string;
+    primary_email: string;
+    first_name: string;
+    last_name: string;
+    verification_status: string;
+    ysws_eligible: boolean;
+  };
 }
 
-interface SlackOpenIDResponse {
-  ok: boolean;
-  id_token: string;
-  error?: string;
-}
-
-async function checkIdvStatus(
-  slackId: string,
-  email: string,
-): Promise<boolean> {
-  try {
-    const urlBySlackId = new URL(
-      "https://identity.hackclub.com/api/external/check",
-    );
-    urlBySlackId.searchParams.append("slack_id", slackId);
-
-    const slackResponse = await fetch(urlBySlackId);
-    if (slackResponse.ok) {
-      const data = (await slackResponse.json()) as IdentityCheckResponse;
-      if (data.result === "verified_eligible") {
-        return true;
-      }
-    }
-
-    if (!email) return false;
-
-    const urlByEmail = new URL(
-      "https://identity.hackclub.com/api/external/check",
-    );
-    urlByEmail.searchParams.append("email", email);
-
-    const emailResponse = await fetch(urlByEmail);
-    if (!emailResponse.ok) return false;
-
-    const data = (await emailResponse.json()) as IdentityCheckResponse;
-    return data.result === "verified_eligible";
-  } catch (error) {
-    console.error("IDV check error:", error);
-    return false;
-  }
+interface HackClubTokenResponse {
+  access_token: string;
+  token_type: string;
+  scope: string;
+  created_at: number;
 }
 
 const auth = new Hono<{ Variables: AppVariables }>();
 
-function parseJwt(slackIdToken: string) {
-  const base64Url = slackIdToken.split(".")[1];
-  if (!base64Url) {
-    console.error("No Base64 URL in the JWT");
-    throw new HTTPException(400, { message: "Bad Slack OpenID response" });
-  }
-
-  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  const jsonPayload = decodeURIComponent(
-    Buffer.from(base64, "base64")
-      .toString("utf-8")
-      .split("")
-      .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
-      .join(""),
-  );
-
-  return JSON.parse(jsonPayload);
-}
-
 auth.get("/login", (c) => {
   return Sentry.startSpan({ name: "GET /login" }, () => {
-    const clientId = env.SLACK_CLIENT_ID;
+    const clientId = env.HACK_CLUB_CLIENT_ID;
     const redirectUri = `${env.BASE_URL}/auth/callback`;
-    const slackAuthUrl = `https://hackclub.slack.com/oauth/v2/authorize?client_id=${clientId}&user_scope=openid,profile,email&redirect_uri=${redirectUri}`;
-    return c.redirect(slackAuthUrl);
+    const authUrl = `https://account.hackclub.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email+name+slack_id+verification_status`;
+    return c.redirect(authUrl);
   });
 });
 
@@ -93,46 +47,50 @@ auth.get("/callback", async (c) => {
     }
 
     try {
-      const exchangeUrl = new URL("https://slack.com/api/openid.connect.token");
-      const exchangeSearchParams = exchangeUrl.searchParams;
-      exchangeSearchParams.append("client_id", env.SLACK_CLIENT_ID);
-      exchangeSearchParams.append("client_secret", env.SLACK_CLIENT_SECRET);
-      exchangeSearchParams.append("code", code);
-      exchangeSearchParams.append(
-        "redirect_uri",
-        `${env.BASE_URL}/auth/callback`,
-      );
+      const tokenUrl = "https://account.hackclub.com/oauth/token";
+      const tokenParams = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: env.HACK_CLUB_CLIENT_ID,
+        client_secret: env.HACK_CLUB_CLIENT_SECRET,
+        code,
+        redirect_uri: `${env.BASE_URL}/auth/callback`,
+      });
 
-      const oidcResponse = await fetch(exchangeUrl, { method: "POST" });
+      const tokenResponse = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenParams.toString(),
+      });
 
-      if (oidcResponse.status !== 200) {
+      if (!tokenResponse.ok) {
+        console.log(await tokenResponse.text());
         throw new HTTPException(400, {
-          message: "Bad Slack OpenID response status",
+          message: "Failed to exchange code for token",
         });
       }
 
-      const responseJson = (await oidcResponse.json()) as SlackOpenIDResponse;
+      const tokenData = (await tokenResponse.json()) as HackClubTokenResponse;
 
-      if (!responseJson.ok) {
-        console.error(responseJson);
+      const userResponse = await fetch("https://account.hackclub.com/api/v1/me", {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+        },
+      });
+
+      if (!userResponse.ok) {
         throw new HTTPException(401, {
-          message:
-            responseJson.error === "invalid_code"
-              ? "Invalid Slack OAuth code"
-              : "Bad Slack OpenID response",
+          message: "Failed to fetch user identity",
         });
       }
 
-      const jwt = parseJwt(responseJson.id_token);
-      const slackId = jwt["https://slack.com/user_id"];
-      const slackTeamId = jwt["https://slack.com/team_id"];
-      const avatarUrl = jwt.picture;
-      const displayName = jwt.name;
-      const email = jwt.email;
+      const userData = (await userResponse.json()) as HackClubIdentityResponse;
+      const { identity } = userData;
 
-      if (slackTeamId !== env.SLACK_TEAM_ID) {
-        throw new HTTPException(403, {
-          message: "Access denied: Invalid workspace",
+      if (!identity.slack_id) {
+        throw new HTTPException(400, {
+          message: "User does not have a linked Slack account",
         });
       }
 
@@ -142,12 +100,12 @@ auth.get("/callback", async (c) => {
           return await db
             .select()
             .from(users)
-            .where(eq(users.slackId, slackId))
+            .where(eq(users.slackId, identity.slack_id))
             .limit(1);
         },
       );
 
-      const isIdvVerified = await checkIdvStatus(slackId, email);
+      const isIdvVerified = identity.ysws_eligible;
 
       if (!user) {
         [user] = await Sentry.startSpan(
@@ -156,11 +114,9 @@ auth.get("/callback", async (c) => {
             return await db
               .insert(users)
               .values({
-                slackId,
-                slackTeamId,
-                email,
-                name: displayName,
-                avatar: avatarUrl,
+                slackId: identity.slack_id,
+                email: identity.primary_email,
+                name: `${identity.first_name} ${identity.last_name}`.trim(),
                 isIdvVerified,
               })
               .returning();
@@ -173,9 +129,8 @@ auth.get("/callback", async (c) => {
             return await db
               .update(users)
               .set({
-                email,
-                name: displayName,
-                avatar: avatarUrl,
+                email: identity.primary_email,
+                name: `${identity.first_name} ${identity.last_name}`.trim(),
                 isIdvVerified,
                 updatedAt: new Date(),
               })
