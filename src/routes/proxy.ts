@@ -15,6 +15,7 @@ import {
   resolver,
   validator,
 } from "hono-openapi";
+import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
@@ -59,6 +60,13 @@ proxy.use(
     c.set("ip", cfIp);
     return next();
   },
+  rateLimiter({
+    windowMs: 30 * 60 * 1000, // 30 minutes
+    limit: 150,
+    standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+    keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
+      c.get("user")?.id || c.get("ip"),
+  }),
 );
 
 // #region OpenAPI schemas & routes
@@ -375,7 +383,7 @@ proxy.post(
                     completionTokens = parsed.usage.completion_tokens || 0;
                     totalTokens = parsed.usage.total_tokens || 0;
                   }
-                } catch {}
+                } catch { }
               }
             }
           } finally {

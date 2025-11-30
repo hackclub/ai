@@ -263,3 +263,7 @@ curl {{BASE_URL}}/proxy/v1/moderations \
 - **No proxies.** You are not allowed to use this service to create proxies or other tools that allow others to access the API without them also abiding by these rules.
 - **No resale.** You are not allowed to resell this service or use it to create a service that resells AI to others.
 - **Follow the Code of Conduct.** You are not allowed to use this service to create tools that intentionally violate the [Code of Conduct](https://hackclub.com/conduct). And don't try to generate explicit imagery or text, malware, or other harmful content.
+
+## Rate limiting
+
+This service is rate limited to 150 requests per 30 minutes per user. If you need more requests, DM Mahad on Slack!
