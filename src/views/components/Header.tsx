@@ -1,5 +1,6 @@
 import { html } from "hono/html";
 import type { User } from "../../types";
+import { Hamburger } from "./Icons";
 
 type HeaderProps = {
   title: string;
@@ -78,22 +79,7 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
           aria-label="Toggle menu"
           type="button"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>Toggle menu</title>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
+          <Hamburger title="Toggle menu" />
         </button>
       </div>
 

@@ -1,13 +1,14 @@
 import { arktypeValidator } from "@hono/arktype-validator";
 import * as Sentry from "@sentry/bun";
 import { type } from "arktype";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { apiKeys } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
+import { ApiKeysList } from "../views/dashboard";
 
 const api = new Hono<{ Variables: AppVariables }>();
 
@@ -88,6 +89,31 @@ api.delete("/keys/:id", async (c) => {
     });
 
     return c.json({ success: true });
+  });
+});
+
+// Get API keys list as HTML partial for htmx
+api.get("/keys/partial", async (c) => {
+  return Sentry.startSpan({ name: "GET /keys/partial" }, async () => {
+    const user = c.get("user");
+
+    const keys = await Sentry.startSpan(
+      { name: "db.select.apiKeys" },
+      async () => {
+        return await db
+          .select({
+            id: apiKeys.id,
+            name: apiKeys.name,
+            createdAt: apiKeys.createdAt,
+            keyPreview: sql<string>`CONCAT(SUBSTRING(${apiKeys.key}, 1, 24), '...')`,
+          })
+          .from(apiKeys)
+          .where(and(eq(apiKeys.userId, user.id), isNull(apiKeys.revokedAt)))
+          .orderBy(desc(apiKeys.createdAt));
+      },
+    );
+
+    return c.html(<ApiKeysList apiKeys={keys} />);
   });
 });
 

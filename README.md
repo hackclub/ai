@@ -48,3 +48,12 @@ PORT=54321 # not needed for docker compose
 
 SENTRY_DSN= # sentry.io support (optional)
 ```
+
+## tech stack
+- bun as the runtime
+- hono for the server
+- postgres for the database
+- drizzle for the ORM
+- alpine + htmx + `hono/jsx` for the frontend
+  - developing HCAI? turn on alpine + htmx in the layout if you need to use them!
+- sentry for error tracking (optional)

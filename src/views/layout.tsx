@@ -1,13 +1,19 @@
 import { html } from "hono/html";
 import type { Child } from "hono/jsx";
 
+type LayoutProps = {
+  children: Child;
+  title: string;
+  includeHtmx?: boolean;
+  includeAlpine?: boolean;
+};
+
 export const Layout = ({
   children,
   title,
-}: {
-  children: Child;
-  title: string;
-}) => {
+  includeHtmx = false,
+  includeAlpine = false,
+}: LayoutProps) => {
   return (
     <>
       {html`<!DOCTYPE html>`}
@@ -33,6 +39,25 @@ export const Layout = ({
             rel="stylesheet"
           />
           <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+          {includeAlpine && (
+            <>
+              {/* Alpine plugins must load before Alpine core */}
+              <script
+                defer
+                src="https://unpkg.com/@alpinejs/focus@3.15.2/dist/cdn.min.js"
+              />
+              <script
+                defer
+                src="https://unpkg.com/alpinejs@3.15.2/dist/cdn.min.js"
+              />
+            </>
+          )}
+          {includeHtmx && (
+            <>
+              <script src="https://unpkg.com/htmx.org@2.0.8"></script>
+              <script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
+            </>
+          )}
           {html`
           <script>
             tailwind.config = {
@@ -66,6 +91,9 @@ export const Layout = ({
           <style>
             @view-transition {
               navigation: auto;
+            }
+            [x-cloak] {
+              display: none !important;
             }
           </style>
         `}
