@@ -21,7 +21,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
 
         <a
           href="/auth/login"
-          class="inline-block bg-brand-primary text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-brand-primary-hover hover:-translate-y-1 transition-all duration-300 mb-20"
+          class="inline-block bg-brand-primary text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-brand-primary-hover hover:tracking-wider transition-all duration-300 mb-20"
         >
           Sign in with Hack Club
         </a>
