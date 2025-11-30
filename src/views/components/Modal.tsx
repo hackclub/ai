@@ -11,20 +11,29 @@ type ModalProps = {
  * Reusable modal component using Alpine.js
  *
  * Usage:
- * 1. Wrap your page in a div with x-data containing your modal states:
+ * 1. Wrap your page in a div with `x-data` containing your modal states:
+ * ```jsx
  *    <div x-data="{ showCreate: false, showDelete: false }">
+ * ```
  *
- * 2. Use the Modal component:
+ * 2. Use the `<Modal>` component:
+ * ```jsx
  *    <Modal name="showCreate" title="Create Item">
  *      <p>Modal content here</p>
  *    </Modal>
+ * ```
  *
  * 3. Open with a button:
+ * ```jsx
  *    <button x-on:click="showCreate = true">Open</button>
+ * ```
  *
  * 4. Close from inside the modal:
+ * ```jsx
  *    <button x-on:click="showCreate = false">Cancel</button>
- *    Or use the $modal.close() helper if using the store pattern
+ * ```
+ *
+ *    Or use the `$modal.close()` helper if using the store pattern.
  */
 export const Modal = ({ name, title, children, class: className }: ModalProps) => {
   return (
