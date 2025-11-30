@@ -5,31 +5,45 @@ import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import blockedAppsConfig from "../config/blocked-apps.json";
 import blockedPromptsConfig from "../config/blocked-prompts.json";
+import blockedUserAgentsConfig from "../config/blocked-user-agents.json";
 import { db } from "../db";
 import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
 const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
+const BLOCKED_USER_AGENTS = blockedUserAgentsConfig.blockedUserAgents.map((a) =>
+  a.toLowerCase(),
+);
 const BLOCKED_MESSAGE =
   "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
 export async function blockAICodingAgents(c: Context, next: Next) {
   const referer = c.req.header("Referer") || c.req.header("HTTP-Referer");
   const xTitle = c.req.header("X-Title");
+  const userAgent = c.req.header("User-Agent");
 
-  if (!referer && !xTitle) return next();
+  if (!referer && !xTitle && !userAgent) return next();
 
   const refererLower = (referer || "").toLowerCase();
   const xTitleLower = (xTitle || "").toLowerCase();
+  const userAgentLower = (userAgent || "").toLowerCase();
+  const ex = new HTTPException(403, {
+    message: BLOCKED_MESSAGE,
+    res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
+  });
 
   for (let i = 0; i < BLOCKED_APPS.length; i++) {
     const app = BLOCKED_APPS[i];
     if (refererLower.includes(app) || xTitleLower.includes(app)) {
-      throw new HTTPException(403, {
-        message: BLOCKED_MESSAGE,
-        res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
-      });
+      throw ex;
+    }
+  }
+
+  for (let i = 0; i < BLOCKED_USER_AGENTS.length; i++) {
+    const blockedAgent = BLOCKED_USER_AGENTS[i];
+    if (userAgentLower.includes(blockedAgent)) {
+      throw ex;
     }
   }
 
@@ -40,10 +54,7 @@ export async function blockAICodingAgents(c: Context, next: Next) {
 
       for (const blockedPrompt of blockedPromptsConfig.blockedPrompts) {
         if (body.includes(blockedPrompt)) {
-          throw new HTTPException(403, {
-            message: BLOCKED_MESSAGE,
-            res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
-          });
+          throw ex;
         }
       }
     } catch (e) {

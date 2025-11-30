@@ -57,6 +57,13 @@
       "when": 1764089492105,
       "tag": "0007_last_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1764495518539,
+      "tag": "0008_graceful_may_parker",
+      "breakpoints": true
     }
   ]
 }

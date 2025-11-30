@@ -66,6 +66,7 @@ export const requestLogs = pgTable(
     totalTokens: integer("total_tokens").notNull().default(0),
     request: jsonb("request").notNull(),
     response: jsonb("response").notNull(),
+    headers: jsonb("headers"),
     ip: text("ip").notNull(),
     timestamp: timestamp("timestamp").defaultNow().notNull(),
     duration: integer("duration").notNull(),

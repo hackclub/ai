@@ -157,6 +157,14 @@ function getClientIp(c: Context): string {
   );
 }
 
+function getRequestHeaders(c: Context): Record<string, string> {
+  const headers: Record<string, string> = {};
+  c.req.raw.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return headers;
+}
+
 proxy.get("/v1/models", modelsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /v1/models" }, async () => {
     const now = Date.now();
@@ -309,6 +317,7 @@ proxy.post(
                 totalTokens,
                 request: requestBody,
                 response: responseData,
+                headers: getRequestHeaders(c),
                 ip: getClientIp(c),
                 timestamp: new Date(),
                 duration,
@@ -376,6 +385,7 @@ proxy.post(
                     totalTokens,
                     request: requestBody,
                     response: { stream: true, chunks: chunks.join("") },
+                    headers: getRequestHeaders(c),
                     ip: getClientIp(c),
                     timestamp: new Date(),
                     duration,
@@ -404,6 +414,7 @@ proxy.post(
               response: {
                 error: error instanceof Error ? error.message : "Unknown error",
               },
+              headers: getRequestHeaders(c),
               ip: getClientIp(c),
               timestamp: new Date(),
               duration,
@@ -468,6 +479,7 @@ proxy.post(
               totalTokens,
               request: requestBody,
               response: responseData,
+              headers: getRequestHeaders(c),
               ip: getClientIp(c),
               timestamp: new Date(),
               duration,
@@ -495,6 +507,7 @@ proxy.post(
               response: {
                 error: error instanceof Error ? error.message : "Unknown error",
               },
+              headers: getRequestHeaders(c),
               ip: getClientIp(c),
               timestamp: new Date(),
               duration,
