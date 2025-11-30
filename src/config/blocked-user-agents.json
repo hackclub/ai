@@ -1,5 +1,3 @@
 {
-  "blockedUserAgents": [
-    "lobechat"
-  ]
+  "blockedUserAgents": ["lobechat"]
 }

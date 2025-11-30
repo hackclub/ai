@@ -26,6 +26,7 @@
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
     "hono-openapi": "^1.1.1",
+    "hono-rate-limiter": "^0.4.2",
     "marked": "^17.0.0",
     "marked-alert": "^2.1.2",
     "marked-shiki": "^1.2.1",

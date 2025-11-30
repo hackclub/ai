@@ -128,6 +128,7 @@ export const ChatCompletionRequestSchema = type({
   "top_p?": type("number").describe(
     "The nucleus sampling probability. Defaults to 1.0.",
   ),
+  user: type("string").describe("The user ID. Internally set."),
 });
 
 export const ChatCompletionResponseSchema = type({

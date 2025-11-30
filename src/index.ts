@@ -3,7 +3,6 @@ import "./instrument"; // Sentry
 import * as Sentry from "@sentry/bun";
 import { dns } from "bun";
 import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
@@ -13,7 +12,6 @@ import { logger } from "hono/logger";
 import type { RequestIdVariables } from "hono/request-id";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
-import { timeout } from "hono/timeout";
 import { trimTrailingSlash } from "hono/trailing-slash";
 
 import { env } from "./env";
@@ -32,21 +30,10 @@ dns.prefetch(env.OPENAI_API_URL, 443);
 const app = new Hono<{ Variables: AppVariables & RequestIdVariables }>();
 
 app.use("*", secureHeaders());
-app.use(
-  "/proxy/*",
-  bodyLimit({
-    maxSize: 20 * 1024 * 1024,
-    onError: () => {
-      throw new HTTPException(413, { message: "Request too large" });
-    },
-  }),
-);
-app.use("/proxy/*", timeout(120000));
-
 app.use("/*", requestId(), trimTrailingSlash());
 app.use("/*", csrf({ origin: env.BASE_URL }));
 app.use(
-  "/proxy/*",
+  "/proxy/v1/*",
   cors({
     origin: (origin) => {
       if (
@@ -84,7 +71,7 @@ app.onError((err, c) => {
 
 app.route("/", dashboard);
 app.route("/auth", auth);
-app.route("/proxy", proxy);
+app.route("/proxy/v1", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);

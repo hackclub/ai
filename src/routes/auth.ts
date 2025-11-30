@@ -73,11 +73,14 @@ auth.get("/callback", async (c) => {
 
       const tokenData = (await tokenResponse.json()) as HackClubTokenResponse;
 
-      const userResponse = await fetch("https://account.hackclub.com/api/v1/me", {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
+      const userResponse = await fetch(
+        "https://account.hackclub.com/api/v1/me",
+        {
+          headers: {
+            Authorization: `Bearer ${tokenData.access_token}`,
+          },
         },
-      });
+      );
 
       if (!userResponse.ok) {
         throw new HTTPException(401, {

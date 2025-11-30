@@ -18,7 +18,9 @@ export type Stats = {
   totalCompletionTokens: number;
 };
 
+// FIXME: fields may be null if not authenticated. not good, be careful!
 export type AppVariables = {
   user: User;
   apiKey: ApiKey;
+  ip: string;
 };

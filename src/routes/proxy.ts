@@ -2,10 +2,13 @@ import * as Sentry from "@sentry/bun";
 import type { type } from "arktype";
 import { eq, sql } from "drizzle-orm";
 import { type Context, Hono, type TypedResponse } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
 import { proxy as honoProxy } from "hono/proxy";
 import { stream } from "hono/streaming";
+import { timeout } from "hono/timeout";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import {
   describeRoute,
   openAPIRouteHandler,
@@ -35,6 +38,28 @@ type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
 type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 const proxy = new Hono<{ Variables: AppVariables }>();
+
+proxy.use(
+  "*",
+  bodyLimit({
+    maxSize: 20 * 1024 * 1024,
+    onError: () => {
+      throw new HTTPException(413, { message: "Request too large" });
+    },
+  }),
+  timeout(120000),
+  (c, next) => {
+    const cfIp = c.req.header("CF-Connecting-IP");
+    if (!cfIp) {
+      throw new HTTPException(400, {
+        message:
+          "Missing CF-Connecting-IP. This is a bug. Please contact support.",
+      });
+    }
+    c.set("ip", cfIp);
+    return next();
+  },
+);
 
 // #region OpenAPI schemas & routes
 
@@ -137,25 +162,13 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (
-    c.req.path.endsWith("/v1/models") ||
-    c.req.path.endsWith("/openapi.json")
-  ) {
+  if (c.req.path.endsWith("/models") || c.req.path.endsWith("/openapi.json")) {
     return next();
   }
   return requireApiKey(c, next);
 });
 
-proxy.use("/v1/models", etag());
-
-function getClientIp(c: Context): string {
-  return (
-    c.req.header("CF-Connecting-IP") ||
-    c.req.header("X-Forwarded-For")?.split(",")[0].trim() ||
-    c.req.header("X-Real-IP") ||
-    "unknown"
-  );
-}
+proxy.use("/models", etag());
 
 function getRequestHeaders(c: Context): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -165,8 +178,8 @@ function getRequestHeaders(c: Context): Record<string, string> {
   return headers;
 }
 
-proxy.get("/v1/models", modelsRoute, async (c) => {
-  return Sentry.startSpan({ name: "GET /v1/models" }, async () => {
+proxy.get("/models", modelsRoute, async (c) => {
+  return Sentry.startSpan({ name: "GET /models" }, async () => {
     const now = Date.now();
 
     if (modelsCache && now - modelsCache.timestamp < CACHE_TTL) {
@@ -228,8 +241,8 @@ proxy.get("/v1/models", modelsRoute, async (c) => {
   });
 });
 
-proxy.get("/v1/stats", statsRoute, async (c) => {
-  return Sentry.startSpan({ name: "GET /v1/stats" }, async () => {
+proxy.get("/stats", statsRoute, async (c) => {
+  return Sentry.startSpan({ name: "GET /stats" }, async () => {
     const user = c.get("user");
 
     const stats = await Sentry.startSpan(
@@ -254,17 +267,16 @@ proxy.get("/v1/stats", statsRoute, async (c) => {
         totalPromptTokens: 0,
         totalCompletionTokens: 0,
       },
-      200,
     );
   });
 });
 
 proxy.post(
-  "/v1/chat/completions",
+  "/chat/completions",
   chatRoute,
   validator("json", ChatCompletionRequestSchema),
   async (c) => {
-    return Sentry.startSpan({ name: "POST /v1/chat/completions" }, async () => {
+    return Sentry.startSpan({ name: "POST /chat/completions" }, async () => {
       const apiKey = c.get("apiKey");
       const user = c.get("user");
       const startTime = Date.now();
@@ -277,7 +289,6 @@ proxy.post(
           requestBody.model = allowedLanguageModels[0];
         }
 
-        // @ts-expect-error: user is not in schema but we need to pass it
         requestBody.user = `user_${user.id}`;
 
         const isStreaming = requestBody.stream === true;
@@ -318,14 +329,14 @@ proxy.post(
                 request: requestBody,
                 response: responseData,
                 headers: getRequestHeaders(c),
-                ip: getClientIp(c),
+                ip: c.get("ip"),
                 timestamp: new Date(),
                 duration,
               })
               .catch((err) => console.error("Logging error:", err));
           });
 
-          return c.json(responseData, response.status as 200);
+          return c.json(responseData, response.status as ContentfulStatusCode);
         }
 
         return stream(c, async (stream) => {
@@ -386,7 +397,7 @@ proxy.post(
                     request: requestBody,
                     response: { stream: true, chunks: chunks.join("") },
                     headers: getRequestHeaders(c),
-                    ip: getClientIp(c),
+                    ip: c.get("ip"),
                     timestamp: new Date(),
                     duration,
                   })
@@ -394,7 +405,10 @@ proxy.post(
               },
             );
           }
-        }) as unknown as TypedResponse<OpenAIChatCompletionResponse, 200>;
+        }) as unknown as TypedResponse<
+          OpenAIChatCompletionResponse,
+          ContentfulStatusCode
+        >;
       } catch (error) {
         const duration = Date.now() - startTime;
         console.error("Proxy error:", error);
@@ -415,7 +429,7 @@ proxy.post(
                 error: error instanceof Error ? error.message : "Unknown error",
               },
               headers: getRequestHeaders(c),
-              ip: getClientIp(c),
+              ip: c.get("ip"),
               timestamp: new Date(),
               duration,
             })
@@ -429,11 +443,11 @@ proxy.post(
 );
 
 proxy.post(
-  "/v1/embeddings",
+  "/embeddings",
   embeddingsRoute,
   validator("json", EmbeddingsRequestSchema),
   async (c) => {
-    return Sentry.startSpan({ name: "POST /v1/embeddings" }, async () => {
+    return Sentry.startSpan({ name: "POST /embeddings" }, async () => {
       const apiKey = c.get("apiKey");
       const user = c.get("user");
       const startTime = Date.now();
@@ -480,14 +494,14 @@ proxy.post(
               request: requestBody,
               response: responseData,
               headers: getRequestHeaders(c),
-              ip: getClientIp(c),
+              ip: c.get("ip"),
               timestamp: new Date(),
               duration,
             })
             .catch((err) => console.error("Logging error:", err));
         });
 
-        return c.json(responseData, response.status as 200);
+        return c.json(responseData, response.status as ContentfulStatusCode);
       } catch (error) {
         const duration = Date.now() - startTime;
         console.error("Embeddings proxy error:", error);
@@ -508,7 +522,7 @@ proxy.post(
                 error: error instanceof Error ? error.message : "Unknown error",
               },
               headers: getRequestHeaders(c),
-              ip: getClientIp(c),
+              ip: c.get("ip"),
               timestamp: new Date(),
               duration,
             })
@@ -522,11 +536,11 @@ proxy.post(
 );
 
 proxy.post(
-  "/v1/moderations",
+  "/moderations",
   moderationsRoute,
   validator("json", ModerationRequestSchema),
   async (c) => {
-    return Sentry.startSpan({ name: "POST /v1/moderations" }, async () => {
+    return Sentry.startSpan({ name: "POST /moderations" }, async () => {
       // We don't log moderations requests
       try {
         const requestBody = c.req.valid("json");
