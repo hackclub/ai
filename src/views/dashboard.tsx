@@ -296,7 +296,8 @@ const CreateKeyModal = () => (
 const CreatedModal = () => (
   <Modal name="createdModal" title="API Key Created" class="select-none">
     <p class="mb-6 text-brand-text">
-      Save this key now. You won't see it again. <b>Don't share it or commit it to a public repo!</b>
+      Save this key now. You won't see it again.{" "}
+      <b>Don't share it or commit it to a public repo!</b>
     </p>
     <div
       class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl font-mono text-sm break-all text-brand-primary font-bold select-text"

@@ -35,7 +35,12 @@ type ModalProps = {
  *
  *    Or use the `$modal.close()` helper if using the store pattern.
  */
-export const Modal = ({ name, title, children, class: className }: ModalProps) => {
+export const Modal = ({
+  name,
+  title,
+  children,
+  class: className,
+}: ModalProps) => {
   return (
     <div
       x-show={name}
@@ -67,7 +72,9 @@ export const Modal = ({ name, title, children, class: className }: ModalProps) =
         }}
         class="bg-white border-2 border-brand-border p-8 rounded-3xl max-w-xl w-11/12 shadow-2xl"
       >
-        <h3 class="text-2xl font-bold mb-4 text-brand-heading select-none">{title}</h3>
+        <h3 class="text-2xl font-bold mb-4 text-brand-heading select-none">
+          {title}
+        </h3>
         {children}
       </div>
     </div>
@@ -103,8 +110,7 @@ export const ModalButton = ({
     "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95 select-none hover:tracking-wider";
 
   const variantClasses = {
-    primary:
-      "bg-brand-primary text-white hover:bg-brand-primary-hover",
+    primary: "bg-brand-primary text-white hover:bg-brand-primary-hover",
     secondary:
       "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
     danger:
