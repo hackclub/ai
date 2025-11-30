@@ -100,11 +100,11 @@ export const ModalButton = ({
   children,
 }: ModalButtonProps) => {
   const baseClasses =
-    "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95 select-none";
+    "px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-full active:scale-95 select-none hover:tracking-wider";
 
   const variantClasses = {
     primary:
-      "bg-brand-primary text-white hover:bg-brand-primary-hover hover:-translate-y-0.5",
+      "bg-brand-primary text-white hover:bg-brand-primary-hover",
     secondary:
       "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
     danger:

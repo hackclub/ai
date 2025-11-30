@@ -118,7 +118,7 @@ export const Dashboard = ({
               <button
                 type="button"
                 x-on:click="createModal = true"
-                class="px-6 py-2.5 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+                class="px-6 py-2.5 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover hover:tracking-wider transition-all"
               >
                 Create New Key
               </button>
@@ -286,13 +286,9 @@ const CreateKeyModal = () => (
       <ModalButton variant="secondary" close="createModal">
         Cancel
       </ModalButton>
-      <button
-        type="button"
-        x-on:click="createKey()"
-        class="px-5 py-2.5 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
-      >
+      <ModalButton variant="primary" onClick="createKey()">
         Create
-      </button>
+      </ModalButton>
     </ModalActions>
   </Modal>
 );
@@ -337,13 +333,9 @@ const RevokeKeyModal = () => (
       <ModalButton variant="secondary" close="revokeModal">
         Cancel
       </ModalButton>
-      <button
-        type="button"
-        x-on:click="revokeKey()"
-        class="px-5 py-2.5 text-sm font-medium rounded-full bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 transition-all"
-      >
+      <ModalButton variant="primary" onClick="revokeKey()">
         Revoke Key
-      </button>
+      </ModalButton>
     </ModalActions>
   </Modal>
 );
