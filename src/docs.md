@@ -187,6 +187,7 @@ Python:
 ```python
 import base64
 import io
+import requests
 
 headers = {
     "Authorization": f"Bearer {AI_API_KEY}",
