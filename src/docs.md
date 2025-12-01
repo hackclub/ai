@@ -70,7 +70,7 @@ from openrouter import OpenRouter
 
 client = OpenRouter(
     api_key="YOUR_API_KEY",
-    baseURL="{{BASE_URL}}/proxy/v1",
+    server_url="{{BASE_URL}}/proxy/v1",
 )
 
 response = client.chat.send(
@@ -154,10 +154,14 @@ Supports streaming and non-streaming modes.
 You can generate images via the same chat completions endpoint using
 OpenRouter’s image-capable models, such as:
 
-- `google/gemini-2.5-flash-image-preview` (aka Nano Banana)
-- `google/gemini-3-pro-image-preview` (aka Nano Banana Pro)
+- `google/gemini-2.5-flash-image` (aka Nano Banana)
+- `google/gemini-3-pro-image-preview` (aka Nano Banana 3 Pro)
 
 ##### Example request (image generation via this proxy)
+
+For image generation the best way to do it is via curl or any `requests` library in your language.
+
+Curl:
 
 ```bash
 curl {{BASE_URL}}/proxy/v1/chat/completions \
@@ -177,6 +181,54 @@ curl {{BASE_URL}}/proxy/v1/chat/completions \
     },
     "stream": false
   }'
+```
+
+Python:
+```python
+import base64
+import io
+
+headers = {
+    "Authorization": f"Bearer {AI_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+payload = {
+    "model": "google/gemini-2.5-flash-image",
+    "messages": [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    "modalities": ["image", "text"],
+    "image_config": {
+        "aspect_ratio": "16:9"
+    }
+}
+
+response = requests.post(URL, headers=headers, json=payload)
+result = response.json()
+
+if result.get("choices"):
+    message = result["choices"][0]["message"]
+    if message.get("images"):
+        # Assuming one image
+        image_url = message["images"][0]["image_url"]["url"]  # Base64 data URL
+
+        try:
+            # Handle data URI prefix
+            if "," in image_url:
+                base64_data = image_url.split(",")[1]
+            else:
+                base64_data = image_url
+
+            image_bytes = base64.b64decode(base64_data)
+            image_file = io.BytesIO(image_bytes)
+            return
+        except (base64.binascii.Error, IndexError) as e:
+            print(f"Error decoding base64: {e}")
+            return
 ```
 
 Refer to the
