@@ -33,7 +33,7 @@ auth.get("/login", (c) => {
   return Sentry.startSpan({ name: "GET /login" }, () => {
     const clientId = env.HACK_CLUB_CLIENT_ID;
     const redirectUri = `${env.BASE_URL}/auth/callback`;
-    const authUrl = `https://account.hackclub.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email+name+slack_id+verification_status`;
+    const authUrl = `https://auth.hackclub.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email+name+slack_id+verification_status`;
     return c.redirect(authUrl);
   });
 });
@@ -47,7 +47,7 @@ auth.get("/callback", async (c) => {
     }
 
     try {
-      const tokenUrl = "https://account.hackclub.com/oauth/token";
+      const tokenUrl = "https://auth.hackclub.com/oauth/token";
       const tokenParams = new URLSearchParams({
         grant_type: "authorization_code",
         client_id: env.HACK_CLUB_CLIENT_ID,
@@ -74,7 +74,7 @@ auth.get("/callback", async (c) => {
       const tokenData = (await tokenResponse.json()) as HackClubTokenResponse;
 
       const userResponse = await fetch(
-        "https://account.hackclub.com/api/v1/me",
+        "https://auth.hackclub.com/api/v1/me",
         {
           headers: {
             Authorization: `Bearer ${tokenData.access_token}`,
