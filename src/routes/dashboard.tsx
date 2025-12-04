@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { db } from "../db";
 import { apiKeys, requestLogs, sessions } from "../db/schema";
-import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import { allowedLanguageModels, env } from "../env";
+import { fetchAllModels } from "../lib/models";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -93,6 +94,17 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
     },
   );
 
+  const { languageModels, embeddingModels } = await Sentry.startSpan(
+    { name: "fetch.models" },
+    async () => {
+      try {
+        return await fetchAllModels();
+      } catch {
+        return { languageModels: [], embeddingModels: [] };
+      }
+    },
+  );
+
   return c.html(
     <Dashboard
       user={user}
@@ -106,8 +118,8 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
         }
       }
       recentLogs={recentLogs}
-      allowedLanguageModels={allowedLanguageModels}
-      allowedEmbeddingModels={allowedEmbeddingModels}
+      languageModels={languageModels}
+      embeddingModels={embeddingModels}
       enforceIdv={env.ENFORCE_IDV || false}
     />,
   );

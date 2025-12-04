@@ -1,4 +1,5 @@
 import { env } from "../env";
+import type { OpenRouterModel } from "../lib/models";
 import type {
   DashboardApiKey,
   DashboardRequestLog,
@@ -8,6 +9,7 @@ import type {
 import { Card } from "./components/Card";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
+import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { Modal, ModalActions, ModalButton } from "./components/Modal";
 import { StatCard } from "./components/StatCard";
@@ -19,8 +21,8 @@ type DashboardProps = {
   apiKeys: DashboardApiKey[];
   stats: Stats;
   recentLogs: DashboardRequestLog[];
-  allowedLanguageModels: string[];
-  allowedEmbeddingModels: string[];
+  languageModels: OpenRouterModel[];
+  embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
 };
 
@@ -29,8 +31,8 @@ export const Dashboard = ({
   apiKeys,
   stats,
   recentLogs,
-  allowedLanguageModels,
-  allowedEmbeddingModels,
+  languageModels,
+  embeddingModels,
   enforceIdv,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
@@ -101,16 +103,8 @@ export const Dashboard = ({
             />
           </div>
 
-          <ModelsList
-            title="Allowed Language Models"
-            models={allowedLanguageModels}
-            icon="chat"
-          />
-          <ModelsList
-            title="Allowed Embedding Models"
-            models={allowedEmbeddingModels}
-            icon="bolt"
-          />
+          <ModelsList title="Language Models" models={languageModels} />
+          <ModelsList title="Embedding Models" models={embeddingModels} />
 
           <div class="mb-12">
             <div class="flex justify-between items-center mb-6">
@@ -189,43 +183,86 @@ export const ApiKeysList = ({ apiKeys }: { apiKeys: DashboardApiKey[] }) => {
 const ModelsList = ({
   title,
   models,
-  icon,
 }: {
   title: string;
-  models: string[];
-  icon: "chat" | "bolt";
+  models: OpenRouterModel[];
 }) => {
-  const iconPath =
-    icon === "chat"
-      ? "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-      : "M13 10V3L4 14h7v7l9-11h-7z";
-
   return (
-    <div class="mb-12">
-      <h2 class="text-2xl font-bold mb-6 text-brand-heading">{title}</h2>
+    <div class="mb-12" x-data="{ expanded: window.innerWidth >= 1024 }">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-brand-heading">{title}</h2>
+        {models.length > 3 && (
+          <button
+            type="button"
+            x-on:click="expanded = !expanded"
+            class="text-sm font-medium text-brand-primary hover:text-brand-primary-hover transition-colors flex items-center gap-1"
+          >
+            <span
+              x-text={`expanded ? 'Show less' : 'Show all ${models.length}'`}
+            />
+            <ChevronDown class="w-4 h-4 transition-transform" x-bind:class="expanded ? 'rotate-180' : ''" />
+          </button>
+        )}
+      </div>
       <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
-          {models.map((model) => (
-            <div class="bg-brand-primary text-white sm:bg-brand-bg sm:text-brand-heading border-2 border-brand-border px-5 py-4 rounded-xl flex items-center gap-4">
-              <svg
-                class="w-6 h-6 flex-shrink-0 text-brand-primary/80 hidden sm:flex"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="2.5"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d={iconPath}
-                />
-              </svg>
-              <span class="font-bold text-sm truncate">{model}</span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {models.map((model, index) => (
+            <div
+              x-show={index < 3 ? "true" : "expanded"}
+              x-transition:enter="transition ease-out duration-200"
+              x-transition:enter-start="opacity-0 -translate-y-2"
+              x-transition:enter-end="opacity-100 translate-y-0"
+            >
+              <ModelCard model={model} />
             </div>
           ))}
         </div>
       </Card>
+    </div>
+  );
+};
+
+const ModelCard = ({ model }: { model: OpenRouterModel }) => {
+  const displayName = model.name || model.id;
+  const description = model.description || "";
+  const truncatedDescription =
+    description.length > 250 ? `${description.slice(0, 250)}...` : description;
+
+  return (
+    <div
+      class="bg-brand-bg border-2 border-brand-border p-4 rounded-xl h-full flex flex-col"
+      x-data="{ copied: false }"
+    >
+      <div class="flex flex-col gap-2 flex-1">
+        <div class="flex items-start justify-between gap-4 flex-1">
+          <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-brand-heading text-base truncate">
+              {displayName}
+            </h3>
+            {truncatedDescription && (
+              <p class="text-sm text-brand-text mt-1 line-clamp-2">
+                {truncatedDescription}
+              </p>
+            )}
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mt-auto">
+          <button
+            type="button"
+            x-on:click={`navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`}
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
+            title="Click to copy model ID"
+          >
+            <code class="text-xs font-mono text-brand-primary">{model.id}</code>
+            <span x-show="!copied">
+              <Copy class="w-3.5 h-3.5 text-brand-text/50 group-hover:text-brand-primary transition-colors" />
+            </span>
+            <span x-show="copied" x-cloak>
+              <Check class="w-3.5 h-3.5 text-green-500" />
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

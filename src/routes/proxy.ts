@@ -19,6 +19,7 @@ import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import { fetchAllModels } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import {
   ChatCompletionRequestSchema,
@@ -36,7 +37,6 @@ type OpenAIChatCompletionResponse = type.infer<
   typeof ChatCompletionResponseSchema
 >;
 type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
-type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
@@ -157,11 +157,6 @@ const moderationsRoute = describeRoute({
 
 // #endregion
 
-let modelsCache: { data: OpenRouterModelsResponse; timestamp: number } | null =
-  null;
-let modelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
-const CACHE_TTL = 5 * 60 * 1000;
-
 const openRouterHeaders = {
   "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
   "X-Title": "Hack Club AI",
@@ -188,60 +183,11 @@ function getRequestHeaders(c: Context): Record<string, string> {
 
 proxy.get("/models", modelsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /models" }, async () => {
-    const now = Date.now();
-
-    if (modelsCache && now - modelsCache.timestamp < CACHE_TTL) {
-      return c.json(modelsCache.data);
-    }
-
-    if (modelsCacheFetch) {
-      try {
-        const data = await modelsCacheFetch;
-        return c.json(data);
-      } catch (error) {
-        console.error("Models fetch error:", error);
-        throw new HTTPException(500, { message: "Failed to fetch models" });
-      }
-    }
-
-    modelsCacheFetch = (async () => {
-      try {
-        const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-            ...openRouterHeaders,
-          },
-        });
-
-        const data = (await response.json()) as OpenRouterModelsResponse;
-
-        if (!response.ok || !data.data || !Array.isArray(data.data)) {
-          modelsCacheFetch = null;
-          return data;
-        }
-
-        const allAllowedModels = [
-          ...allowedLanguageModels,
-          ...allowedEmbeddingModels,
-        ];
-
-        const allowedSet = new Set(allAllowedModels);
-        data.data = data.data.filter((model) => allowedSet.has(model.id));
-
-        modelsCache = { data, timestamp: now };
-        modelsCacheFetch = null;
-
-        return data;
-      } catch (error) {
-        modelsCacheFetch = null;
-        throw error;
-      }
-    })();
-
     try {
-      const data = await modelsCacheFetch;
-      return c.json(data);
+      const { languageModels, embeddingModels } = await fetchAllModels();
+      return c.json({
+        data: [...languageModels, ...embeddingModels],
+      });
     } catch (error) {
       console.error("Models fetch error:", error);
       throw new HTTPException(500, { message: "Failed to fetch models" });
