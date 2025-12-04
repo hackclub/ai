@@ -207,8 +207,7 @@ const ModelsList = ({
           </button>
         )}
       </div>
-      <Card class="border-0 sm:border-2 sm:p-8 bg-transparent sm:bg-white">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {models.map((model, index) => (
             <div
               x-show={index < 3 ? "true" : "expanded"}
@@ -220,7 +219,6 @@ const ModelsList = ({
             </div>
           ))}
         </div>
-      </Card>
     </div>
   );
 };
@@ -233,7 +231,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
 
   return (
     <div
-      class="bg-brand-bg border-2 border-brand-border p-4 rounded-xl h-full flex flex-col"
+      class="bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col"
       x-data="{ copied: false }"
     >
       <div class="flex flex-col gap-2 flex-1">
