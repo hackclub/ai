@@ -223,9 +223,13 @@ const ModelsList = ({
   );
 };
 
+const stripMarkdownLinks = (text: string) =>
+  text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+
 const ModelCard = ({ model }: { model: OpenRouterModel }) => {
   const displayName = model.name || model.id;
-  const description = model.description || "";
+  const rawDescription = model.description || "";
+  const description = stripMarkdownLinks(rawDescription);
   const truncatedDescription =
     description.length > 250 ? `${description.slice(0, 250)}...` : description;
 
@@ -241,7 +245,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
               {displayName}
             </h3>
             {truncatedDescription && (
-              <p class="text-sm text-brand-text mt-1 line-clamp-2">
+              <p class="text-sm text-brand-text mt-1 line-clamp-2 sm:line-clamp-3">
                 {truncatedDescription}
               </p>
             )}
