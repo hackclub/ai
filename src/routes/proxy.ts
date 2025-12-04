@@ -60,15 +60,22 @@ proxy.use(
     c.set("ip", cfIp || "127.0.0.1"); // dev check above!
     return next();
   },
-  rateLimiter({
-    windowMs: 30 * 60 * 1000, // 30 minutes
-    limit: 150,
-    standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
-    keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
-      c.get("user")?.id || c.get("ip"),
-  }),
 );
 
+const limiterOpts = {
+  limit: 150,
+  windowMs: 30 * 60 * 1000, // 30 minutes
+  standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+  keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
+    c.get("user")?.id || c.get("ip"),
+} as const;
+const standardLimiter = rateLimiter({
+  ...limiterOpts,
+});
+const moderationsLimiter = rateLimiter({
+  ...limiterOpts,
+  limit: 300,
+});
 // #region OpenAPI schemas & routes
 
 const modelsRoute = describeRoute({
@@ -220,7 +227,7 @@ proxy.get("/embeddings/models", embeddingModelsRoute, async (c) => {
   }
 });
 
-proxy.get("/stats", statsRoute, async (c) => {
+proxy.get("/stats", statsRoute, standardLimiter, async (c) => {
   const user = c.get("user");
 
   const stats = await Sentry.startSpan(
@@ -252,6 +259,7 @@ proxy.post(
   "/chat/completions",
   chatRoute,
   validator("json", ChatCompletionRequestSchema),
+  standardLimiter,
   async (c) => {
     const apiKey = c.get("apiKey");
     const user = c.get("user");
@@ -418,6 +426,7 @@ proxy.post(
   "/embeddings",
   embeddingsRoute,
   validator("json", EmbeddingsRequestSchema),
+  standardLimiter,
   async (c) => {
     const apiKey = c.get("apiKey");
     const user = c.get("user");
@@ -508,6 +517,7 @@ proxy.post(
   "/moderations",
   moderationsRoute,
   validator("json", ModerationRequestSchema),
+  moderationsLimiter,
   async (c) => {
     // We don't log moderations requests
     try {

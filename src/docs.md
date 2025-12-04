@@ -455,5 +455,8 @@ curl {{BASE_URL}}/proxy/v1/moderations \
 
 ## Rate limiting
 
-This service is rate limited to 150 requests per 30 minutes per user. If you
-need more requests, DM Mahad on Slack!
+Rate limits fall into one of two buckets:
+
+- **Chat completions/embeddings:** 150 requests per 30 minutes per user
+- **Moderations:** 300 requests per minute per user
+

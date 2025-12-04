@@ -7,6 +7,8 @@ import { db } from "../db";
 import { sessions, users } from "../db/schema";
 import { env } from "../env";
 import type { AppVariables } from "../types";
+import { rateLimiter } from "hono-rate-limiter";
+import { Context } from "hono";
 
 interface HackClubIdentityResponse {
   identity: {
@@ -28,6 +30,10 @@ interface HackClubTokenResponse {
 }
 
 const auth = new Hono<{ Variables: AppVariables }>();
+auth.use(rateLimiter({
+  limit: 30, windowMs: 10 * 60 * 1000, keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
+    c.get("user")?.id || c.get("ip"),
+}));
 
 auth.get("/login", (c) => {
   const clientId = env.HACK_CLUB_CLIENT_ID;
