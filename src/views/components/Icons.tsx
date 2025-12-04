@@ -61,11 +61,7 @@ export const ChevronDown = ({ class: className, ...props }: IconProps) => (
     aria-hidden="true"
     {...props}
   >
-    <path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      d="M19 9l-7 7-7-7"
-    />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
   </svg>
 );
 
@@ -97,10 +93,6 @@ export const Check = ({ class: className, ...props }: IconProps) => (
     aria-hidden="true"
     {...props}
   >
-    <path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      d="M5 13l4 4L19 7"
-    />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
   </svg>
 );

@@ -302,11 +302,11 @@ embedding_vector = response.data[0].embedding
 print(len(embedding_vector), "dimensions")
 ```
 
-### Get available models
+### Get available language models
 
 `GET /proxy/v1/models`
 
-List all available models. No authentication required.
+List all available language models. No authentication required.
 
 #### Example request
 
@@ -318,6 +318,23 @@ curl {{BASE_URL}}/proxy/v1/models
 
 This endpoint is OpenAI compatible, so the response format is the same as the
 [OpenAI models endpoint](https://platform.openai.com/docs/api-reference/models/list).
+
+### Get available embedding models
+
+`GET /proxy/v1/embeddings/models`
+
+List all available embedding models. No authentication required.
+
+#### Example request
+
+```bash
+curl {{BASE_URL}}/proxy/v1/embeddings/models
+```
+
+#### Example response
+
+This endpoint is OpenRouter compatible, so the response format is the same as the
+[OpenRouter models endpoint](https://openrouter.ai/docs/api/api-reference/embeddings/list-embeddings-models?explorer=true).
 
 ### Token stats
 

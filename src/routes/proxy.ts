@@ -19,7 +19,7 @@ import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
-import { fetchAllModels } from "../lib/models";
+import { fetchEmbeddingModels, fetchLanguageModels } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import {
   ChatCompletionRequestSchema,
@@ -72,9 +72,25 @@ proxy.use(
 // #region OpenAPI schemas & routes
 
 const modelsRoute = describeRoute({
-  summary: "Get available models",
+  summary: "Get available language models",
   description:
-    "List all available models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
+    "List all available language models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
+  responses: {
+    200: {
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: resolver(ModelsResponseSchema),
+        },
+      },
+    },
+  },
+});
+
+const embeddingModelsRoute = describeRoute({
+  summary: "Get available embedding models",
+  description:
+    "List all available embedding models. No authentication required.",
   responses: {
     200: {
       description: "Successful response.",
@@ -172,6 +188,7 @@ proxy.use((c, next) => {
 });
 
 proxy.use("/models", etag());
+proxy.use("/embeddings/models", etag());
 
 function getRequestHeaders(c: Context): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -184,13 +201,25 @@ function getRequestHeaders(c: Context): Record<string, string> {
 proxy.get("/models", modelsRoute, async (c) => {
   return Sentry.startSpan({ name: "GET /models" }, async () => {
     try {
-      const { languageModels, embeddingModels } = await fetchAllModels();
-      return c.json({
-        data: [...languageModels, ...embeddingModels],
-      });
+      const data = await fetchLanguageModels();
+      return c.json(data);
     } catch (error) {
       console.error("Models fetch error:", error);
       throw new HTTPException(500, { message: "Failed to fetch models" });
+    }
+  });
+});
+
+proxy.get("/embeddings/models", embeddingModelsRoute, async (c) => {
+  return Sentry.startSpan({ name: "GET /embeddings/models" }, async () => {
+    try {
+      const data = await fetchEmbeddingModels();
+      return c.json(data);
+    } catch (error) {
+      console.error("Embedding models fetch error:", error);
+      throw new HTTPException(500, {
+        message: "Failed to fetch embedding models",
+      });
     }
   });
 });

@@ -200,7 +200,10 @@ const ModelsList = ({
             <span
               x-text={`expanded ? 'Show less' : 'Show all ${models.length}'`}
             />
-            <ChevronDown class="w-4 h-4 transition-transform" x-bind:class="expanded ? 'rotate-180' : ''" />
+            <ChevronDown
+              class="w-4 h-4 transition-transform"
+              x-bind:class="expanded ? 'rotate-180' : ''"
+            />
           </button>
         )}
       </div>

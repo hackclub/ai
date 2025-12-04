@@ -31,7 +31,7 @@ export type OpenRouterModel = {
   };
 };
 
-export type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
+type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
 
 type ModelsCache = { data: OpenRouterModelsResponse; timestamp: number };
 
@@ -81,7 +81,7 @@ export async function fetchLanguageModels(): Promise<OpenRouterModelsResponse> {
       );
       data.data = data.data
         .filter((model) => orderMap.has(model.id))
-        .sort((a, b) => orderMap.get(a.id)! - orderMap.get(b.id)!);
+        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
 
       languageModelsCache = { data, timestamp: now };
       languageModelsCacheFetch = null;
@@ -135,7 +135,7 @@ export async function fetchEmbeddingModels(): Promise<OpenRouterModelsResponse> 
       );
       data.data = data.data
         .filter((model) => orderMap.has(model.id))
-        .sort((a, b) => orderMap.get(a.id)! - orderMap.get(b.id)!);
+        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
 
       embeddingModelsCache = { data, timestamp: now };
       embeddingModelsCacheFetch = null;
@@ -150,7 +150,7 @@ export async function fetchEmbeddingModels(): Promise<OpenRouterModelsResponse> 
   return embeddingModelsCacheFetch;
 }
 
-export type AllModelsResponse = {
+type AllModelsResponse = {
   languageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
 };
