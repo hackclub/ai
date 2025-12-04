@@ -1,5 +1,6 @@
 import { html } from "hono/html";
 import type { Child } from "hono/jsx";
+import { env } from "../env";
 
 type LayoutProps = {
   children: Child;
@@ -99,6 +100,11 @@ export const Layout = ({
         `}
         </head>
         <body class="bg-brand-bg text-brand-text transition-colors duration-200 min-h-screen flex flex-col">
+          {env.NODE_ENV === "development" && (
+            <div class="w-full bg-amber-800 text-white text-center py-2 px-4 text-sm font-semibold">
+              🛠️ You're in dev mode, go wild!
+            </div>
+          )}
           {children}
         </body>
       </html>

@@ -17,4 +17,4 @@ tsconfig.json
 .tokeignore
 package-lock.json
 scratch/**
-config/**
+src/config/**

@@ -1,4 +1,4 @@
-import { env } from "../env";
+import { allowedLanguageModels, env } from "../env";
 import type { OpenRouterModel } from "../lib/models";
 import type {
   DashboardApiKey,
@@ -353,8 +353,9 @@ const CreatedModal = () => (
       </div>
       <div class="pl-4">-H "Content-Type: application/json" \</div>
       <div class="pl-4">
-        -d '
-        {`{"model": "MODEL", "messages": [{"role": "user", "content": "Hi"}]}`}'
+        -d '{`{"model": "`}
+        <span class="text-brand-primary">{allowedLanguageModels[0]}</span>
+        {`", "messages": [{"role": "user", "content": "Hi"}]}`}'
       </div>
     </div>
     <ModalActions>

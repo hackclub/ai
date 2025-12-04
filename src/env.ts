@@ -12,7 +12,7 @@ const envSchema = type({
   OPENAI_MODERATION_API_URL: "string",
   ALLOWED_LANGUAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
-  "NODE_ENV?": "'development' | 'production' | 'test'",
+  NODE_ENV: "'development' | 'production' | 'test' = 'development'",
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
   "SENTRY_DSN?": "string",
 });

@@ -63,12 +63,14 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
                 class="w-10 h-10 rounded-full border-2 border-brand-border"
               />
             )}
-            <a
-              href="/auth/logout"
-              class="text-sm font-medium text-red-500 hover:text-red-600 ml-2"
-            >
-              Logout
-            </a>
+            <form action="/auth/logout" method="post" class="inline">
+              <button
+                type="submit"
+                class="text-sm font-medium text-red-500 hover:text-red-600 ml-2 cursor-pointer"
+              >
+                Logout
+              </button>
+            </form>
           </div>
         </div>
 
@@ -130,12 +132,14 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
           </span>
         </div>
 
-        <a
-          href="/auth/logout"
-          class="text-base font-medium text-red-500 hover:text-red-600 px-2"
-        >
-          Logout
-        </a>
+        <form action="/auth/logout" method="post">
+          <button
+            type="submit"
+            class="text-base font-medium text-red-500 hover:text-red-600 px-2 cursor-pointer"
+          >
+            Logout
+          </button>
+        </form>
       </div>
 
       {html`
