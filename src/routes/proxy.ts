@@ -69,9 +69,7 @@ const limiterOpts = {
   keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
     c.get("user")?.id || c.get("ip"),
 } as const;
-const standardLimiter = rateLimiter({
-  ...limiterOpts,
-});
+const standardLimiter = rateLimiter(limiterOpts);
 const moderationsLimiter = rateLimiter({
   ...limiterOpts,
   limit: 300,
@@ -359,7 +357,7 @@ proxy.post(
                   completionTokens = parsed.usage.completion_tokens || 0;
                   totalTokens = parsed.usage.total_tokens || 0;
                 }
-              } catch {}
+              } catch { }
             }
           }
         } finally {
