@@ -48,16 +48,16 @@ proxy.use(
       throw new HTTPException(413, { message: "Request too large" });
     },
   }),
-  timeout(120000),
+  timeout(180000),
   (c, next) => {
     const cfIp = c.req.header("CF-Connecting-IP");
-    if (!cfIp) {
+    if (!cfIp && env.NODE_ENV !== "development") {
       throw new HTTPException(400, {
         message:
           "Missing CF-Connecting-IP. This is a bug. Please contact support.",
       });
     }
-    c.set("ip", cfIp);
+    c.set("ip", cfIp || "127.0.0.1"); // dev check above!
     return next();
   },
   rateLimiter({
