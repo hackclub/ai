@@ -6,7 +6,6 @@ import type {
   Stats,
   User,
 } from "../types";
-import { Card } from "./components/Card";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { Check, ChevronDown, Copy } from "./components/Icons";
@@ -207,18 +206,18 @@ const ModelsList = ({
           </button>
         )}
       </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {models.map((model, index) => (
-            <div
-              x-show={index < 3 ? "true" : "expanded"}
-              x-transition:enter="transition ease-out duration-200"
-              x-transition:enter-start="opacity-0 -translate-y-2"
-              x-transition:enter-end="opacity-100 translate-y-0"
-            >
-              <ModelCard model={model} />
-            </div>
-          ))}
-        </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {models.map((model, index) => (
+          <div
+            x-show={index < 3 ? "true" : "expanded"}
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 -translate-y-2"
+            x-transition:enter-end="opacity-100 translate-y-0"
+          >
+            <ModelCard model={model} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
