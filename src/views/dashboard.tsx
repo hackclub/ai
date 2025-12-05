@@ -187,7 +187,7 @@ const ModelsList = ({
   models: OpenRouterModel[];
 }) => {
   return (
-    <div class="mb-12" x-data="{ expanded: window.innerWidth >= 1024 }">
+    <div class="mb-12" x-data="{ expanded: false }">
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-2xl font-bold text-brand-heading">{title}</h2>
         {models.length > 3 && (
