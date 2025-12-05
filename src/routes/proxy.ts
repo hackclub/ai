@@ -357,7 +357,7 @@ proxy.post(
                   completionTokens = parsed.usage.completion_tokens || 0;
                   totalTokens = parsed.usage.total_tokens || 0;
                 }
-              } catch {}
+              } catch { }
             }
           }
         } finally {
@@ -548,7 +548,7 @@ proxy.get(
       },
       servers: [
         {
-          url: "https://ai.hackclub.com/proxy",
+          url: "https://ai.hackclub.com/proxy/v1",
           description: "Production",
         },
       ],
