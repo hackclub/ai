@@ -78,7 +78,7 @@ app.route("/global", global);
 app.get(
   "/ui",
   Scalar({
-    url: "/proxy/openapi.json",
+    url: "/proxy/v1/openapi.json",
     theme: "default",
     hideModels: true,
     hideClientButton: true,
