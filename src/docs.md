@@ -9,6 +9,8 @@ embeddings through an OpenAI-compatible API.
 > [OpenRouter docs](https://openrouter.ai/docs) for more in-depth information on
 > request semantics.
 
+**Looking for the full API specification?** Check out the [interactive API reference](/reference) to explore and test all endpoints.
+
 ## Quick Start
 
 ### Get an API key
