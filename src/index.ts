@@ -76,12 +76,32 @@ app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
 app.get(
-  "/ui",
+  "/reference",
   Scalar({
     url: "/proxy/v1/openapi.json",
-    theme: "default",
     hideModels: true,
     hideClientButton: true,
+    hideDarkModeToggle: true,
+    customCss: `
+      .light-mode,
+      .dark-mode {
+        --scalar-font: 'Google Sans', ui-sans-serif, system-ui, sans-serif !important;
+        --scalar-background-1: #FFF3EB !important;
+        --scalar-background-2: #FFFFFF !important;
+        --scalar-background-3: #FFFFFF !important;
+        --scalar-color-1: #4D000B !important;
+        --scalar-color-2: #A67E85 !important;
+        --scalar-color-3: #A67E85 !important;
+        --scalar-color-accent: #EC3750 !important;
+        --scalar-border-color: #F0D4D8 !important;
+        --scalar-button-1: #EC3750 !important;
+        --scalar-button-1-color: #FFFFFF !important;
+        --scalar-button-1-hover: #D62640 !important;
+      }
+      body {
+        background: #FFF3EB !important;
+      }
+    `,
   }),
 );
 
