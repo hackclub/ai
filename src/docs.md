@@ -264,6 +264,124 @@ an `image_url` object, and the `url` is a base64 data URL (typically PNG).
 }
 ```
 
+#### PDF inputs
+
+You can send PDF documents to any model. PDFs can be sent as **direct URLs** or
+**base64-encoded data URLs**.
+
+- **URL support**: Send publicly accessible PDFs directly without encoding
+- **Base64 support**: Required for local files or private documents
+
+When a model supports file input natively, the PDF is passed directly to the
+model. Otherwise, OpenRouter will parse the file (with Mistral!) and pass the parsed results to
+the model.
+
+##### PDF processing engines
+
+Configure PDF processing using the `plugins` parameter:
+
+| Engine        | Description                               | Cost                  |
+| ------------- | ----------------------------------------- | --------------------- |
+| `pdf-text`    | Best for well-structured PDFs             | Free                  |
+| `mistral-ocr` | Best for scanned documents or PDFs with images | $2 per 1,000 pages |
+| `native`      | Uses model's built-in file processing     | Charged as input tokens |
+
+If you don't specify an engine, OpenRouter defaults to the model's native
+capability first, then falls back to `mistral-ocr`.
+
+##### Example: PDF via URL
+
+```bash
+curl {{BASE_URL}}/proxy/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "{{FIRST_LANGUAGE_MODEL}}",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "What are the main points in this document?"},
+          {
+            "type": "file",
+            "file": {
+              "filename": "bitcoin.pdf",
+              "file_data": "https://bitcoin.org/bitcoin.pdf"
+            }
+          }
+        ]
+      }
+    ],
+    "plugins": [
+      {
+        "id": "file-parser",
+        "pdf": {"engine": "pdf-text"}
+      }
+    ]
+  }'
+```
+
+##### Example: Base64-encoded PDF (Python)
+
+```python
+import base64
+import requests
+
+def encode_pdf(path):
+    with open(path, "rb") as f:
+        return f"data:application/pdf;base64,{base64.b64encode(f.read()).decode()}"
+
+response = requests.post(
+    "{{BASE_URL}}/proxy/v1/chat/completions",
+    headers={
+        "Authorization": "Bearer YOUR_API_KEY",
+        "Content-Type": "application/json"
+    },
+    json={
+        "model": "{{FIRST_LANGUAGE_MODEL}}",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Summarize this document"},
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": "document.pdf",
+                        "file_data": encode_pdf("path/to/document.pdf")
+                    }
+                }
+            ]
+        }],
+        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]
+    }
+)
+```
+
+##### Reusing file annotations (skip parsing costs)
+
+When you send a PDF, the response may include `annotations` in the assistant
+message. Include these in subsequent requests to skip re-parsing:
+
+```python
+response = requests.post(url, headers=headers, json={...})
+result = response.json()
+
+annotations = result["choices"][0]["message"].get("annotations")
+
+follow_up = requests.post(url, headers=headers, json={
+    "model": "{{FIRST_LANGUAGE_MODEL}}",
+    "messages": [
+        {"role": "user", "content": [...]},  # Original message with PDF
+        {
+            "role": "assistant",
+            "content": result["choices"][0]["message"]["content"],
+            "annotations": annotations  # Include these to skip re-parsing!
+        },
+        {"role": "user", "content": "Can you elaborate on point 2?"}
+    ]
+})
+```
+
 ### Embeddings
 
 `POST /proxy/v1/embeddings`

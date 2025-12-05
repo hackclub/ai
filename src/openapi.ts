@@ -100,14 +100,41 @@ const ImageContentSchema = type({
   }).describe("The image URL details"),
 });
 
-const ContentPartSchema = TextContentSchema.or(ImageContentSchema);
+const FileContentSchema = type({
+  type: type("'file'").describe("The type of the content part"),
+  file: type({
+    filename: type("string").describe(
+      "The name of the file (e.g. document.pdf)",
+    ),
+    file_data: type("string").describe(
+      "The file data - either a URL (e.g. https://example.com/doc.pdf) or a base64-encoded data URL (e.g. data:application/pdf;base64,...)",
+    ),
+  }).describe("The file details for PDF or other file inputs"),
+});
+
+const ContentPartSchema =
+  TextContentSchema.or(ImageContentSchema).or(FileContentSchema);
 
 const MessageSchema = type({
   role: type("string").describe("The role of the message sender"),
   content: type("string")
     .or(ContentPartSchema.array())
     .describe("The content of the message"),
+  "annotations?": type("unknown").describe(
+    "File annotations from a previous response, used to skip re-parsing PDFs",
+  ),
 });
+
+const FileParserPluginSchema = type({
+  id: type("'file-parser'").describe("The plugin identifier"),
+  "pdf?": type({
+    engine: type("'pdf-text'|'mistral-ocr'|'native'").describe(
+      "The PDF processing engine to use. pdf-text is free and best for well-structured PDFs. mistral-ocr is best for scanned documents (costs per page). native uses the model's built-in file processing.",
+    ),
+  }).describe("PDF processing configuration"),
+});
+
+const PluginSchema = FileParserPluginSchema;
 
 export const ChatCompletionRequestSchema = type({
   model: type("string").describe(
@@ -127,6 +154,9 @@ export const ChatCompletionRequestSchema = type({
   ),
   "top_p?": type("number").describe(
     "The nucleus sampling probability. Defaults to 1.0.",
+  ),
+  "plugins?": PluginSchema.array().describe(
+    "Optional plugins to configure file processing (e.g., PDF parsing engine)",
   ),
   "user?": type("string").describe("The user ID. Internally set."),
 });
@@ -154,6 +184,9 @@ export const ChatCompletionResponseSchema = type({
       "refusal?": type("null").describe("Refusal message, if any"),
       "reasoning?": type("string").describe(
         "Reasoning content, if enabled and available",
+      ),
+      "annotations?": type("unknown").describe(
+        "File annotations containing parsed PDF information. Include these in subsequent requests to skip re-parsing the same PDF.",
       ),
     }).describe("The generated message"),
     "reasoning_details?": type({
