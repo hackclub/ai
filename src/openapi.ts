@@ -134,7 +134,11 @@ const FileParserPluginSchema = type({
   }).describe("PDF processing configuration"),
 });
 
-const PluginSchema = FileParserPluginSchema;
+const WebPluginSchema = type({
+  id: type("'web'").describe("The plugin identifier"),
+});
+
+const PluginSchema = FileParserPluginSchema.or(WebPluginSchema);
 
 export const ChatCompletionRequestSchema = type({
   model: type("string").describe(
