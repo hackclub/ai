@@ -21,17 +21,12 @@
     "@hono/standard-validator": "^0.2.0",
     "@scalar/hono-api-reference": "^0.9.25",
     "@sentry/bun": "^10.26.0",
-    "@shikijs/transformers": "^3.15.0",
     "arktype": "^2.1.26",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
     "hono-openapi": "^1.1.1",
     "hono-rate-limiter": "^0.4.2",
-    "marked": "^17.0.0",
-    "marked-alert": "^2.1.2",
-    "marked-shiki": "^1.2.1",
-    "postgres": "^3.4.7",
-    "shiki": "^3.15.0"
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
