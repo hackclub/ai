@@ -17,10 +17,22 @@ export const Docs = ({ user }: { user: User | null }) => {
           padding: 1rem;
           border-radius: 0.5rem;
           overflow-x: auto;
+          max-width: 100%;
         }
         pre.shiki code {
           background-color: transparent !important;
           color: inherit !important;
+        }
+        /* Table styles for mobile overflow */
+        .prose table {
+          display: block;
+          overflow-x: auto;
+          max-width: 100%;
+          white-space: nowrap;
+        }
+        /* Ensure table cells have padding */
+        .prose table td, .prose table th {
+          padding: 0.75rem 1rem;
         }
       </style>`}
 
