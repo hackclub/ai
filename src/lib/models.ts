@@ -1,6 +1,4 @@
-import type { type } from "arktype";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
-import type { ModelsResponseSchema } from "../openapi";
 
 export type OpenRouterModel = {
   id: string;
@@ -31,7 +29,7 @@ export type OpenRouterModel = {
   };
 };
 
-type OpenRouterModelsResponse = type.infer<typeof ModelsResponseSchema>;
+type OpenRouterModelsResponse = { data: OpenRouterModel[] };
 
 type ModelsCache = { data: OpenRouterModelsResponse; timestamp: number };
 

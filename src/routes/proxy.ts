@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/bun";
-import type { type } from "arktype";
 import { eq, sql } from "drizzle-orm";
 import { type Context, Hono, type TypedResponse } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -9,34 +8,49 @@ import { proxy as honoProxy } from "hono/proxy";
 import { stream } from "hono/streaming";
 import { timeout } from "hono/timeout";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import {
-  describeRoute,
-  openAPIRouteHandler,
-  resolver,
-  validator,
-} from "hono-openapi";
+
 import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
 import { fetchEmbeddingModels, fetchLanguageModels } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
-import {
-  ChatCompletionRequestSchema,
-  ChatCompletionResponseSchema,
-  EmbeddingsRequestSchema,
-  EmbeddingsResponseSchema,
-  ModelsResponseSchema,
-  ModerationRequestSchema,
-  ModerationResponseSchema,
-  StatsSchema,
-} from "../openapi";
 import type { AppVariables } from "../types";
 
-type OpenAIChatCompletionResponse = type.infer<
-  typeof ChatCompletionResponseSchema
->;
-type OpenAIEmbeddingsResponse = type.infer<typeof EmbeddingsResponseSchema>;
+type OpenAIChatCompletionResponse = {
+  id?: string;
+  provider?: string;
+  model?: string;
+  object?: string;
+  created?: number;
+  choices?: Array<{
+    finish_reason?: string;
+    index?: number;
+    message?: {
+      role?: string;
+      content?: string;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+};
+
+type OpenAIEmbeddingsResponse = {
+  object?: string;
+  data?: Array<{
+    object?: string;
+    embedding?: number[];
+    index?: number;
+  }>;
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    total_tokens?: number;
+  };
+};
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
@@ -74,109 +88,6 @@ const moderationsLimiter = rateLimiter({
   ...limiterOpts,
   limit: 300,
 });
-// #region OpenAPI schemas & routes
-
-const modelsRoute = describeRoute({
-  summary: "Get available language models",
-  description:
-    "List all available language models. No authentication required. This endpoint is compatible with the [OpenAI Models API](https://platform.openai.com/docs/api-reference/models/list), so the response format is the same as the OpenAI models endpoint.",
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(ModelsResponseSchema),
-        },
-      },
-    },
-  },
-});
-
-const embeddingModelsRoute = describeRoute({
-  summary: "Get available embedding models",
-  description:
-    "List all available embedding models. No authentication required.",
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(ModelsResponseSchema),
-        },
-      },
-    },
-  },
-});
-
-const statsRoute = describeRoute({
-  summary: "Get token usage statistics",
-  description:
-    "Get token usage statistics for your account. This includes total requests made, tokens consumed (prompt + completion), and breakdowns by token type. Useful for monitoring your API usage and costs.",
-  security: [{ Bearer: [] }],
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(StatsSchema),
-        },
-      },
-    },
-  },
-});
-
-const chatRoute = describeRoute({
-  summary: "Create chat completion",
-  description:
-    "Create a chat completion for the given conversation (aka prompting the AI). Supports streaming and non-streaming modes. Compatible with [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create). You can use this to integrate with existing OpenAI-compatible libraries and tools.",
-  security: [{ Bearer: [] }],
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(ChatCompletionResponseSchema),
-        },
-      },
-    },
-  },
-});
-
-const embeddingsRoute = describeRoute({
-  summary: "Create embeddings",
-  description:
-    "Generate vector embeddings from text input. You can then store these embeddings in a vector database like [Pinecone](https://www.pinecone.io/) or [pgvector](https://github.com/pgvector/pgvector). Compatible with [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create).",
-  security: [{ Bearer: [] }],
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(EmbeddingsResponseSchema),
-        },
-      },
-    },
-  },
-});
-
-const moderationsRoute = describeRoute({
-  summary: "Create moderation",
-  description:
-    "Classify if the text and/or image inputted is potentially inappropriate (e.g. hate speech, violence, NSFW etc.). Compatible with [OpenAI Moderations API](https://platform.openai.com/docs/api-reference/moderations/create).",
-  security: [{ Bearer: [] }],
-  responses: {
-    200: {
-      description: "Successful response.",
-      content: {
-        "application/json": {
-          schema: resolver(ModerationResponseSchema),
-        },
-      },
-    },
-  },
-});
-
-// #endregion
 
 const openRouterHeaders = {
   "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
@@ -186,7 +97,7 @@ const openRouterHeaders = {
 proxy.use("*", blockAICodingAgents);
 
 proxy.use((c, next) => {
-  if (c.req.path.endsWith("/models") || c.req.path.endsWith("/openapi.json")) {
+  if (c.req.path.endsWith("/models")) {
     return next();
   }
   return requireApiKey(c, next);
@@ -203,7 +114,7 @@ function getRequestHeaders(c: Context): Record<string, string> {
   return headers;
 }
 
-proxy.get("/models", modelsRoute, async (c) => {
+proxy.get("/models", async (c) => {
   try {
     const data = await fetchLanguageModels();
     return c.json(data);
@@ -213,7 +124,7 @@ proxy.get("/models", modelsRoute, async (c) => {
   }
 });
 
-proxy.get("/embeddings/models", embeddingModelsRoute, async (c) => {
+proxy.get("/embeddings/models", async (c) => {
   try {
     const data = await fetchEmbeddingModels();
     return c.json(data);
@@ -225,7 +136,7 @@ proxy.get("/embeddings/models", embeddingModelsRoute, async (c) => {
   }
 });
 
-proxy.get("/stats", statsRoute, standardLimiter, async (c) => {
+proxy.get("/stats", standardLimiter, async (c) => {
   const user = c.get("user");
 
   const stats = await Sentry.startSpan(
@@ -253,18 +164,17 @@ proxy.get("/stats", statsRoute, standardLimiter, async (c) => {
   );
 });
 
-proxy.post(
-  "/chat/completions",
-  chatRoute,
-  validator("json", ChatCompletionRequestSchema),
-  standardLimiter,
-  async (c) => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
+proxy.post("/chat/completions", standardLimiter, async (c) => {
+  const apiKey = c.get("apiKey");
+  const user = c.get("user");
+  const startTime = Date.now();
 
-    try {
-      const requestBody = c.req.valid("json");
+  try {
+    const requestBody = (await c.req.json()) as {
+      model: string;
+      stream?: boolean;
+      user?: string;
+    };
 
       const allowedSet = new Set(allowedLanguageModels);
       if (!allowedSet.has(requestBody.model)) {
@@ -388,181 +298,137 @@ proxy.post(
         OpenAIChatCompletionResponse,
         ContentfulStatusCode
       >;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Proxy error:", error);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("Proxy error:", error);
 
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            headers: getRequestHeaders(c),
-            ip: c.get("ip"),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  },
-);
-
-proxy.post(
-  "/embeddings",
-  embeddingsRoute,
-  validator("json", EmbeddingsRequestSchema),
-  standardLimiter,
-  async (c) => {
-    const apiKey = c.get("apiKey");
-    const user = c.get("user");
-    const startTime = Date.now();
-
-    try {
-      const requestBody = c.req.valid("json");
-
-      const allowedSet = new Set(allowedEmbeddingModels);
-      if (!allowedSet.has(requestBody.model)) {
-        requestBody.model = allowedEmbeddingModels[0];
-      }
-
-      // @ts-expect-error: user is not in schema but we need to pass it
-      requestBody.user = `user_${user.id}`;
-
-      const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = (await response.json()) as OpenAIEmbeddingsResponse;
-      const duration = Date.now() - startTime;
-
-      const promptTokens = responseData.usage?.prompt_tokens || 0;
-      const totalTokens = responseData.usage?.total_tokens || 0;
-
-      Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: requestBody.model,
-            promptTokens,
-            completionTokens: 0,
-            totalTokens,
-            request: requestBody,
-            response: responseData,
-            headers: getRequestHeaders(c),
-            ip: c.get("ip"),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      return c.json(responseData, response.status as ContentfulStatusCode);
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error("Embeddings proxy error:", error);
-
-      Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-        await db
-          .insert(requestLogs)
-          .values({
-            apiKeyId: apiKey.id,
-            userId: user.id,
-            slackId: user.slackId,
-            model: "unknown",
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            request: {},
-            response: {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-            headers: getRequestHeaders(c),
-            ip: c.get("ip"),
-            timestamp: new Date(),
-            duration,
-          })
-          .catch((err) => console.error("Logging error:", err));
-      });
-
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  },
-);
-
-proxy.post(
-  "/moderations",
-  moderationsRoute,
-  validator("json", ModerationRequestSchema),
-  moderationsLimiter,
-  async (c) => {
-    // We don't log moderations requests
-    try {
-      const requestBody = c.req.valid("json");
-
-      return honoProxy(env.OPENAI_MODERATION_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
-    } catch (error) {
-      console.error("Moderations proxy error:", error);
-      throw new HTTPException(500, { message: "Internal server error" });
-    }
-  },
-);
-
-proxy.get(
-  "/openapi.json",
-  openAPIRouteHandler(proxy, {
-    documentation: {
-      info: {
-        title: "Hack Club AI",
-        version: "1.0.0",
-        description:
-          "Authentication: All endpoints require `Authorization: Bearer <token>`.\n\n GET /v1/models is public.",
-      },
-      servers: [
-        {
-          url: "https://ai.hackclub.com/proxy/v1",
-          description: "Production",
-        },
-      ],
-      security: [{ Bearer: [] }],
-      components: {
-        securitySchemes: {
-          Bearer: {
-            type: "http",
-            scheme: "bearer",
+    Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+      await db
+        .insert(requestLogs)
+        .values({
+          apiKeyId: apiKey.id,
+          userId: user.id,
+          slackId: user.slackId,
+          model: "unknown",
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          request: {},
+          response: {
+            error: error instanceof Error ? error.message : "Unknown error",
           },
-        },
+          headers: getRequestHeaders(c),
+          ip: c.get("ip"),
+          timestamp: new Date(),
+          duration,
+        })
+        .catch((err) => console.error("Logging error:", err));
+    });
+
+    throw new HTTPException(500, { message: "Internal server error" });
+  }
+});
+
+proxy.post("/embeddings", standardLimiter, async (c) => {
+  const apiKey = c.get("apiKey");
+  const user = c.get("user");
+  const startTime = Date.now();
+
+  try {
+    const requestBody = (await c.req.json()) as { model: string; user?: string };
+
+    const allowedSet = new Set(allowedEmbeddingModels);
+    if (!allowedSet.has(requestBody.model)) {
+      requestBody.model = allowedEmbeddingModels[0];
+    }
+
+    requestBody.user = `user_${user.id}`;
+
+    const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        ...openRouterHeaders,
       },
-    },
-  }),
-);
+      body: JSON.stringify(requestBody),
+    });
+
+    const responseData = (await response.json()) as OpenAIEmbeddingsResponse;
+    const duration = Date.now() - startTime;
+
+    const promptTokens = responseData.usage?.prompt_tokens || 0;
+    const totalTokens = responseData.usage?.total_tokens || 0;
+
+    Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
+      await db
+        .insert(requestLogs)
+        .values({
+          apiKeyId: apiKey.id,
+          userId: user.id,
+          slackId: user.slackId,
+          model: requestBody.model,
+          promptTokens,
+          completionTokens: 0,
+          totalTokens,
+          request: requestBody,
+          response: responseData,
+          headers: getRequestHeaders(c),
+          ip: c.get("ip"),
+          timestamp: new Date(),
+          duration,
+        })
+        .catch((err) => console.error("Logging error:", err));
+    });
+
+    return c.json(responseData, response.status as ContentfulStatusCode);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("Embeddings proxy error:", error);
+
+    Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+      await db
+        .insert(requestLogs)
+        .values({
+          apiKeyId: apiKey.id,
+          userId: user.id,
+          slackId: user.slackId,
+          model: "unknown",
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          request: {},
+          response: {
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          headers: getRequestHeaders(c),
+          ip: c.get("ip"),
+          timestamp: new Date(),
+          duration,
+        })
+        .catch((err) => console.error("Logging error:", err));
+    });
+
+    throw new HTTPException(500, { message: "Internal server error" });
+  }
+});
+
+proxy.post("/moderations", moderationsLimiter, async (c) => {
+  try {
+    const requestBody = await c.req.json();
+
+    return honoProxy(env.OPENAI_MODERATION_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    console.error("Moderations proxy error:", error);
+    throw new HTTPException(500, { message: "Internal server error" });
+  }
+});
 
 export default proxy;
