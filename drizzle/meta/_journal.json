@@ -71,6 +71,13 @@
       "when": 1764527379880,
       "tag": "0009_clumsy_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1766081371230,
+      "tag": "0010_late_agent_zero",
+      "breakpoints": true
     }
   ]
 }

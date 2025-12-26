@@ -112,7 +112,7 @@ const moderationsLimiter = rateLimiter({
 });
 
 const openRouterHeaders = {
-  "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
+  "HTTP-Referer": env.BASE_URL,
   "X-Title": "Hack Club AI",
 };
 
@@ -161,8 +161,8 @@ async function logRequest(
       promptTokens: data.promptTokens,
       completionTokens: data.completionTokens,
       totalTokens: data.totalTokens,
-      request: data.request,
-      response: data.response,
+      request: JSON.stringify(data.request),
+      response: JSON.stringify(data.response),
       headers: getRequestHeaders(c),
       ip: c.get("ip"),
       timestamp: new Date(),
@@ -278,7 +278,10 @@ async function handleCompletionRequest(
           });
         });
       }
-    }) as unknown as TypedResponse<Record<string, unknown>, ContentfulStatusCode>;
+    }) as unknown as TypedResponse<
+      Record<string, unknown>,
+      ContentfulStatusCode
+    >;
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`${config.endpoint} proxy error:`, error);

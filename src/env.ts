@@ -10,6 +10,7 @@ const envSchema = type({
   OPENAI_API_KEY: "string",
   OPENAI_MODERATION_API_KEY: "string",
   OPENAI_MODERATION_API_URL: "string",
+  ENCRYPTION_PUBLIC_KEY: "string",
   ALLOWED_LANGUAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
   NODE_ENV: "'development' | 'production' | 'test' = 'development'",

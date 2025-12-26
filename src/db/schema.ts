@@ -7,7 +7,26 @@ import {
   text,
   timestamp,
   uuid,
+  customType,
 } from "drizzle-orm/pg-core";
+import sodium from "libsodium-wrappers";
+import { env } from "../env";
+
+const encrypted = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "text";
+  },
+  toDriver(value: string): string {
+    const encryptedData = sodium.crypto_box_seal(
+      value,
+      sodium.from_base64(env.ENCRYPTION_PUBLIC_KEY),
+    );
+    return sodium.to_base64(encryptedData);
+  },
+  fromDriver(value: string): string {
+    return value;
+  },
+});
 
 export const users = pgTable(
   "users",
@@ -64,8 +83,8 @@ export const requestLogs = pgTable(
     promptTokens: integer("prompt_tokens").notNull().default(0),
     completionTokens: integer("completion_tokens").notNull().default(0),
     totalTokens: integer("total_tokens").notNull().default(0),
-    request: jsonb("request").notNull(),
-    response: jsonb("response").notNull(),
+    request: encrypted("request").notNull(),
+    response: encrypted("response").notNull(),
     headers: jsonb("headers"),
     ip: text("ip").notNull(),
     timestamp: timestamp("timestamp").defaultNow().notNull(),
