@@ -2,6 +2,7 @@
   "blockedPrompts": [
     "You are an expert AI programming assistant, working with a user in the",
     "Create a new directory structure in the workspace. Will recursively create all directories in the path, like mkdir -p. You do not need to use this tool before using create_file, that tool will automatically create the needed directories",
-    "lobe-web-browsing____search____builtin"
+    "lobe-web-browsing____search____builtin",
+    "You are Cline, a highly skilled software engineer with extensive knowledge in many programming languages"
   ]
 }
