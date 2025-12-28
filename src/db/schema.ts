@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -7,7 +8,6 @@ import {
   text,
   timestamp,
   uuid,
-  customType,
 } from "drizzle-orm/pg-core";
 import sodium from "libsodium-wrappers";
 import { env } from "../env";
