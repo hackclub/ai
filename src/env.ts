@@ -16,7 +16,6 @@ const envSchema = type({
   NODE_ENV: "'development' | 'production' | 'test' = 'development'",
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
   "SENTRY_DSN?": "string",
-  "HCAI_REVOKER_KEY?": "string",
 });
 
 const result = envSchema(process.env);

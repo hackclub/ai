@@ -20,7 +20,6 @@ import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
 import docs from "./routes/docs";
 import global from "./routes/global";
-import internal from "./routes/internal";
 import proxy from "./routes/proxy";
 import type { AppVariables } from "./types";
 
@@ -76,7 +75,6 @@ app.route("/proxy/v1", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
-app.route("/internal", internal);
 
 showRoutes(app);
 

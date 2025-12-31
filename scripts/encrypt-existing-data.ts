@@ -2,7 +2,7 @@ import sodium from "libsodium-wrappers";
 import postgres from "postgres";
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const ENCRYPTION_PUBLIC_KEY = process.env.ENCRYPTION_PUBLIC_KEY;
+const ENCRYPTION_PUBLIC_KEY = "3RobBnwZdKTYCPcXiYJz1DFgH5HxUGtOBq9yQRTNeh8";
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is not set");
