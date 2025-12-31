@@ -22,8 +22,7 @@ const result = envSchema(process.env);
 
 if (result instanceof type.errors) {
   console.error("Environment validation failed:");
-  console.error(result.summary);
-  process.exit(1);
+  throw new Error(result.summary);
 }
 
 export const env = result;
@@ -36,8 +35,8 @@ function parseModelList(value: string): string[] {
 }
 
 export const allowedLanguageModels = parseModelList(
-  env.ALLOWED_LANGUAGE_MODELS,
+  env.ALLOWED_LANGUAGE_MODELS
 );
 export const allowedEmbeddingModels = parseModelList(
-  env.ALLOWED_EMBEDDING_MODELS,
+  env.ALLOWED_EMBEDDING_MODELS
 );
