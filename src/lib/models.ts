@@ -42,7 +42,7 @@ let embeddingModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 const openRouterHeaders = {
-  "HTTP-Referer": env.BASE_URL,
+  "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
   "X-Title": "Hack Club AI",
 };
 

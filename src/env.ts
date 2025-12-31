@@ -10,20 +10,19 @@ const envSchema = type({
   OPENAI_API_KEY: "string",
   OPENAI_MODERATION_API_KEY: "string",
   OPENAI_MODERATION_API_URL: "string",
-  ENCRYPTION_PUBLIC_KEY: "string",
   ALLOWED_LANGUAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
   NODE_ENV: "'development' | 'production' | 'test' = 'development'",
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
   "SENTRY_DSN?": "string",
-  "HCAI_REVOKER_KEY?": "string",
 });
 
 const result = envSchema(process.env);
 
 if (result instanceof type.errors) {
   console.error("Environment validation failed:");
-  throw new Error(result.summary);
+  console.error(result.summary);
+  process.exit(1);
 }
 
 export const env = result;
@@ -36,8 +35,8 @@ function parseModelList(value: string): string[] {
 }
 
 export const allowedLanguageModels = parseModelList(
-  env.ALLOWED_LANGUAGE_MODELS
+  env.ALLOWED_LANGUAGE_MODELS,
 );
 export const allowedEmbeddingModels = parseModelList(
-  env.ALLOWED_EMBEDDING_MODELS
+  env.ALLOWED_EMBEDDING_MODELS,
 );
