@@ -187,7 +187,12 @@ async function handleCompletionRequest(
 
     const allowedSet = new Set(allowedLanguageModels);
     if (!allowedSet.has(requestBody.model)) {
-      requestBody.model = allowedLanguageModels[0];
+      const matchedModel = allowedLanguageModels.find((m) => m.split("/")[1] === requestBody.model);
+      if (matchedModel) {
+        requestBody.model = matchedModel;
+      } else {
+        requestBody.model = allowedLanguageModels[0];
+      }
     }
 
     requestBody.user = `user_${user.id}`;
