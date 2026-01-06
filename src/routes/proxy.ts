@@ -99,7 +99,7 @@ proxy.use(
 );
 
 const limiterOpts = {
-  limit: 150,
+  limit: 450,
   windowMs: 30 * 60 * 1000, // 30 minutes
   standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
   keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
