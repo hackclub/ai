@@ -12,8 +12,17 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
-import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
-import { fetchEmbeddingModels, fetchLanguageModels } from "../lib/models";
+import {
+  allowedEmbeddingModels,
+  allowedImageModels,
+  allowedLanguageModels,
+  env,
+} from "../env";
+import {
+  fetchEmbeddingModels,
+  fetchImageModels,
+  fetchLanguageModels,
+} from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import type { AppVariables } from "../types";
 
@@ -328,6 +337,19 @@ proxy.get("/embeddings/models", async (c) => {
   }
 });
 
+proxy.use("/images/models", etag());
+proxy.get("/images/models", async (c) => {
+  try {
+    const data = await fetchImageModels();
+    return c.json(data);
+  } catch (error) {
+    console.error("Image models fetch error:", error);
+    throw new HTTPException(500, {
+      message: "Failed to fetch image models",
+    });
+  }
+});
+
 proxy.get("/stats", standardLimiter, async (c) => {
   const user = c.get("user");
 
@@ -447,6 +469,191 @@ proxy.post("/moderations", moderationsLimiter, async (c) => {
     });
   } catch (error) {
     console.error("Moderations proxy error:", error);
+    throw new HTTPException(500, { message: "Internal server error" });
+  }
+});
+
+// OpenAI-compatible image generation endpoint
+// Translates OpenAI /images/generations format to OpenRouter's chat/completions with modalities
+proxy.post("/images/generations", standardLimiter, async (c) => {
+  const user = c.get("user");
+  const startTime = Date.now();
+
+  try {
+    const requestBody = (await c.req.json()) as {
+      prompt: string;
+      model?: string;
+      n?: number;
+      size?: string;
+      response_format?: "url" | "b64_json";
+      user?: string;
+    };
+
+    // Map model - use configured default if not in allowed list
+    let model = requestBody.model || allowedImageModels[0];
+    const allowedSet = new Set(allowedImageModels);
+    if (!allowedSet.has(model)) {
+      const matchedModel = allowedImageModels.find(
+        (m) => m.split("/")[1] === model,
+      );
+      if (matchedModel) {
+        model = matchedModel;
+      } else {
+        model = allowedImageModels[0];
+      }
+    }
+
+    // Map size to aspect ratio
+    const sizeToAspectRatio: Record<string, string> = {
+      "1024x1024": "1:1",
+      "1792x1024": "16:9",
+      "1024x1792": "9:16",
+      "512x512": "1:1",
+      "256x256": "1:1",
+    };
+    const aspectRatio = sizeToAspectRatio[requestBody.size || "1024x1024"] || "1:1";
+
+    // Build OpenRouter chat completions request
+    const openRouterRequest = {
+      model,
+      messages: [
+        {
+          role: "user" as const,
+          content: requestBody.prompt,
+        },
+      ],
+      modalities: ["image", "text"],
+      image_config: {
+        aspect_ratio: aspectRatio,
+      },
+      user: `user_${user.id}`,
+    };
+
+    const response = await fetch(
+      `${env.OPENAI_API_URL}/v1/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          ...openRouterHeaders,
+        },
+        body: JSON.stringify(openRouterRequest),
+      },
+    );
+
+    const responseData = (await response.json()) as {
+      choices?: Array<{
+        message?: {
+          content?: string;
+          images?: Array<{
+            image_url?: { url?: string };
+          }>;
+        };
+      }>;
+      usage?: Record<string, number>;
+      error?: { message?: string };
+    };
+
+    const duration = Date.now() - startTime;
+
+    // Extract usage
+    const usage = responseData.usage;
+    const promptTokens = usage?.prompt_tokens || usage?.input_tokens || 0;
+    const completionTokens = usage?.completion_tokens || usage?.output_tokens || 0;
+    const totalTokens = usage?.total_tokens || 0;
+
+    // Log the request
+    Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
+      await logRequest(c, {
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        request: requestBody,
+        response: responseData,
+        duration,
+      });
+    });
+
+    // Handle error response from upstream
+    if (responseData.error) {
+      return c.json(responseData, response.status as ContentfulStatusCode);
+    }
+
+    // Transform to OpenAI image generation response format
+    let images = responseData.choices?.[0]?.message?.images || [];
+
+    // Fallback: Check content for markdown images if no images found in custom field
+    if (images.length === 0) {
+      const content = responseData.choices?.[0]?.message?.content;
+      if (content) {
+        // Regex to capture markdown image URLs: ![...](URL)
+        const markdownImageRegex = /!\[.*?\]\((.*?)\)/g;
+        let match;
+        while ((match = markdownImageRegex.exec(content)) !== null) {
+          if (match[1]) {
+            // Check if it's an array already (mutable) or spread it
+             images = [...images, { image_url: { url: match[1] } }];
+          }
+        }
+      }
+    }
+
+    const responseFormat = requestBody.response_format || "url";
+    const openAIResponse = {
+      created: Math.floor(Date.now() / 1000),
+      data: await Promise.all(images.map(async (img) => {
+        const dataUrl = img.image_url?.url || "";
+        if (responseFormat === "b64_json") {
+          // Extract base64 data from data URL (remove "data:image/png;base64," prefix)
+          const base64Match = dataUrl.match(/^data:image\/[^;]+;base64,(.+)$/);
+          if (base64Match) {
+            return { b64_json: base64Match[1] };
+          }
+          // If it's a remote URL, fetch and convert to base64
+          if (dataUrl.startsWith("http")) {
+            try {
+              const imageResponse = await fetch(dataUrl);
+              if (imageResponse.ok) {
+                const arrayBuffer = await imageResponse.arrayBuffer();
+                return { b64_json: Buffer.from(arrayBuffer).toString("base64") };
+              }
+            } catch (e) {
+              console.error("Failed to fetch image for b64_json conversion:", e);
+            }
+          }
+          // Fallback
+          return {
+            b64_json: dataUrl,
+          };
+        }
+        // Return as URL (the data URL itself serves as the URL)
+        return {
+          url: dataUrl,
+        };
+      })),
+    };
+
+    return c.json(openAIResponse, response.status as ContentfulStatusCode);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("Images generations proxy error:", error);
+
+    Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
+      await logRequest(c, {
+        model: "unknown",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        request: {},
+        response: {
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        duration,
+      });
+    });
+
     throw new HTTPException(500, { message: "Internal server error" });
   }
 });
