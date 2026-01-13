@@ -9,6 +9,7 @@ import { apiKeys } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { ApiKeysList } from "../views/dashboard";
+import { env } from "../env";
 
 const api = new Hono<{ Variables: AppVariables }>();
 
@@ -109,6 +110,52 @@ api.get("/keys/partial", async (c) => {
   );
 
   return c.html(<ApiKeysList apiKeys={keys} />);
+});
+
+api.get("/health", async (c) => {
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/auth/key", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error(
+        `OpenRouter check failed: ${response.status} ${response.statusText}`,
+      );
+      return c.json(
+        { status: "error", message: "Failed to verify upstream status" },
+        502,
+      );
+    }
+
+    const keyInfo = (await response.json()) as {
+      data?: { limit_remaining?: number | null };
+    };
+
+    const limitRemaining = keyInfo?.data?.limit_remaining;
+
+    if (
+      limitRemaining !== null &&
+      limitRemaining !== undefined &&
+      limitRemaining <= 0.007
+    ) {
+      return c.json({
+        status: "error",
+        message: "OpenRouter API key limit exceeded",
+      });
+    }
+
+    return c.json({ status: "ok" });
+  } catch (error) {
+    console.error("Health check error:", error);
+    return c.json(
+      { status: "error", message: "Internal health check error" },
+      500,
+    );
+  }
 });
 
 export default api;
