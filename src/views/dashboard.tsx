@@ -12,6 +12,7 @@ import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { Modal, ModalActions, ModalButton } from "./components/Modal";
 import { StatCard } from "./components/StatCard";
+import { SurveyBanner } from "./components/SurveyBanner";
 import { Table } from "./components/Table";
 import { Layout } from "./layout";
 
@@ -76,6 +77,7 @@ export const Dashboard = ({
         <Header title="hackai" user={user} showGlobalStats />
 
         {showIdvBanner && <IdvBanner />}
+        <SurveyBanner />
 
         <div
           class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner ? "grayscale opacity-20 pointer-events-none select-none" : ""}`}
