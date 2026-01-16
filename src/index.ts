@@ -22,6 +22,7 @@ import docs from "./routes/docs";
 import global from "./routes/global";
 import internal from "./routes/internal";
 import proxy from "./routes/proxy";
+import up from "./routes/up";
 import type { AppVariables } from "./types";
 
 await runMigrations();
@@ -77,6 +78,7 @@ app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
 app.route("/internal", internal);
+app.route("/up", up);
 
 showRoutes(app);
 
