@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { rateLimiter } from "hono-rate-limiter";
 import { env } from "../env";
 
 const up = new Hono();
@@ -15,6 +16,14 @@ const openRouterHeaders = {
   "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
   "X-Title": "Hack Club AI",
 };
+
+const limiter = rateLimiter({
+  limit: 140,
+  windowMs: 60 * 60 * 1000, // 1 hour
+  keyGenerator: (c) => c.req.header("CF-Connecting-IP") || "unknown",
+});
+
+up.use("/", limiter);
 
 up.get("/", async (c) => {
   const now = Date.now();
