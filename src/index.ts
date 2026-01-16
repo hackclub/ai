@@ -53,7 +53,7 @@ app.use(
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
     credentials: true,
-  }),
+  })
 );
 
 if (env.NODE_ENV === "development") {
@@ -87,5 +87,5 @@ console.log(`Server running on http://localhost:${env.PORT}`);
 export default {
   port: env.PORT,
   fetch: app.fetch,
-  idleTimeout: 60,
+  idleTimeout: 0,
 };
