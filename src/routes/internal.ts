@@ -12,18 +12,6 @@ const internal = new Hono();
 const revokeSchema = type({ token: "string" });
 
 internal.post("/revoke", arktypeValidator("json", revokeSchema), async (c) => {
-  if (!env.HCAI_REVOKER_KEY) {
-    return c.json({ success: false }, 400);
-  }
-
-  const authHeader = c.req.header("Authorization");
-  if (
-    !authHeader?.startsWith("Bearer ") ||
-    authHeader.substring(7) !== env.HCAI_REVOKER_KEY
-  ) {
-    return c.json({ success: false }, 400);
-  }
-
   const { token } = c.req.valid("json");
 
   const [result] = await Sentry.startSpan(
