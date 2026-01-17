@@ -198,9 +198,7 @@ async function handleCompletionRequest(
     }
 
     requestBody.user = `user_${user.id}`;
-
-    requestBody.usage.include = true;
-
+    requestBody.usage = { include: true };
     const isStreaming = requestBody.stream === true;
 
     const response = await fetch(
