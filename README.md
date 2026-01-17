@@ -6,7 +6,7 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 - API keys
 - chat and embedding model support
 - moderation model support
-  - (OpenAI's one is free, but it needs an active balance to be able to use it. if you don't want to/can't add payment details to OpenAI's portal and buy credits, we've got you covered.) 
+  - (OpenAI's one is free, but it needs an active balance to be able to use it. if you don't want to/can't add payment details to OpenAI's portal and buy credits, we've got you covered.)
 - global analytics
 - usage statistic logging
 - (optional) sentry support
@@ -47,9 +47,14 @@ NODE_ENV=production # not needed for docker compose
 PORT=54321 # not needed for docker compose
 
 SENTRY_DSN= # sentry.io support (optional)
+
+# (optional) openrouter provisioning key - get it from https://openrouter.ai/account
+# this is used to view remaining credit balance
+OPENROUTER_PROVISIONING_KEY=
 ```
 
 ## tech stack
+
 - bun as the runtime
 - hono for the server
 - postgres for the database

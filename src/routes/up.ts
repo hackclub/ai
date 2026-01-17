@@ -6,6 +6,7 @@ const up = new Hono();
 
 interface CacheEntry {
   status: "up" | "down";
+  balanceRemaining?: number;
   timestamp: number;
 }
 
@@ -31,29 +32,46 @@ up.get("/", async (c) => {
 
   if (cached && now - cached.timestamp < CACHE_TTL) {
     return c.json(
-      { status: cached.status },
+      { status: cached.status, balanceRemaining: cached.balanceRemaining },
       cached.status === "up" ? 200 : 503,
     );
   }
 
   try {
-    const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        ...openRouterHeaders,
+    const embeddingResponse = await fetch(
+      `${env.OPENAI_API_URL}/v1/embeddings`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          ...openRouterHeaders,
+        },
+        body: JSON.stringify({
+          model: "thenlper/gte-base",
+          input: "Health check",
+          encoding_format: "float",
+        }),
       },
-      body: JSON.stringify({
-        model: "thenlper/gte-base",
-        input: "Health check",
-        encoding_format: "float",
-      }),
-    });
+    );
+    const status: "up" | "down" = embeddingResponse.ok ? "up" : "down";
 
-    const status: "up" | "down" = response.ok ? "up" : "down";
+    if (env.OPENROUTER_PROVISIONING_KEY) {
+      const url = "https://openrouter.ai/api/v1/credits";
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}` },
+      });
+      const { data } = await response.json();
+      const balanceRemaining = data.total_credits - data.total_usage;
+      cache.set("up", {
+        status,
+        balanceRemaining,
+        timestamp: now,
+      });
+      return c.json({ status, balanceRemaining }, status === "up" ? 200 : 503);
+    }
+
     cache.set("up", { status, timestamp: now });
-
     return c.json({ status }, status === "up" ? 200 : 503);
   } catch {
     cache.set("up", { status: "down", timestamp: now });

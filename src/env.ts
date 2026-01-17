@@ -16,6 +16,7 @@ const envSchema = type({
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
   "SENTRY_DSN?": "string",
   "HCAI_REVOKER_KEY?": "string",
+  "OPENROUTER_PROVISIONING_KEY?": "string",
 });
 
 const result = envSchema(process.env);
