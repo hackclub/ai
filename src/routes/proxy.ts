@@ -94,7 +94,7 @@ proxy.use(
     }
     c.set("ip", cfIp || "127.0.0.1"); // dev check above!
     return next();
-  }
+  },
 );
 
 const limiterOpts = {
@@ -145,7 +145,7 @@ async function logRequest(
     request: unknown;
     response: unknown;
     duration: number;
-  }
+  },
 ) {
   const apiKey = c.get("apiKey");
   const user = c.get("user");
@@ -172,7 +172,7 @@ async function logRequest(
 
 async function handleCompletionRequest(
   c: Context<{ Variables: AppVariables }>,
-  config: CompletionConfig
+  config: CompletionConfig,
 ): Promise<TypedResponse<Record<string, unknown>, ContentfulStatusCode>> {
   const user = c.get("user");
   const startTime = Date.now();
@@ -182,12 +182,13 @@ async function handleCompletionRequest(
       model: string;
       stream?: boolean;
       user?: string;
+      usage: { include: boolean };
     };
 
     const allowedSet = new Set(allowedLanguageModels);
     if (!allowedSet.has(requestBody.model)) {
       const matchedModel = allowedLanguageModels.find(
-        (m) => m.split("/")[1] === requestBody.model
+        (m) => m.split("/")[1] === requestBody.model,
       );
       if (matchedModel) {
         requestBody.model = matchedModel;
@@ -197,6 +198,8 @@ async function handleCompletionRequest(
     }
 
     requestBody.user = `user_${user.id}`;
+
+    requestBody.usage.include = true;
 
     const isStreaming = requestBody.stream === true;
 
@@ -210,7 +213,7 @@ async function handleCompletionRequest(
           ...openRouterHeaders,
         },
         body: JSON.stringify(requestBody),
-      }
+      },
     );
 
     if (!isStreaming) {
@@ -347,7 +350,7 @@ proxy.get("/stats", standardLimiter, async (c) => {
         })
         .from(requestLogs)
         .where(eq(requestLogs.userId, user.id));
-    }
+    },
   );
 
   return c.json(
@@ -356,16 +359,16 @@ proxy.get("/stats", standardLimiter, async (c) => {
       totalTokens: 0,
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
-    }
+    },
   );
 });
 
 proxy.post("/chat/completions", standardLimiter, (c) =>
-  handleCompletionRequest(c, chatCompletionsConfig)
+  handleCompletionRequest(c, chatCompletionsConfig),
 );
 
 proxy.post("/responses", standardLimiter, (c) =>
-  handleCompletionRequest(c, responsesConfig)
+  handleCompletionRequest(c, responsesConfig),
 );
 
 proxy.post("/embeddings", standardLimiter, async (c) => {
