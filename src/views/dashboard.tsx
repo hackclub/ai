@@ -176,7 +176,7 @@ export const ApiKeysList = ({ apiKeys }: { apiKeys: DashboardApiKey[] }) => {
             <button
               type="button"
               x-on:click={`revokeKeyId = '${row.id}'; revokeKeyName = '${row.name}'; revokeModal = true`}
-              class="px-3 py-2 text-xs font-medium rounded-full bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 transition-all"
+              class="px-3 py-2 text-xs font-medium rounded-full bg-transparent text-red-500 border-2 border-red-500/30 hover:bg-red-500/10 transition-all"
             >
               Revoke
             </button>
@@ -245,7 +245,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
   return (
     <a
       href={`/models/${model.id}`}
-      class="block bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col hover:border-brand-primary/50 hover:shadow-md transition-all"
+      class="block bg-brand-surface border-2 border-brand-border p-4 rounded-xl h-full flex flex-col hover:border-brand-primary/50 hover:shadow-md transition-all"
       x-data="{ copied: false }"
     >
       <div class="flex flex-col gap-2 flex-1">
@@ -267,7 +267,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
             {...{
               "x-on:click.stop.prevent": `navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`,
             }}
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-transparent border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
             title="Click to copy model ID"
           >
             <code class="text-xs font-mono text-brand-primary">{model.id}</code>

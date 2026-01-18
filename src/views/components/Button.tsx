@@ -22,9 +22,9 @@ export const Button = ({
     primary:
       "bg-brand-primary text-white hover:bg-brand-primary-hover hover:-translate-y-0.5",
     secondary:
-      "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
+      "bg-transparent text-brand-text border-2 border-brand-border hover:border-brand-text hover:bg-brand-border/10",
     danger:
-      "bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 hover:border-red-200",
+      "bg-transparent text-red-500 border-2 border-red-500/30 hover:bg-red-500/10 hover:border-red-500",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className || ""}`;

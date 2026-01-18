@@ -88,7 +88,7 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
       {/* Mobile Menu Dropdown */}
       <div
         id="mobile-menu"
-        class="hidden md:hidden absolute top-full left-0 right-0 bg-white border-b-2 border-brand-border shadow-xl p-4 flex flex-col gap-4"
+        class="hidden md:hidden absolute top-full left-0 right-0 bg-brand-surface border-b-2 border-brand-border shadow-xl p-4 flex flex-col gap-4"
       >
         {showBackToDashboard && (
           <a

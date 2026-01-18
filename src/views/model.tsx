@@ -55,7 +55,7 @@ const InfoCard = ({
   value: string;
   subtext?: string;
 }) => (
-  <div class="bg-white border-2 border-brand-border rounded-xl p-4">
+  <div class="bg-brand-surface border-2 border-brand-border rounded-xl p-4">
     <div class="text-sm text-brand-text mb-1">{label}</div>
     <div class="text-xl font-bold text-brand-heading">{value}</div>
     {subtext && <div class="text-xs text-brand-text mt-1">{subtext}</div>}
@@ -259,7 +259,7 @@ print(response.choices[0].message.content)`;
         <button
           type="button"
           x-on:click="activeTab = 'curl'"
-          x-bind:class="activeTab === 'curl' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
+          x-bind:class="activeTab === 'curl' ? 'bg-brand-surface shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           cURL
@@ -267,7 +267,7 @@ print(response.choices[0].message.content)`;
         <button
           type="button"
           x-on:click="activeTab = 'javascript'"
-          x-bind:class="activeTab === 'javascript' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
+          x-bind:class="activeTab === 'javascript' ? 'bg-brand-surface shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           JavaScript
@@ -275,7 +275,7 @@ print(response.choices[0].message.content)`;
         <button
           type="button"
           x-on:click="activeTab = 'python'"
-          x-bind:class="activeTab === 'python' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
+          x-bind:class="activeTab === 'python' ? 'bg-brand-surface shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           Python
@@ -333,10 +333,10 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
 
   const modelTypeColor =
     modelType === "embedding"
-      ? "bg-purple-100 text-purple-700"
+      ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
       : modelType === "image"
-        ? "bg-blue-100 text-blue-700"
-        : "bg-green-100 text-green-700";
+        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+        : "bg-green-500/10 text-green-400 border border-green-500/20";
 
   return (
     <Layout title={`${displayName} - Hack Club AI`} includeAlpine>
@@ -353,7 +353,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
         </a>
 
         {/* Model header */}
-        <div class="bg-white border-2 border-brand-border rounded-2xl p-6 mb-6">
+        <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6 mb-6">
           <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div class="flex-1">
               <div class="flex items-center gap-3 mb-2">
@@ -429,7 +429,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
 
         {/* Architecture details */}
         <div
-          class="bg-white border-2 border-brand-border rounded-2xl p-6 mb-6"
+          class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6 mb-6"
           x-data="{ expanded: false }"
         >
           <button
@@ -515,7 +515,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
         </div>
 
         {/* Code examples */}
-        <div class="bg-white border-2 border-brand-border rounded-2xl p-6">
+        <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6">
           <h2 class="text-xl font-bold text-brand-heading mb-4">
             Code Examples
           </h2>

@@ -7,7 +7,7 @@ export const OnboardingBanner = () => {
     <div class="mx-auto max-w-6xl px-4 mt-8">
       <Card class="bg-gradient-to-r from-brand-primary/5 to-brand-primary/2 border-brand-primary/20">
         <div class="p-6 sm:p-8 flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-          <div class="p-4 bg-white rounded-full border border-brand-primary/10 flex-shrink-0">
+          <div class="p-4 bg-brand-surface rounded-full border border-brand-primary/10 flex-shrink-0">
             <Book class="w-8 h-8 text-brand-primary" aria-hidden />
           </div>
           <div class="flex-1">

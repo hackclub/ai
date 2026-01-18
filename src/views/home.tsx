@@ -43,7 +43,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
                 key={model}
                 class={`
                   ${tiltClass} hover:rotate-0
-                  bg-white border-2 border-brand-border/50 rounded-2xl p-6
+                  bg-brand-surface border-2 border-brand-border/50 rounded-2xl p-6
                   transition-all duration-300 ease-out
                   group flex flex-col items-start gap-3
                 `}

@@ -69,13 +69,13 @@ export const Layout = ({
                   },
                   colors: {
                     brand: {
-                      bg: '#FFF3EB',
-                      primary: '#EC3750',
-                      heading: '#4D000B',
-                      text: '#A67E85',
-                      'primary-hover': '#D62640',
-                      'surface': '#FFFFFF',
-                      'border': '#F0D4D8',
+                      bg: '#09090b', // Zinc 950
+                      surface: '#18181b', // Zinc 900
+                      primary: '#ec3750', // Hack Club Red
+                      'primary-hover': '#d62640',
+                      heading: '#f4f4f5', // Zinc 100
+                      text: '#a1a1aa', // Zinc 400
+                      border: '#27272a', // Zinc 800
                     }
                   },
                   borderRadius: {

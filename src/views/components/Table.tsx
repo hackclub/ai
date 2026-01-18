@@ -14,7 +14,7 @@ type TableProps<T> = {
 
 export const Table = <T,>({ columns, data, rowClass }: TableProps<T>) => {
   return (
-    <div class="overflow-x-auto border-2 border-brand-border bg-white rounded-2xl shadow-sm transition-colors">
+    <div class="overflow-x-auto border-2 border-brand-border bg-brand-surface rounded-2xl shadow-sm transition-colors">
       <table class="w-full border-collapse">
         <thead>
           <tr class="border-b-2 border-brand-border bg-brand-bg/50">

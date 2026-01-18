@@ -70,7 +70,7 @@ export const Modal = ({
         {...{
           "x-on:click.outside": `${name} = false`,
         }}
-        class="bg-white border-2 border-brand-border p-8 rounded-3xl max-w-xl w-11/12 shadow-2xl"
+        class="bg-brand-surface border-2 border-brand-border p-8 rounded-3xl max-w-xl w-11/12 shadow-2xl"
       >
         <h3 class="text-2xl font-bold mb-4 text-brand-heading select-none">
           {title}
@@ -112,9 +112,9 @@ export const ModalButton = ({
   const variantClasses = {
     primary: "bg-brand-primary text-white hover:bg-brand-primary-hover",
     secondary:
-      "bg-white text-brand-text border-2 border-brand-border hover:border-brand-text/30 hover:bg-brand-bg",
+      "bg-transparent text-brand-text border-2 border-brand-border hover:border-brand-text hover:bg-brand-border/10",
     danger:
-      "bg-white text-red-500 border-2 border-red-100 hover:bg-red-50 hover:border-red-200",
+      "bg-transparent text-red-500 border-2 border-red-500/30 hover:bg-red-500/10 hover:border-red-500",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]}`;
