@@ -243,8 +243,9 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
     description.length > 250 ? `${description.slice(0, 250)}...` : description;
 
   return (
-    <div
-      class="bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col"
+    <a
+      href={`/models/${model.id}`}
+      class="block bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col hover:border-brand-primary/50 hover:shadow-md transition-all"
       x-data="{ copied: false }"
     >
       <div class="flex flex-col gap-2 flex-1">
@@ -263,7 +264,9 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
         <div class="flex items-center gap-2 mt-auto">
           <button
             type="button"
-            x-on:click={`navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`}
+            {...{
+              "x-on:click.stop.prevent": `navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`,
+            }}
             class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
             title="Click to copy model ID"
           >
@@ -277,7 +280,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
           </button>
         </div>
       </div>
-    </div>
+    </a>
   );
 };
 
