@@ -62,30 +62,37 @@ const InfoCard = ({
   </div>
 );
 
-const CodeBlock = ({ code }: { code: string }) => (
-  <div class="relative" x-data="{ copied: false }">
-    <button
-      type="button"
-      {...{
-        "x-on:click": `navigator.clipboard.writeText(${JSON.stringify(code)}); copied = true; setTimeout(() => copied = false, 2000)`,
-      }}
-      class="absolute top-3 right-3 p-2 rounded-lg bg-brand-bg/80 hover:bg-brand-bg border border-brand-border transition-colors"
-      title="Copy code"
-    >
-      <span x-show="!copied">
-        <Copy class="w-4 h-4 text-brand-text" />
-      </span>
-      <span x-show="copied" x-cloak>
-        <Check class="w-4 h-4 text-green-500" />
-      </span>
-    </button>
-    <pre class="bg-brand-bg border-2 border-brand-border rounded-xl p-4 pr-14 overflow-x-auto">
-      <code class="text-sm font-mono text-brand-heading whitespace-pre">
-        {code}
-      </code>
-    </pre>
-  </div>
-);
+const CodeBlock = ({ code }: { code: string }) => {
+  const escapedCode = code
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n");
+
+  return (
+    <div class="relative" x-data="{ copied: false }">
+      <button
+        type="button"
+        {...{
+          "x-on:click": `navigator.clipboard.writeText('${escapedCode}'); copied = true; setTimeout(() => copied = false, 2000)`,
+        }}
+        class="absolute top-3 right-3 p-2 rounded-lg bg-brand-bg/80 hover:bg-brand-bg border border-brand-border transition-colors"
+        title="Copy code"
+      >
+        <span x-show="!copied">
+          <Copy class="w-4 h-4 text-brand-text" />
+        </span>
+        <span x-show="copied" x-cloak>
+          <Check class="w-4 h-4 text-green-500" />
+        </span>
+      </button>
+      <pre class="bg-brand-bg border-2 border-brand-border rounded-xl p-4 pr-14 overflow-x-auto">
+        <code class="text-sm font-mono text-brand-heading whitespace-pre">
+          {code}
+        </code>
+      </pre>
+    </div>
+  );
+};
 
 const CodeExamples = ({
   model,
