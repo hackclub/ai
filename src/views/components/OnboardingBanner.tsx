@@ -17,7 +17,7 @@ export const OnboardingBanner = () => {
             <p class="text-brand-text leading-relaxed max-w-2xl">
               It looks like you're new here. To get started with our API and
               learn how to integrate various models into your projects, as well
-              as the
+              as the{" "}
               <a
                 href="https://docs.ai.hackclub.com/guide/rules.html"
                 class="font-bold underline"
