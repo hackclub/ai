@@ -11,6 +11,7 @@ const envSchema = type({
   OPENAI_MODERATION_API_KEY: "string",
   OPENAI_MODERATION_API_URL: "string",
   ALLOWED_LANGUAGE_MODELS: "string",
+  ALLOWED_IMAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
   NODE_ENV: "'development' | 'production' | 'test' = 'development'",
   "ENFORCE_IDV?": type("'true' | 'false'").pipe((val) => val === "true"),
@@ -38,6 +39,7 @@ function parseModelList(value: string): string[] {
 export const allowedLanguageModels = parseModelList(
   env.ALLOWED_LANGUAGE_MODELS,
 );
+export const allowedImageModels = parseModelList(env.ALLOWED_IMAGE_MODELS);
 export const allowedEmbeddingModels = parseModelList(
   env.ALLOWED_EMBEDDING_MODELS,
 );

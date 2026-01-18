@@ -23,6 +23,7 @@ type DashboardProps = {
   stats: Stats;
   recentLogs: DashboardRequestLog[];
   languageModels: OpenRouterModel[];
+  imageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
   showOnboarding: boolean;
@@ -34,6 +35,7 @@ export const Dashboard = ({
   stats,
   recentLogs,
   languageModels,
+  imageModels,
   embeddingModels,
   enforceIdv,
   showOnboarding,
@@ -109,6 +111,7 @@ export const Dashboard = ({
           </div>
 
           <ModelsList title="Language Models" models={languageModels} />
+          <ModelsList title="Image Models" models={imageModels} />
           <ModelsList title="Embedding Models" models={embeddingModels} />
 
           <div class="mb-12">

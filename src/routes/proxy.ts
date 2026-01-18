@@ -12,7 +12,12 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
-import { allowedEmbeddingModels, allowedLanguageModels, env } from "../env";
+import {
+  allowedEmbeddingModels,
+  allowedImageModels,
+  allowedLanguageModels,
+  env,
+} from "../env";
 import { fetchEmbeddingModels, fetchLanguageModels } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import type { AppVariables } from "../types";
@@ -185,15 +190,19 @@ async function handleCompletionRequest(
       usage: { include: boolean };
     };
 
-    const allowedSet = new Set(allowedLanguageModels);
+    const allowedCompletionModels = [
+      ...allowedLanguageModels,
+      ...allowedImageModels,
+    ];
+    const allowedSet = new Set(allowedCompletionModels);
     if (!allowedSet.has(requestBody.model)) {
-      const matchedModel = allowedLanguageModels.find(
+      const matchedModel = allowedCompletionModels.find(
         (m) => m.split("/")[1] === requestBody.model,
       );
       if (matchedModel) {
         requestBody.model = matchedModel;
       } else {
-        requestBody.model = allowedLanguageModels[0];
+        requestBody.model = allowedCompletionModels[0];
       }
     }
 
