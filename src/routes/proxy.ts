@@ -18,7 +18,11 @@ import {
   allowedLanguageModels,
   env,
 } from "../env";
-import { fetchEmbeddingModels, fetchLanguageModels } from "../lib/models";
+import {
+  fetchEmbeddingModels,
+  fetchImageModels,
+  fetchLanguageModels,
+} from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import type { AppVariables } from "../types";
 
@@ -322,7 +326,13 @@ async function handleCompletionRequest(
 
 proxy.get("/models", async (c) => {
   try {
-    const data = await fetchLanguageModels();
+    const [languageData, imageData] = await Promise.all([
+      fetchLanguageModels(),
+      fetchImageModels(),
+    ]);
+    const data = {
+      data: [...languageData.data, ...imageData.data],
+    };
     return c.json(data);
   } catch (error) {
     console.error("Models fetch error:", error);
