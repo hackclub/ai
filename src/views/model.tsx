@@ -63,18 +63,17 @@ const InfoCard = ({
 );
 
 const CodeBlock = ({ code }: { code: string }) => {
+  // Escape for use in JavaScript template literal
   const escapedCode = code
     .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, "\\n");
+    .replace(/`/g, "\\`")
+    .replace(/\$/g, "\\$");
 
   return (
     <div class="relative" x-data="{ copied: false }">
       <button
         type="button"
-        {...{
-          "x-on:click": `navigator.clipboard.writeText('${escapedCode}'); copied = true; setTimeout(() => copied = false, 2000)`,
-        }}
+        x-on:click={`navigator.clipboard.writeText(\`${escapedCode}\`); copied = true; setTimeout(() => copied = false, 2000)`}
         class="absolute top-3 right-3 p-2 rounded-lg bg-brand-bg/80 hover:bg-brand-bg border border-brand-border transition-colors"
         title="Copy code"
       >
@@ -259,46 +258,37 @@ print(response.choices[0].message.content)`;
       <div class="flex gap-1 mb-4 bg-brand-bg rounded-xl p-1 inline-flex">
         <button
           type="button"
-          {...{ "x-on:click": "activeTab = 'curl'" }}
-          {...{
-            "x-bind:class":
-              "activeTab === 'curl' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'",
-          }}
+          x-on:click="activeTab = 'curl'"
+          x-bind:class="activeTab === 'curl' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           cURL
         </button>
         <button
           type="button"
-          {...{ "x-on:click": "activeTab = 'javascript'" }}
-          {...{
-            "x-bind:class":
-              "activeTab === 'javascript' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'",
-          }}
+          x-on:click="activeTab = 'javascript'"
+          x-bind:class="activeTab === 'javascript' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           JavaScript
         </button>
         <button
           type="button"
-          {...{ "x-on:click": "activeTab = 'python'" }}
-          {...{
-            "x-bind:class":
-              "activeTab === 'python' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'",
-          }}
+          x-on:click="activeTab = 'python'"
+          x-bind:class="activeTab === 'python' ? 'bg-white shadow-sm text-brand-heading' : 'text-brand-text hover:text-brand-heading'"
           class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
         >
           Python
         </button>
       </div>
 
-      <div {...{ "x-show": "activeTab === 'curl'" }}>
+      <div x-show="activeTab === 'curl'">
         <CodeBlock code={curlExample} />
       </div>
-      <div {...{ "x-show": "activeTab === 'javascript'", "x-cloak": true }}>
+      <div x-show="activeTab === 'javascript'" x-cloak>
         <CodeBlock code={jsExample} />
       </div>
-      <div {...{ "x-show": "activeTab === 'python'", "x-cloak": true }}>
+      <div x-show="activeTab === 'python'" x-cloak>
         <CodeBlock code={pythonExample} />
       </div>
     </div>
