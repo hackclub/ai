@@ -94,16 +94,18 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
     },
   );
 
-  const { languageModels, embeddingModels } = await Sentry.startSpan(
-    { name: "fetch.models" },
-    async () => {
+  const { languageModels, imageModels, embeddingModels } =
+    await Sentry.startSpan({ name: "fetch.models" }, async () => {
       try {
         return await fetchAllModels();
       } catch {
-        return { languageModels: [], embeddingModels: [] };
+        return { languageModels: [], imageModels: [], embeddingModels: [] };
       }
-    },
-  );
+    });
+
+  const totalRequests = stats[0]?.totalRequests ?? 0;
+  const showOnboarding =
+    totalRequests < 30 || c.req.query("onboarding") !== undefined;
 
   return c.html(
     <Dashboard
@@ -119,8 +121,10 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       }
       recentLogs={recentLogs}
       languageModels={languageModels}
+      imageModels={imageModels}
       embeddingModels={embeddingModels}
       enforceIdv={env.ENFORCE_IDV || false}
+      showOnboarding={showOnboarding}
     />,
   );
 });

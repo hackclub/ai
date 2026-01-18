@@ -41,6 +41,9 @@ type ModelsCache = { data: OpenRouterModelsResponse; timestamp: number };
 let languageModelsCache: ModelsCache | null = null;
 let languageModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
 
+let imageModelsCache: ModelsCache | null = null;
+let imageModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
+
 let embeddingModelsCache: ModelsCache | null = null;
 let embeddingModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
 
@@ -100,6 +103,54 @@ export async function fetchLanguageModels(): Promise<OpenRouterModelsResponse> {
   })();
 
   return languageModelsCacheFetch;
+}
+
+export async function fetchImageModels(): Promise<OpenRouterModelsResponse> {
+  const now = Date.now();
+
+  if (imageModelsCache && now - imageModelsCache.timestamp < CACHE_TTL) {
+    return imageModelsCache.data;
+  }
+
+  if (imageModelsCacheFetch) {
+    return imageModelsCacheFetch;
+  }
+
+  imageModelsCacheFetch = (async () => {
+    try {
+      const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          ...openRouterHeaders,
+        },
+      });
+
+      const data = (await response.json()) as OpenRouterModelsResponse;
+
+      if (!response.ok || !data.data || !Array.isArray(data.data)) {
+        imageModelsCacheFetch = null;
+        return data;
+      }
+
+      const orderMap = new Map(
+        allowedImageModels.map((id, index) => [id, index]),
+      );
+      data.data = data.data
+        .filter((model) => orderMap.has(model.id))
+        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+
+      imageModelsCache = { data, timestamp: now };
+      imageModelsCacheFetch = null;
+
+      return data;
+    } catch (error) {
+      imageModelsCacheFetch = null;
+      throw error;
+    }
+  })();
+
+  return imageModelsCacheFetch;
 }
 
 export async function fetchEmbeddingModels(): Promise<OpenRouterModelsResponse> {
@@ -206,6 +257,7 @@ export async function fetchImageModels(): Promise<OpenRouterModelsResponse> {
 
 type AllModelsResponse = {
   languageModels: OpenRouterModel[];
+  imageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
   imageModels: OpenRouterModel[];
 };
@@ -220,6 +272,7 @@ export async function fetchAllModels(): Promise<AllModelsResponse> {
 
   return {
     languageModels: languageModelsResponse.data,
+    imageModels: imageModelsResponse.data,
     embeddingModels: embeddingModelsResponse.data,
     imageModels: imageModelsResponse.data,
   };

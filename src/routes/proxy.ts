@@ -93,7 +93,6 @@ proxy.use(
       throw new HTTPException(413, { message: "Request too large" });
     },
   }),
-  timeout(180000),
   (c, next) => {
     const cfIp = c.req.header("CF-Connecting-IP");
     if (!cfIp && env.NODE_ENV !== "development") {
@@ -192,20 +191,27 @@ async function handleCompletionRequest(
       model: string;
       stream?: boolean;
       user?: string;
+      usage: { include: boolean };
     };
 
-    const allowedSet = new Set(allowedLanguageModels);
+    const allowedCompletionModels = [
+      ...allowedLanguageModels,
+      ...allowedImageModels,
+    ];
+    const allowedSet = new Set(allowedCompletionModels);
     if (!allowedSet.has(requestBody.model)) {
-      const matchedModel = allowedLanguageModels.find((m) => m.split("/")[1] === requestBody.model);
+      const matchedModel = allowedCompletionModels.find(
+        (m) => m.split("/")[1] === requestBody.model,
+      );
       if (matchedModel) {
         requestBody.model = matchedModel;
       } else {
-        requestBody.model = allowedLanguageModels[0];
+        requestBody.model = allowedCompletionModels[0];
       }
     }
 
     requestBody.user = `user_${user.id}`;
-
+    requestBody.usage = { include: true };
     const isStreaming = requestBody.stream === true;
 
     const response = await fetch(
@@ -292,7 +298,10 @@ async function handleCompletionRequest(
           });
         });
       }
-    }) as unknown as TypedResponse<Record<string, unknown>, ContentfulStatusCode>;
+    }) as unknown as TypedResponse<
+      Record<string, unknown>,
+      ContentfulStatusCode
+    >;
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`${config.endpoint} proxy error:`, error);

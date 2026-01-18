@@ -11,7 +11,9 @@ import { Header } from "./components/Header";
 import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { Modal, ModalActions, ModalButton } from "./components/Modal";
+import { OnboardingBanner } from "./components/OnboardingBanner";
 import { StatCard } from "./components/StatCard";
+import { SurveyBanner } from "./components/SurveyBanner";
 import { Table } from "./components/Table";
 import { Layout } from "./layout";
 
@@ -21,8 +23,10 @@ type DashboardProps = {
   stats: Stats;
   recentLogs: DashboardRequestLog[];
   languageModels: OpenRouterModel[];
+  imageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
+  showOnboarding: boolean;
 };
 
 export const Dashboard = ({
@@ -31,8 +35,10 @@ export const Dashboard = ({
   stats,
   recentLogs,
   languageModels,
+  imageModels,
   embeddingModels,
   enforceIdv,
+  showOnboarding,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
@@ -76,6 +82,8 @@ export const Dashboard = ({
         <Header title="hackai" user={user} showGlobalStats />
 
         {showIdvBanner && <IdvBanner />}
+        <SurveyBanner />
+        {showOnboarding && <OnboardingBanner />}
 
         <div
           class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner ? "grayscale opacity-20 pointer-events-none select-none" : ""}`}
@@ -103,6 +111,7 @@ export const Dashboard = ({
           </div>
 
           <ModelsList title="Language Models" models={languageModels} />
+          <ModelsList title="Image Models" models={imageModels} />
           <ModelsList title="Embedding Models" models={embeddingModels} />
 
           <div class="mb-12">
@@ -195,6 +204,7 @@ const ModelsList = ({
             type="button"
             x-on:click="expanded = !expanded"
             class="text-sm font-medium text-brand-primary hover:text-brand-primary-hover transition-colors flex items-center gap-1"
+            title={`expanded ? 'Show less' : 'Show all ${models.length}'`}
           >
             <span
               x-text={`expanded ? 'Show less' : 'Show all ${models.length}'`}
@@ -233,8 +243,9 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
     description.length > 250 ? `${description.slice(0, 250)}...` : description;
 
   return (
-    <div
-      class="bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col"
+    <a
+      href={`/models/${model.id}`}
+      class="block bg-white border-2 border-brand-border p-4 rounded-xl h-full flex flex-col hover:border-brand-primary/50 hover:shadow-md transition-all"
       x-data="{ copied: false }"
     >
       <div class="flex flex-col gap-2 flex-1">
@@ -253,7 +264,9 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
         <div class="flex items-center gap-2 mt-auto">
           <button
             type="button"
-            x-on:click={`navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`}
+            {...{
+              "x-on:click.stop.prevent": `navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`,
+            }}
             class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
             title="Click to copy model ID"
           >
@@ -267,7 +280,7 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
           </button>
         </div>
       </div>
-    </div>
+    </a>
   );
 };
 

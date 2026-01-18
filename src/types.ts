@@ -24,3 +24,5 @@ export type AppVariables = {
   apiKey: ApiKey;
   ip: string;
 };
+
+export type ModelType = "language" | "image" | "embedding";

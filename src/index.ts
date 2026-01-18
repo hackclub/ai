@@ -21,7 +21,9 @@ import dashboard from "./routes/dashboard";
 import docs from "./routes/docs";
 import global from "./routes/global";
 import internal from "./routes/internal";
+import models from "./routes/models";
 import proxy from "./routes/proxy";
+import up from "./routes/up";
 import type { AppVariables } from "./types";
 
 await runMigrations();
@@ -77,6 +79,8 @@ app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
 app.route("/internal", internal);
+app.route("/models", models);
+app.route("/up", up);
 
 showRoutes(app);
 
@@ -85,5 +89,5 @@ console.log(`Server running on http://localhost:${env.PORT}`);
 export default {
   port: env.PORT,
   fetch: app.fetch,
-  idleTimeout: 60,
+  idleTimeout: 0,
 };
