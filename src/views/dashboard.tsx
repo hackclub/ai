@@ -12,6 +12,7 @@ import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { Modal, ModalActions, ModalButton } from "./components/Modal";
 import { OnboardingBanner } from "./components/OnboardingBanner";
+import { PremiumBadge } from "./components/PremiumBadge";
 import { StatCard } from "./components/StatCard";
 import { SurveyBanner } from "./components/SurveyBanner";
 import { Table } from "./components/Table";
@@ -27,6 +28,8 @@ type DashboardProps = {
   embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
   showOnboarding: boolean;
+  premiumModelIds: Set<string>;
+  userPremiumAccess: Set<string>;
 };
 
 export const Dashboard = ({
@@ -39,6 +42,8 @@ export const Dashboard = ({
   embeddingModels,
   enforceIdv,
   showOnboarding,
+  premiumModelIds,
+  userPremiumAccess,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
@@ -110,9 +115,24 @@ export const Dashboard = ({
             />
           </div>
 
-          <ModelsList title="Language Models" models={languageModels} />
-          <ModelsList title="Image Models" models={imageModels} />
-          <ModelsList title="Embedding Models" models={embeddingModels} />
+          <ModelsList
+            title="Language Models"
+            models={languageModels}
+            premiumModelIds={premiumModelIds}
+            userPremiumAccess={userPremiumAccess}
+          />
+          <ModelsList
+            title="Image Models"
+            models={imageModels}
+            premiumModelIds={premiumModelIds}
+            userPremiumAccess={userPremiumAccess}
+          />
+          <ModelsList
+            title="Embedding Models"
+            models={embeddingModels}
+            premiumModelIds={premiumModelIds}
+            userPremiumAccess={userPremiumAccess}
+          />
 
           <div class="mb-12">
             <div class="flex justify-between items-center mb-6">
@@ -191,9 +211,13 @@ export const ApiKeysList = ({ apiKeys }: { apiKeys: DashboardApiKey[] }) => {
 const ModelsList = ({
   title,
   models,
+  premiumModelIds,
+  userPremiumAccess,
 }: {
   title: string;
   models: OpenRouterModel[];
+  premiumModelIds: Set<string>;
+  userPremiumAccess: Set<string>;
 }) => {
   return (
     <div class="mb-12" x-data="{ expanded: window.innerWidth >= 1024 }">
@@ -217,16 +241,24 @@ const ModelsList = ({
         )}
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {models.map((model, index) => (
-          <div
-            x-show={index < 3 ? "true" : "expanded"}
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 -translate-y-2"
-            x-transition:enter-end="opacity-100 translate-y-0"
-          >
-            <ModelCard model={model} />
-          </div>
-        ))}
+        {models.map((model, index) => {
+          const isPremium = premiumModelIds.has(model.id);
+          const hasAccess = userPremiumAccess.has(model.id);
+          return (
+            <div
+              x-show={index < 3 ? "true" : "expanded"}
+              x-transition:enter="transition ease-out duration-200"
+              x-transition:enter-start="opacity-0 -translate-y-2"
+              x-transition:enter-end="opacity-100 translate-y-0"
+            >
+              <ModelCard
+                model={model}
+                isPremium={isPremium}
+                hasAccess={hasAccess}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -235,7 +267,15 @@ const ModelsList = ({
 const stripMarkdownLinks = (text: string) =>
   text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 
-const ModelCard = ({ model }: { model: OpenRouterModel }) => {
+const ModelCard = ({
+  model,
+  isPremium,
+  hasAccess,
+}: {
+  model: OpenRouterModel;
+  isPremium?: boolean;
+  hasAccess?: boolean;
+}) => {
   const displayName = model.name || model.id;
   const rawDescription = model.description || "";
   const description = stripMarkdownLinks(rawDescription);
@@ -251,9 +291,12 @@ const ModelCard = ({ model }: { model: OpenRouterModel }) => {
       <div class="flex flex-col gap-2 flex-1">
         <div class="flex items-start justify-between gap-4 flex-1">
           <div class="flex-1 min-w-0">
-            <h3 class="font-bold text-brand-heading text-base truncate">
-              {displayName}
-            </h3>
+            <div class="flex items-center gap-2 mb-1">
+              <h3 class="font-bold text-brand-heading text-base truncate">
+                {displayName}
+              </h3>
+              {isPremium && <PremiumBadge hasAccess={hasAccess} />}
+            </div>
             {truncatedDescription && (
               <p class="text-sm text-brand-text mt-1 line-clamp-2 sm:line-clamp-3">
                 {truncatedDescription}

@@ -21,6 +21,7 @@ export const users = pgTable(
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
     isBanned: boolean("is_banned").notNull().default(false),
+    isAdmin: boolean("is_admin").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -108,5 +109,45 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
     index("sessions_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+export const premiumAccessRequests = pgTable(
+  "premium_access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    modelId: text("model_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    referenceCode: text("reference_code").notNull().unique(),
+    requestedAt: timestamp("requested_at").defaultNow().notNull(),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewedBy: text("reviewed_by"),
+    notes: text("notes"),
+  },
+  (table) => [
+    index("premium_requests_user_idx").on(table.userId),
+    index("premium_requests_status_idx").on(table.status),
+    index("premium_requests_ref_idx").on(table.referenceCode),
+  ],
+);
+
+export const premiumModelAccess = pgTable(
+  "premium_model_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    modelId: text("model_id").notNull(),
+    grantedAt: timestamp("granted_at").defaultNow().notNull(),
+    grantedBy: text("granted_by").notNull(),
+    requestId: uuid("request_id").references(() => premiumAccessRequests.id),
+    expiresAt: timestamp("expires_at"),
+  },
+  (table) => [
+    index("premium_access_user_model_idx").on(table.userId, table.modelId),
   ],
 );

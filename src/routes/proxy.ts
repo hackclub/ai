@@ -24,6 +24,7 @@ import {
   fetchLanguageModels,
 } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
+import { checkUserAccess, isPremiumModel } from "../lib/premium";
 import type { AppVariables } from "../types";
 
 type TokenUsage = {
@@ -207,6 +208,16 @@ async function handleCompletionRequest(
         requestBody.model = matchedModel;
       } else {
         requestBody.model = allowedCompletionModels[0];
+      }
+    }
+
+    // Check premium model access
+    if (isPremiumModel(requestBody.model)) {
+      const hasAccess = await checkUserAccess(user.id, requestBody.model);
+      if (!hasAccess) {
+        throw new HTTPException(403, {
+          message: `This model requires premium access. Request access at ${env.BASE_URL}/models/${encodeURIComponent(requestBody.model)}`,
+        });
       }
     }
 

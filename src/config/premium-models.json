@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "modelId": "google/gemini-3-pro-image-preview",
+      "displayName": "Gemini 3 Pro Image Preview",
+      "requiredDonationCents": 500,
+      "reason": "This model has high operational costs for image generation. Your donation helps keep Hack Club AI free for everyone!"
+    }
+  ],
+  "donationUrl": "https://hcb.hackclub.com/donations/start/hack-club-ai"
+}

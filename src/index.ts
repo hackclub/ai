@@ -15,6 +15,7 @@ import { trimTrailingSlash } from "hono/trailing-slash";
 
 import { env } from "./env";
 import { runMigrations } from "./migrate";
+import admin from "./routes/admin";
 import api from "./routes/api";
 import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
@@ -22,6 +23,7 @@ import docs from "./routes/docs";
 import global from "./routes/global";
 import internal from "./routes/internal";
 import models from "./routes/models";
+import premium from "./routes/premium";
 import proxy from "./routes/proxy";
 import up from "./routes/up";
 import type { AppVariables } from "./types";
@@ -73,6 +75,7 @@ app.onError((err, c) => {
 });
 
 app.route("/", dashboard);
+app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/proxy/v1", proxy);
 app.route("/api", api);
@@ -80,6 +83,7 @@ app.route("/docs", docs);
 app.route("/global", global);
 app.route("/internal", internal);
 app.route("/models", models);
+app.route("/premium", premium);
 app.route("/up", up);
 
 showRoutes(app);

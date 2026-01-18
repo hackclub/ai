@@ -1,13 +1,23 @@
 import type { OpenRouterModel } from "../lib/models";
+import type { PremiumModelConfig } from "../lib/premium";
+import { formatDonationAmount } from "../lib/premium";
 import type { ModelType, User } from "../types";
 import { Header } from "./components/Header";
 import { Check, ChevronDown, Copy } from "./components/Icons";
+import { PremiumBadge } from "./components/PremiumBadge";
+import {
+  PremiumAccessModal,
+  PremiumRequestedModal,
+} from "./components/PremiumAccessModal";
 import { Layout } from "./layout";
 
 export type ModelPageProps = {
   model: OpenRouterModel;
   modelType: ModelType;
   user: User;
+  premiumConfig?: PremiumModelConfig | null;
+  hasAccess?: boolean;
+  donationUrl?: string;
 };
 
 function formatPricing(pricePerToken?: string): string {
@@ -306,7 +316,16 @@ const BackArrow = () => (
   </svg>
 );
 
-export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
+export const ModelPage = ({
+  model,
+  modelType,
+  user,
+  premiumConfig,
+  hasAccess,
+  donationUrl,
+}: ModelPageProps) => {
+  const isPremium = !!premiumConfig;
+  const needsAccess = isPremium && !hasAccess;
   const displayName = model.name || model.id;
   const provider = getProviderName(model.id);
   const description = model.description
@@ -340,58 +359,111 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
 
   return (
     <Layout title={`${displayName} - Hack Club AI`} includeAlpine>
-      <Header title="hackai" user={user} showGlobalStats />
+      <div
+        x-data={`{
+          premiumModal: false,
+          requestedModal: false,
+          referenceCode: '',
+          donationUrl: '${donationUrl || ""}',
+          requesting: false,
+          async requestAccess(modelId) {
+            this.requesting = true;
+            try {
+              const res = await fetch('/premium/request/' + encodeURIComponent(modelId), { method: 'POST' });
+              if (res.ok) {
+                const data = await res.json();
+                this.referenceCode = data.referenceCode;
+                this.donationUrl = data.donationUrl;
+                this.premiumModal = false;
+                this.requestedModal = true;
+              } else {
+                alert('Failed to request access');
+              }
+            } catch (e) {
+              alert('Error requesting access');
+            }
+            this.requesting = false;
+          }
+        }`}
+      >
+        <Header title="hackai" user={user} showGlobalStats />
 
-      <div class="w-full max-w-6xl mx-auto px-4 py-8">
-        {/* Back link */}
-        <a
-          href="/dashboard"
-          class="inline-flex items-center gap-2 text-brand-text hover:text-brand-heading transition-colors mb-6"
-        >
-          <BackArrow />
-          <span>Back to Dashboard</span>
-        </a>
-
-        {/* Model header */}
-        <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6 mb-6">
-          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div class="flex-1">
-              <div class="flex items-center gap-3 mb-2">
-                <span
-                  class={`px-3 py-1 rounded-full text-xs font-medium ${modelTypeColor}`}
-                >
-                  {modelTypeLabel}
-                </span>
-                <span class="text-sm text-brand-text">{provider}</span>
-              </div>
-              <h1 class="text-2xl sm:text-3xl font-bold text-brand-heading mb-2">
-                {displayName}
-              </h1>
-              <div class="flex items-center gap-2" x-data="{ copied: false }">
+        {/* Premium access banner */}
+        {needsAccess && (
+          <div class="w-full max-w-6xl mx-auto px-4 pt-4">
+            <div class="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-6">
+              <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-bold text-amber-400 mb-1">
+                    Premium Model
+                  </h3>
+                  <p class="text-brand-text text-sm">
+                    {premiumConfig?.reason}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  x-on:click={`navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`}
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-bg border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
-                  title="Click to copy model ID"
+                  x-on:click="premiumModal = true"
+                  class="px-6 py-2.5 text-sm font-medium rounded-full bg-amber-500 text-white hover:bg-amber-600 transition-all whitespace-nowrap"
                 >
-                  <code class="text-sm font-mono text-brand-primary">
-                    {model.id}
-                  </code>
-                  <span x-show="!copied">
-                    <Copy class="w-4 h-4 text-brand-text/50 group-hover:text-brand-primary transition-colors" />
-                  </span>
-                  <span x-show="copied" x-cloak>
-                    <Check class="w-4 h-4 text-green-500" />
-                  </span>
+                  Request Access ({formatDonationAmount(premiumConfig?.requiredDonationCents || 0)})
                 </button>
               </div>
             </div>
           </div>
+        )}
 
-          {description && (
-            <p class="text-brand-text mt-4 leading-relaxed">{description}</p>
-          )}
-        </div>
+        <div class="w-full max-w-6xl mx-auto px-4 py-8">
+          {/* Back link */}
+          <a
+            href="/dashboard"
+            class="inline-flex items-center gap-2 text-brand-text hover:text-brand-heading transition-colors mb-6"
+          >
+            <BackArrow />
+            <span>Back to Dashboard</span>
+          </a>
+
+          {/* Model header */}
+          <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                  <span
+                    class={`px-3 py-1 rounded-full text-xs font-medium ${modelTypeColor}`}
+                  >
+                    {modelTypeLabel}
+                  </span>
+                  {isPremium && <PremiumBadge hasAccess={hasAccess} size="md" />}
+                  <span class="text-sm text-brand-text">{provider}</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-brand-heading mb-2">
+                  {displayName}
+                </h1>
+                <div class="flex items-center gap-2" x-data="{ copied: false }">
+                  <button
+                    type="button"
+                    x-on:click={`navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`}
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-bg border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
+                    title="Click to copy model ID"
+                  >
+                    <code class="text-sm font-mono text-brand-primary">
+                      {model.id}
+                    </code>
+                    <span x-show="!copied">
+                      <Copy class="w-4 h-4 text-brand-text/50 group-hover:text-brand-primary transition-colors" />
+                    </span>
+                    <span x-show="copied" x-cloak>
+                      <Check class="w-4 h-4 text-green-500" />
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {description && (
+              <p class="text-brand-text mt-4 leading-relaxed">{description}</p>
+            )}
+          </div>
 
         {/* Stats cards */}
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -521,6 +593,21 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
           </h2>
           <CodeExamples model={model} modelType={modelType} />
         </div>
+        </div>
+
+        {/* Premium modals */}
+        {needsAccess && premiumConfig && (
+          <>
+            <PremiumAccessModal
+              modelId={model.id}
+              modelName={displayName}
+              donationAmount={formatDonationAmount(premiumConfig.requiredDonationCents)}
+              donationUrl={donationUrl || ""}
+              reason={premiumConfig.reason}
+            />
+            <PremiumRequestedModal />
+          </>
+        )}
       </div>
     </Layout>
   );

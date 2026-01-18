@@ -1,6 +1,11 @@
 import * as Sentry from "@sentry/bun";
 import { Hono } from "hono";
 import { fetchAllModels, type OpenRouterModel } from "../lib/models";
+import {
+  checkUserAccess,
+  getDonationUrl,
+  getPremiumConfig,
+} from "../lib/premium";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables, ModelType } from "../types";
 import { Header } from "../views/components/Header";
@@ -81,7 +86,23 @@ models.get("/*", requireAuth, async (c) => {
   // Always detect model type from architecture
   const modelType = getModelType(model);
 
-  return c.html(<ModelPage model={model} modelType={modelType} user={user} />);
+  // Check premium status
+  const premiumConfig = getPremiumConfig(modelId);
+  let hasAccess = true;
+  if (premiumConfig) {
+    hasAccess = await checkUserAccess(user.id, modelId);
+  }
+
+  return c.html(
+    <ModelPage
+      model={model}
+      modelType={modelType}
+      user={user}
+      premiumConfig={premiumConfig}
+      hasAccess={hasAccess}
+      donationUrl={getDonationUrl()}
+    />,
+  );
 });
 
 export default models;

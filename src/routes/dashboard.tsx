@@ -6,6 +6,7 @@ import { db } from "../db";
 import { apiKeys, requestLogs, sessions } from "../db/schema";
 import { allowedLanguageModels, env } from "../env";
 import { fetchAllModels } from "../lib/models";
+import { getPremiumModelIds, getUserPremiumAccess } from "../lib/premium";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -103,6 +104,10 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       }
     });
 
+  // Get premium model info
+  const premiumModelIds = getPremiumModelIds();
+  const userPremiumAccess = await getUserPremiumAccess(user.id);
+
   const totalRequests = stats[0]?.totalRequests ?? 0;
   const showOnboarding =
     totalRequests < 30 || c.req.query("onboarding") !== undefined;
@@ -125,6 +130,8 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       embeddingModels={embeddingModels}
       enforceIdv={env.ENFORCE_IDV || false}
       showOnboarding={showOnboarding}
+      premiumModelIds={premiumModelIds}
+      userPremiumAccess={userPremiumAccess}
     />,
   );
 });
