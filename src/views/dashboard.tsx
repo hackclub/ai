@@ -11,6 +11,7 @@ import { Header } from "./components/Header";
 import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { Modal, ModalActions, ModalButton } from "./components/Modal";
+import { OnboardingBanner } from "./components/OnboardingBanner";
 import { StatCard } from "./components/StatCard";
 import { SurveyBanner } from "./components/SurveyBanner";
 import { Table } from "./components/Table";
@@ -24,6 +25,7 @@ type DashboardProps = {
   languageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
+  showOnboarding: boolean;
 };
 
 export const Dashboard = ({
@@ -34,6 +36,7 @@ export const Dashboard = ({
   languageModels,
   embeddingModels,
   enforceIdv,
+  showOnboarding,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
@@ -78,6 +81,7 @@ export const Dashboard = ({
 
         {showIdvBanner && <IdvBanner />}
         <SurveyBanner />
+        {showOnboarding && <OnboardingBanner />}
 
         <div
           class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner ? "grayscale opacity-20 pointer-events-none select-none" : ""}`}
@@ -197,6 +201,7 @@ const ModelsList = ({
             type="button"
             x-on:click="expanded = !expanded"
             class="text-sm font-medium text-brand-primary hover:text-brand-primary-hover transition-colors flex items-center gap-1"
+            title={`expanded ? 'Show less' : 'Show all ${models.length}'`}
           >
             <span
               x-text={`expanded ? 'Show less' : 'Show all ${models.length}'`}

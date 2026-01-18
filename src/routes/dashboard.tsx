@@ -105,6 +105,10 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
     },
   );
 
+  const totalRequests = stats[0]?.totalRequests ?? 0;
+  const showOnboarding =
+    totalRequests < 30 || c.req.query("onboarding") !== undefined;
+
   return c.html(
     <Dashboard
       user={user}
@@ -121,6 +125,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       languageModels={languageModels}
       embeddingModels={embeddingModels}
       enforceIdv={env.ENFORCE_IDV || false}
+      showOnboarding={showOnboarding}
     />,
   );
 });
