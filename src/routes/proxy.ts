@@ -154,6 +154,7 @@ async function logRequest(
     request: unknown;
     response: unknown;
     duration: number;
+    cost: number;
   },
 ) {
   const apiKey = c.get("apiKey");
@@ -175,6 +176,7 @@ async function logRequest(
       ip: c.get("ip"),
       timestamp: new Date(),
       duration: data.duration,
+      cost: String(data.cost),
     })
     .catch((err) => console.error("Logging error:", err));
 }
@@ -233,9 +235,11 @@ async function handleCompletionRequest(
       const usage = config.extractUsage(responseData);
 
       Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
+        const usage = config.extractUsage(responseData);
         await logRequest(c, {
           model: requestBody.model,
           ...usage,
+          cost: (responseData.usage as Record<string, number>)?.cost || 0,
           request: requestBody,
           response: responseData,
           duration,
@@ -289,9 +293,24 @@ async function handleCompletionRequest(
         const duration = Date.now() - startTime;
 
         Sentry.startSpan({ name: "db.insert.requestLogStream" }, async () => {
+          const responseUsage = chunks
+            .join("")
+            .split("\n")
+            .filter((line) => line.trim().startsWith("data: "))
+            .map((line) => line.replace(/^data: /, "").trim())
+            .reverse()
+            .find((data) => data !== "[DONE]");
+          let cost = 0;
+          if (responseUsage) {
+            try {
+              const parsed = JSON.parse(responseUsage);
+              cost = (parsed.usage as Record<string, number>)?.cost || 0;
+            } catch {}
+          }
           await logRequest(c, {
             model: requestBody.model,
             ...usage,
+            cost,
             request: requestBody,
             response: { stream: true, chunks: chunks.join("") },
             duration,
@@ -312,6 +331,7 @@ async function handleCompletionRequest(
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
+        cost: 0,
         request: {},
         response: {
           error: error instanceof Error ? error.message : "Unknown error",
@@ -428,6 +448,7 @@ proxy.post("/embeddings", standardLimiter, async (c) => {
         promptTokens,
         completionTokens: 0,
         totalTokens,
+        cost: usage?.cost || 0,
         request: requestBody,
         response: responseData,
         duration,
@@ -445,6 +466,7 @@ proxy.post("/embeddings", standardLimiter, async (c) => {
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
+        cost: 0,
         request: {},
         response: {
           error: error instanceof Error ? error.message : "Unknown error",

@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -70,6 +71,7 @@ export const requestLogs = pgTable(
     ip: text("ip").notNull(),
     timestamp: timestamp("timestamp").defaultNow().notNull(),
     duration: integer("duration").notNull(),
+    cost: numeric("cost", { precision: 10, scale: 8 }).notNull().default("0"),
   },
   (table) => [
     index("request_logs_user_timestamp_idx").on(

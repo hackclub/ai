@@ -1,0 +1,1 @@
+ALTER TABLE "request_logs" ADD COLUMN "cost" numeric(10, 8) DEFAULT '0' NOT NULL;
