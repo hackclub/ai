@@ -216,7 +216,7 @@ export async function fetchAllModels(): Promise<AllModelsResponse> {
       fetchLanguageModels(),
       fetchImageModels(),
       fetchEmbeddingModels(),
-    ]);p
+    ]);
 
   return {
     languageModels: languageModelsResponse.data,
