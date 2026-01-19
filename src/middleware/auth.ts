@@ -4,17 +4,15 @@ import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import blockedAppsConfig from "../config/blocked-apps.json";
-import blockedPromptsConfig from "../config/blocked-prompts.json";
-import blockedUserAgentsConfig from "../config/blocked-user-agents.json";
+import blockedPromptsConfig from "../config/blocked-prompts";
+import blockedUserAgentsConfig from "../config/blocked-user-agents";
 import { db } from "../db";
 import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
 import type { AppVariables } from "../types";
 
-const BLOCKED_APPS = blockedAppsConfig.blockedApps.map((a) => a.toLowerCase());
-const BLOCKED_USER_AGENTS = blockedUserAgentsConfig.blockedUserAgents.map((a) =>
-  a.toLowerCase(),
-);
+const BLOCKED_APPS = blockedAppsConfig.map((a) => a.toLowerCase());
+const BLOCKED_USER_AGENTS = blockedUserAgentsConfig.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
   "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
@@ -52,7 +50,7 @@ export async function blockAICodingAgents(c: Context, next: Next) {
       const clone = c.req.raw.clone();
       const body = await clone.text();
 
-      for (const blockedPrompt of blockedPromptsConfig.blockedPrompts) {
+      for (const blockedPrompt of blockedPromptsConfig) {
         if (body.includes(blockedPrompt)) {
           throw ex;
         }
