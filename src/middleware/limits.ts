@@ -14,7 +14,7 @@ export async function checkSpendingLimit(
     { name: "middleware.checkSpendingLimit" },
     async () => {
       const user = c.get("user");
-      const limit = parseFloat(user.spendingLimitUsd || "10");
+      const limit = parseFloat(user.spendingLimitUsd || "8");
 
       const now = new Date();
       const startOfDay = new Date(
