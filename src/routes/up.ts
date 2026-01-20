@@ -71,23 +71,23 @@ up.get("/", async (c) => {
       const keyBody = await keyResponse.json();
       const dailyKeyUsageRemaining = keyBody.limit_remaining;
 
-      cache.set("up", {
+      const cached = {
         status,
         balanceRemaining,
         dailyKeyUsageRemaining,
         timestamp: now,
-      });
-      return c.json(
-        { status, balanceRemaining, dailyKeyUsageRemaining },
-        status === "up" ? 200 : 503,
-      );
+      };
+      cache.set("up", cached);
+      return c.json(cached, status === "up" ? 200 : 503);
     }
 
-    cache.set("up", { status, timestamp: now });
-    return c.json({ status }, status === "up" ? 200 : 503);
+    const cached = { status, timestamp: now };
+    cache.set("up", cached);
+    return c.json(cached, status === "up" ? 200 : 503);
   } catch {
-    cache.set("up", { status: "down", timestamp: now });
-    return c.json({ status: "down" }, 503);
+    const cached = { status: "down", timestamp: now };
+    cache.set("up", cached);
+    return c.json(cached, 503);
   }
 });
 
