@@ -7,6 +7,7 @@ const up = new Hono();
 interface CacheEntry {
   status: "up" | "down";
   balanceRemaining?: number;
+  dailyKeyUsageRemaining?: number;
   timestamp: number;
 }
 
@@ -31,10 +32,7 @@ up.get("/", async (c) => {
   const cached = cache.get("up");
 
   if (cached && now - cached.timestamp < CACHE_TTL) {
-    return c.json(
-      { status: cached.status, balanceRemaining: cached.balanceRemaining },
-      cached.status === "up" ? 200 : 503,
-    );
+    return c.json(cached, cached.status === "up" ? 200 : 503);
   }
 
   try {
@@ -63,12 +61,26 @@ up.get("/", async (c) => {
       });
       const { data } = await response.json();
       const balanceRemaining = data.total_credits - data.total_usage;
+
+      const keyResponse = await fetch("https://openrouter.ai/api/v1/key", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        },
+      });
+      const keyBody = await keyResponse.json();
+      const dailyKeyUsageRemaining = keyBody.limit_remaining;
+
       cache.set("up", {
         status,
         balanceRemaining,
+        dailyKeyUsageRemaining,
         timestamp: now,
       });
-      return c.json({ status, balanceRemaining }, status === "up" ? 200 : 503);
+      return c.json(
+        { status, balanceRemaining, dailyKeyUsageRemaining },
+        status === "up" ? 200 : 503,
+      );
     }
 
     cache.set("up", { status, timestamp: now });

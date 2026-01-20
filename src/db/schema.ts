@@ -93,11 +93,10 @@ export const requestLogs = pgTable(
     ),
     index("request_logs_model_idx").on(table.model),
     index("request_logs_user_id_idx").on(table.userId),
-    // For nightwatch/manual querying.
-    // Here, we sacrifice some write performance for read performance, as writes happen after requests are returned to the user,
-    // so write perf is not a big deal.
-    index("request_logs_request_gin_idx").using("gin", table.request),
-    index("request_logs_response_gin_idx").using("gin", table.response),
+    // We got 35GB (!!!) of index storage with just 308MB of actual data.
+    // We also barely ever need to actually query based off the JSON itself - usually a text search is fine.
+    // index("request_logs_request_gin_idx").using("gin", table.request),
+    // index("request_logs_response_gin_idx").using("gin", table.response),
   ],
 );
 
