@@ -134,8 +134,6 @@ proxy.use((c, next) => {
   return requireApiKey(c, next);
 });
 
-proxy.post("*", checkSpendingLimit);
-
 proxy.use("/models", etag());
 proxy.use("/embeddings/models", etag());
 
@@ -403,15 +401,15 @@ proxy.get("/stats", standardLimiter, async (c) => {
   );
 });
 
-proxy.post("/chat/completions", standardLimiter, (c) =>
+proxy.post("/chat/completions", standardLimiter, checkSpendingLimit, (c) =>
   handleCompletionRequest(c, chatCompletionsConfig),
 );
 
-proxy.post("/responses", standardLimiter, (c) =>
+proxy.post("/responses", standardLimiter, checkSpendingLimit, (c) =>
   handleCompletionRequest(c, responsesConfig),
 );
 
-proxy.post("/embeddings", standardLimiter, async (c) => {
+proxy.post("/embeddings", standardLimiter, checkSpendingLimit, async (c) => {
   const user = c.get("user");
   const startTime = Date.now();
 
