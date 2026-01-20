@@ -19,6 +19,10 @@ export const users = pgTable(
     email: text("email"),
     name: text("name"),
     avatar: text("avatar"),
+    spendingLimitUsd: numeric("spending_limit_usd", {
+      precision: 10,
+      scale: 8,
+    }).default("10"),
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
     isBanned: boolean("is_banned").notNull().default(false),
@@ -74,9 +78,10 @@ export const requestLogs = pgTable(
     cost: numeric("cost", { precision: 10, scale: 8 }).notNull().default("0"),
   },
   (table) => [
-    index("request_logs_user_timestamp_idx").on(
+    index("request_logs_user_timestamp_cost_idx").on(
       table.userId,
       table.timestamp.desc(),
+      table.cost,
     ),
     index("request_logs_apikey_timestamp_idx").on(
       table.apiKeyId,

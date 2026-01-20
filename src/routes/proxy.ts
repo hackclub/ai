@@ -24,6 +24,7 @@ import {
   fetchLanguageModels,
 } from "../lib/models";
 import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
+import { checkSpendingLimit } from "../middleware/limits";
 import type { AppVariables } from "../types";
 
 type TokenUsage = {
@@ -132,6 +133,8 @@ proxy.use((c, next) => {
   }
   return requireApiKey(c, next);
 });
+
+proxy.post("*", checkSpendingLimit);
 
 proxy.use("/models", etag());
 proxy.use("/embeddings/models", etag());

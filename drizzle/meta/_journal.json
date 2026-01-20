@@ -78,6 +78,13 @@
       "when": 1768820542293,
       "tag": "0010_dark_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1768899519360,
+      "tag": "0011_fair_leo",
+      "breakpoints": true
     }
   ]
 }
