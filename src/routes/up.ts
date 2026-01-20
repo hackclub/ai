@@ -69,7 +69,7 @@ up.get("/", async (c) => {
         },
       });
       const keyBody = await keyResponse.json();
-      const dailyKeyUsageRemaining = keyBody.limit_remaining;
+      const dailyKeyUsageRemaining = keyBody.data?.limit_remaining;
 
       const cached = {
         status,
