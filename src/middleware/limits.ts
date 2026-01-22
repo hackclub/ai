@@ -37,7 +37,7 @@ export async function checkSpendingLimit(
 
       if (spent >= limit) {
         throw new HTTPException(429, {
-          message: `Daily spending limit of $${limit} reached. Need a higher limit? hey@mahadkc`,
+          message: `Daily spending limit of $${limit} reached. Need a higher limit? hey@mahadk.com`,
         });
       }
 
