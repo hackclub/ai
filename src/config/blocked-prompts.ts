@@ -14,4 +14,8 @@ export default [
   // CONTEXT(mahadk): this is a Chinese AI reseller called Vivi - a user joined and almost immediately began
   // sending suspicious requests that were picked up by Nightwatch
   "You are Vivi, an expert AI assistant and exceptional senior software developer",
+
+  // Cline
+  // https://nightwatch.mahadk.com/requests?user=c859ebca-8b0b-4928-8d1a-3d0f65c76e75&time=day&page=1&sort=cost
+  "You are Cline, a software engineering AI. Your mission is to execute precisely what is requested - implement exactly what was asked for, with the simplest solution that fulfills all requirements."
 ];
