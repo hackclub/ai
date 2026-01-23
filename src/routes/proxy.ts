@@ -1,22 +1,20 @@
 import * as Sentry from "@sentry/bun";
 import { eq, sql } from "drizzle-orm";
-import { type Context, Hono, type TypedResponse } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
-import { HTTPException } from "hono/http-exception";
 import { proxy as honoProxy } from "hono/proxy";
 import { stream } from "hono/streaming";
-import { timeout } from "hono/timeout";
+import { rateLimiter } from "hono-rate-limiter";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import {
+  env,
   allowedEmbeddingModels,
   allowedImageModels,
   allowedLanguageModels,
-  env,
 } from "../env";
 import {
   fetchEmbeddingModels,
@@ -27,370 +25,195 @@ import { blockAICodingAgents, requireApiKey } from "../middleware/auth";
 import { checkSpendingLimit } from "../middleware/limits";
 import type { AppVariables } from "../types";
 
-type TokenUsage = {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
+// --- Types ---
+type Usage = {
+  prompt: number;
+  completion: number;
+  total: number;
+  cost: number;
+};
+type ProxyReq = {
+  model: string;
+  stream?: boolean;
+  user?: string;
+  usage?: { include: boolean };
 };
 
-type CompletionConfig = {
-  endpoint: string;
-  extractUsage: (data: Record<string, unknown>) => TokenUsage;
-  extractStreamUsage: (parsed: Record<string, unknown>) => TokenUsage | null;
-};
+interface ProviderResponse {
+  usage?: {
+    prompt_tokens?: number;
+    input_tokens?: number;
+    completion_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    cost?: number;
+  };
+  response?: { usage?: ProviderResponse["usage"] };
+}
 
-const chatCompletionsConfig: CompletionConfig = {
-  endpoint: "chat/completions",
-  extractUsage: (data) => ({
-    promptTokens: (data.usage as Record<string, number>)?.prompt_tokens || 0,
-    completionTokens:
-      (data.usage as Record<string, number>)?.completion_tokens || 0,
-    totalTokens: (data.usage as Record<string, number>)?.total_tokens || 0,
-  }),
-  extractStreamUsage: (parsed) => {
-    if (parsed.usage) {
-      const usage = parsed.usage as Record<string, number>;
-      return {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0,
-      };
-    }
-    return null;
-  },
-};
+const MODEL_POOL = [
+  ...allowedLanguageModels,
+  ...allowedImageModels,
+  ...allowedEmbeddingModels,
+];
 
-const responsesConfig: CompletionConfig = {
-  endpoint: "responses",
-  extractUsage: (data) => ({
-    promptTokens: (data.usage as Record<string, number>)?.input_tokens || 0,
-    completionTokens:
-      (data.usage as Record<string, number>)?.output_tokens || 0,
-    totalTokens: (data.usage as Record<string, number>)?.total_tokens || 0,
-  }),
-  extractStreamUsage: (parsed) => {
-    if (parsed.type === "response.done" && parsed.response) {
-      const usage = (parsed.response as Record<string, unknown>)
-        .usage as Record<string, number>;
-      if (usage) {
-        return {
-          promptTokens: usage.input_tokens || 0,
-          completionTokens: usage.output_tokens || 0,
-          totalTokens: usage.total_tokens || 0,
-        };
-      }
-    }
-    return null;
-  },
+// --- Shared Rate Limiters ---
+const createLimiter = (limit: number) =>
+  rateLimiter({
+    limit,
+    windowMs: 30 * 60 * 1000,
+    keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
+      c.get("user")?.id || c.get("ip"),
+  });
+
+const standardLimiter = createLimiter(450);
+const moderationsLimiter = createLimiter(300);
+
+// --- Helpers ---
+const resolveUsage = (data: unknown): Usage => {
+  const d = data as ProviderResponse;
+  const u = d?.usage || d?.response?.usage || {};
+  return {
+    prompt: u.prompt_tokens || u.input_tokens || 0,
+    completion: u.completion_tokens || u.output_tokens || 0,
+    total: u.total_tokens || 0,
+    cost: u.cost || 0,
+  };
 };
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
-proxy.use(
-  "*",
-  bodyLimit({
-    maxSize: 20 * 1024 * 1024,
-    onError: () => {
-      throw new HTTPException(413, { message: "Request too large" });
-    },
-  }),
-  (c, next) => {
-    const cfIp = c.req.header("CF-Connecting-IP");
-    if (!cfIp && env.NODE_ENV !== "development") {
-      throw new HTTPException(400, {
-        message:
-          "Missing CF-Connecting-IP. This is a bug. Please contact support.",
-      });
-    }
-    c.set("ip", cfIp || "127.0.0.1"); // dev check above!
-    return next();
-  },
-);
-
-const limiterOpts = {
-  limit: 450,
-  windowMs: 30 * 60 * 1000, // 30 minutes
-  standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
-  keyGenerator: (c: Context<{ Variables: AppVariables }>) =>
-    c.get("user")?.id || c.get("ip"),
-} as const;
-const standardLimiter = rateLimiter(limiterOpts);
-const moderationsLimiter = rateLimiter({
-  ...limiterOpts,
-  limit: 300,
-});
-
-const openRouterHeaders = {
-  "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
-  "X-Title": "Hack Club AI",
-};
-
-proxy.use("*", blockAICodingAgents);
-
-proxy.use((c, next) => {
-  if (c.req.path.endsWith("/models")) {
-    return next();
-  }
-  return requireApiKey(c, next);
-});
-
-proxy.use("/models", etag());
-proxy.use("/embeddings/models", etag());
-
-function getRequestHeaders(c: Context): Record<string, string> {
-  const headers: Record<string, string> = {};
-  c.req.raw.headers.forEach((value, key) => {
-    headers[key] = value;
-  });
-  return headers;
-}
-
 async function logRequest(
   c: Context<{ Variables: AppVariables }>,
-  data: {
-    model: string;
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    request: unknown;
-    response: unknown;
-    duration: number;
-    cost: number;
-  },
+  body: ProxyReq,
+  resBody: unknown,
+  usage: Usage,
+  ms: number,
 ) {
-  const apiKey = c.get("apiKey");
   const user = c.get("user");
-
-  await db
-    .insert(requestLogs)
-    .values({
-      apiKeyId: apiKey.id,
-      userId: user.id,
-      slackId: user.slackId,
-      model: data.model,
-      promptTokens: data.promptTokens,
-      completionTokens: data.completionTokens,
-      totalTokens: data.totalTokens,
-      request: data.request,
-      response: data.response,
-      headers: getRequestHeaders(c),
-      ip: c.get("ip"),
-      timestamp: new Date(),
-      duration: data.duration,
-      cost: String(data.cost),
-    })
-    .catch((err) => console.error("Logging error:", err));
+  return Sentry.startSpan({ name: "db.log" }, () =>
+    db
+      .insert(requestLogs)
+      .values({
+        apiKeyId: c.get("apiKey").id,
+        userId: user.id,
+        slackId: user.slackId,
+        model: body.model,
+        promptTokens: usage.prompt,
+        completionTokens: usage.completion,
+        totalTokens: usage.total,
+        cost: String(usage.cost),
+        request: body,
+        response: resBody,
+        duration: ms,
+        headers: c.req.raw.headers,
+        ip: c.get("ip"),
+        timestamp: new Date(),
+      })
+      .catch((e) => console.error("Logging failed:", e)),
+  );
 }
 
-async function handleCompletionRequest(
+// --- Proxy Handler ---
+async function handleProxy(
   c: Context<{ Variables: AppVariables }>,
-  config: CompletionConfig,
-): Promise<TypedResponse<Record<string, unknown>, ContentfulStatusCode>> {
-  const user = c.get("user");
-  const startTime = Date.now();
+  endpoint: string,
+) {
+  const start = Date.now();
+  const body = (await c.req.json()) as ProxyReq;
 
-  try {
-    const requestBody = (await c.req.json()) as {
-      model: string;
-      stream?: boolean;
-      user?: string;
-      usage: { include: boolean };
-    };
-
-    const allowedCompletionModels = [
-      ...allowedLanguageModels,
-      ...allowedImageModels,
-    ];
-    const allowedSet = new Set(allowedCompletionModels);
-    if (!allowedSet.has(requestBody.model)) {
-      const matchedModel = allowedCompletionModels.find(
-        (m) => m.split("/")[1] === requestBody.model,
-      );
-      if (matchedModel) {
-        requestBody.model = matchedModel;
-      } else {
-        requestBody.model = allowedCompletionModels[0];
-      }
-    }
-
-    requestBody.user = `user_${user.id}`;
-    requestBody.usage = { include: true };
-    const isStreaming = requestBody.stream === true;
-
-    const response = await fetch(
-      `${env.OPENAI_API_URL}/v1/${config.endpoint}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
-        },
-        body: JSON.stringify(requestBody),
-      },
-    );
-
-    if (!isStreaming) {
-      const responseData = (await response.json()) as Record<string, unknown>;
-      const duration = Date.now() - startTime;
-      const usage = config.extractUsage(responseData);
-
-      Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-        const usage = config.extractUsage(responseData);
-        await logRequest(c, {
-          model: requestBody.model,
-          ...usage,
-          cost: (responseData.usage as Record<string, number>)?.cost || 0,
-          request: requestBody,
-          response: responseData,
-          duration,
-        });
-      });
-
-      return c.json(responseData, response.status as ContentfulStatusCode);
-    }
-
-    return stream(c, async (stream) => {
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      const chunks: string[] = [];
-      let usage: TokenUsage = {
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-      };
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          chunks.push(chunk);
-
-          await stream.write(value);
-
-          const lines = chunk
-            .split("\n")
-            .filter((line) => line.trim().startsWith("data: "));
-          for (const line of lines) {
-            const data = line.replace(/^data: /, "").trim();
-            if (data === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              const extractedUsage = config.extractStreamUsage(parsed);
-              if (extractedUsage) {
-                usage = extractedUsage;
-              }
-            } catch {}
-          }
-        }
-      } finally {
-        const duration = Date.now() - startTime;
-
-        Sentry.startSpan({ name: "db.insert.requestLogStream" }, async () => {
-          const responseUsage = chunks
-            .join("")
-            .split("\n")
-            .filter((line) => line.trim().startsWith("data: "))
-            .map((line) => line.replace(/^data: /, "").trim())
-            .reverse()
-            .find((data) => data !== "[DONE]");
-          let cost = 0;
-          if (responseUsage) {
-            try {
-              const parsed = JSON.parse(responseUsage);
-              cost = (parsed.usage as Record<string, number>)?.cost || 0;
-            } catch {}
-          }
-          await logRequest(c, {
-            model: requestBody.model,
-            ...usage,
-            cost,
-            request: requestBody,
-            response: { stream: true, chunks: chunks.join("") },
-            duration,
-          });
-        });
-      }
-    }) as unknown as TypedResponse<
-      Record<string, unknown>,
-      ContentfulStatusCode
-    >;
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`${config.endpoint} proxy error:`, error);
-
-    Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-      await logRequest(c, {
-        model: "unknown",
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        cost: 0,
-        request: {},
-        response: {
-          error: error instanceof Error ? error.message : "Unknown error",
-        },
-        duration,
-      });
-    });
-
-    throw new HTTPException(500, { message: "Internal server error" });
+  if (!MODEL_POOL.includes(body.model)) {
+    body.model =
+      MODEL_POOL.find((m) => m.split("/")[1] === body.model) || MODEL_POOL[0];
   }
+
+  body.user = `user_${c.get("user").id}`;
+  if (endpoint !== "embeddings") body.usage = { include: true };
+
+  const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      "HTTP-Referer": `${env.BASE_URL}/global`,
+      "X-Title": "Hack Club AI",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!body.stream) {
+    const data = await res.json();
+    await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
+    return c.json(data, res.status as ContentfulStatusCode);
+  }
+
+  return stream(c, async (s) => {
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    let usage: Usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
+
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const part = decoder.decode(value, { stream: true });
+      chunks.push(part);
+      await s.write(value);
+
+      part
+        .split("\n")
+        .filter((l) => l.startsWith("data: "))
+        .forEach((line) => {
+          const raw = line.replace("data: ", "").trim();
+          if (raw !== "[DONE]") {
+            try {
+              usage = resolveUsage(JSON.parse(raw));
+            } catch {}
+          }
+        });
+    }
+    await logRequest(
+      c,
+      body,
+      { stream: true, content: chunks.join("\n") },
+      usage,
+      Date.now() - start,
+    );
+  });
 }
 
-proxy.get("/models", async (c) => {
-  try {
-    const [languageData, imageData] = await Promise.all([
-      fetchLanguageModels(),
-      fetchImageModels(),
-    ]);
-    const data = {
-      data: [...languageData.data, ...imageData.data],
-    };
-    return c.json(data);
-  } catch (error) {
-    console.error("Models fetch error:", error);
-    throw new HTTPException(500, { message: "Failed to fetch models" });
-  }
+proxy.use("*", bodyLimit({ maxSize: 20 * 1024 * 1024 }));
+proxy.use("*", blockAICodingAgents);
+proxy.use("*", async (c, next) => {
+  const ip =
+    c.req.header("CF-Connecting-IP") ||
+    (env.NODE_ENV === "development" ? "127.0.0.1" : "0.0.0.0");
+  c.set("ip", ip);
+  return next();
+});
+proxy.use("*", (c, next) =>
+  c.req.path.includes("/models") ? next() : requireApiKey(c, next),
+);
+
+proxy.get("/models", etag(), async (c) => {
+  const [l, i] = await Promise.all([fetchLanguageModels(), fetchImageModels()]);
+  return c.json({ data: [...l.data, ...i.data] });
 });
 
-proxy.get("/embeddings/models", async (c) => {
-  try {
-    const data = await fetchEmbeddingModels();
-    return c.json(data);
-  } catch (error) {
-    console.error("Embedding models fetch error:", error);
-    throw new HTTPException(500, {
-      message: "Failed to fetch embedding models",
-    });
-  }
-});
+proxy.get("/embeddings/models", etag(), async (c) =>
+  c.json(await fetchEmbeddingModels()),
+);
 
 proxy.get("/stats", standardLimiter, async (c) => {
-  const user = c.get("user");
-
-  const stats = await Sentry.startSpan(
-    { name: "db.select.userStats" },
-    async () => {
-      return await db
-        .select({
-          totalRequests: sql<number>`COUNT(*)::int`,
-          totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-          totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
-          totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
-        })
-        .from(requestLogs)
-        .where(eq(requestLogs.userId, user.id));
-    },
-  );
-
+  const stats = await db
+    .select({
+      totalRequests: sql<number>`COUNT(*)::int`,
+      totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
+      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
+      totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
+    })
+    .from(requestLogs)
+    .where(eq(requestLogs.userId, c.get("user").id));
   return c.json(
     stats[0] || {
       totalRequests: 0,
@@ -402,100 +225,24 @@ proxy.get("/stats", standardLimiter, async (c) => {
 });
 
 proxy.post("/chat/completions", standardLimiter, checkSpendingLimit, (c) =>
-  handleCompletionRequest(c, chatCompletionsConfig),
+  handleProxy(c, "chat/completions"),
 );
-
 proxy.post("/responses", standardLimiter, checkSpendingLimit, (c) =>
-  handleCompletionRequest(c, responsesConfig),
+  handleProxy(c, "responses"),
+);
+proxy.post("/embeddings", standardLimiter, checkSpendingLimit, (c) =>
+  handleProxy(c, "embeddings"),
 );
 
-proxy.post("/embeddings", standardLimiter, checkSpendingLimit, async (c) => {
-  const user = c.get("user");
-  const startTime = Date.now();
-
-  try {
-    const requestBody = (await c.req.json()) as {
-      model: string;
-      user?: string;
-    };
-
-    const allowedSet = new Set(allowedEmbeddingModels);
-    if (!allowedSet.has(requestBody.model)) {
-      requestBody.model = allowedEmbeddingModels[0];
-    }
-
-    requestBody.user = `user_${user.id}`;
-
-    const response = await fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        ...openRouterHeaders,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const responseData = (await response.json()) as Record<string, unknown>;
-    const duration = Date.now() - startTime;
-
-    const usage = responseData.usage as Record<string, number> | undefined;
-    const promptTokens = usage?.prompt_tokens || 0;
-    const totalTokens = usage?.total_tokens || 0;
-
-    Sentry.startSpan({ name: "db.insert.requestLog" }, async () => {
-      await logRequest(c, {
-        model: requestBody.model,
-        promptTokens,
-        completionTokens: 0,
-        totalTokens,
-        cost: usage?.cost || 0,
-        request: requestBody,
-        response: responseData,
-        duration,
-      });
-    });
-
-    return c.json(responseData, response.status as ContentfulStatusCode);
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error("Embeddings proxy error:", error);
-
-    Sentry.startSpan({ name: "db.insert.requestLogError" }, async () => {
-      await logRequest(c, {
-        model: "unknown",
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        cost: 0,
-        request: {},
-        response: {
-          error: error instanceof Error ? error.message : "Unknown error",
-        },
-        duration,
-      });
-    });
-
-    throw new HTTPException(500, { message: "Internal server error" });
-  }
-});
-
-proxy.post("/moderations", moderationsLimiter, async (c) => {
-  try {
-    const requestBody = await c.req.json();
-
-    return honoProxy(env.OPENAI_MODERATION_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
-  } catch (error) {
-    console.error("Moderations proxy error:", error);
-    throw new HTTPException(500, { message: "Internal server error" });
-  }
-});
+proxy.post("/moderations", moderationsLimiter, async (c) =>
+  honoProxy(env.OPENAI_MODERATION_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(await c.req.json()),
+  }),
+);
 
 export default proxy;
