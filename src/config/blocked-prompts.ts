@@ -1,6 +1,9 @@
 // Please don't try to bypass these. You can probably get past the autoblocks fairly easily but then your prompt would get flagged and you get banned and everyone is sad.
 // Something something tragedy of the commons.
 
+// Please don't try to bypass these. You can probably get past the autoblocks fairly easily but then your prompt would get flagged and you get banned and everyone is sad.
+// Something something tragedy of the commons.
+
 export default [
   // GitHub Copilot
   "You are an expert AI programming assistant, working with a user in the",
