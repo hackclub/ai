@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db";
 import { apiKeys, users } from "../db/schema";
-import { env } from "../env";
 
 const internal = new Hono();
 

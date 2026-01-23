@@ -24,7 +24,7 @@ export default [
   "You are only allowed to ask the user questions using the ask_followup_question tool. Use this tool only when you need additional details to complete a task, and be sure to use a clear and concise question that will help you move forward with the task. When you ask a question, provide the user with 2-4 suggested answers based on your question so they don't need to do so much typing",
 
   // Kilo Code
-  "- mode: (required) The slug of the mode to start the new task in (e.g., \"code\", \"debug\", \"architect\").",
+  '- mode: (required) The slug of the mode to start the new task in (e.g., "code", "debug", "architect").',
   "By specifying line ranges, you can efficiently read specific portions of large files without loading the entire file into memory.",
-  "The tool outputs line-numbered content (e.g. \"1 | const x = 1\") for easy reference when creating diffs or discussing code"
+  'The tool outputs line-numbered content (e.g. "1 | const x = 1") for easy reference when creating diffs or discussing code',
 ];

@@ -5,16 +5,16 @@ import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
 import { proxy as honoProxy } from "hono/proxy";
 import { stream } from "hono/streaming";
-import { rateLimiter } from "hono-rate-limiter";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { rateLimiter } from "hono-rate-limiter";
 
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import {
-  env,
   allowedEmbeddingModels,
   allowedImageModels,
   allowedLanguageModels,
+  env,
 } from "../env";
 import {
   fetchEmbeddingModels,
