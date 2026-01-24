@@ -117,7 +117,7 @@ export const Dashboard = ({ user, stats, enforceIdv }: DashboardProps) => {
             <QuickLinkCard
               href="/replicate"
               title="Replicate"
-              description="Run ML models via Replicate's predictions API."
+              description="Remove backgrounds, use STT/TTS, upscale images and more with Replicate models."
               icon={
                 <svg
                   class="w-8 h-8"
