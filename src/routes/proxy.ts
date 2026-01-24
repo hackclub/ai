@@ -9,6 +9,7 @@ import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { rateLimiter } from "hono-rate-limiter";
 
+import { replicateModelCosts } from "../config/replicate-models";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import {
@@ -249,6 +250,35 @@ proxy.post("/moderations", moderationsLimiter, async (c) =>
     body: JSON.stringify(await c.req.json()),
   }),
 );
+
+proxy.post("/predictions", standardLimiter, checkSpendingLimit, async (c) => {
+  const start = Date.now();
+  const body = await c.req.json();
+
+  const res = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.REPLICATE_API_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "wait=60",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  const modelId = body.model || "replicate";
+  const cost = replicateModelCosts.get(modelId) || 0;
+
+  await logRequest(
+    c,
+    { model: modelId, stream: false },
+    data,
+    { prompt: 0, completion: 0, total: 0, cost },
+    Date.now() - start,
+  );
+
+  return c.json(data, res.status as ContentfulStatusCode);
+});
 
 proxy.post(
   "/images/generations",

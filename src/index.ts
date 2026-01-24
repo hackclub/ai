@@ -25,6 +25,7 @@ import internal from "./routes/internal";
 import keys from "./routes/keys";
 import models from "./routes/models";
 import proxy from "./routes/proxy";
+import replicate from "./routes/replicate";
 import up from "./routes/up";
 import type { AppVariables } from "./types";
 
@@ -83,6 +84,7 @@ app.route("/global", global);
 app.route("/internal", internal);
 app.route("/keys", keys);
 app.route("/models", models);
+app.route("/replicate", replicate);
 app.route("/up", up);
 
 showRoutes(app);

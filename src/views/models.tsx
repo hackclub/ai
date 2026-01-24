@@ -21,9 +21,9 @@ export const Models = ({
     <Layout title="Models" includeAlpine>
       <Header title="hackai" user={user} showGlobalStats />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-8 text-brand-heading">
-          Available Models
-        </h1>
+        <h1 class="text-4xl font-bold mb-2 text-brand-heading">Models</h1>
+        <p class="text-lg mb-4">Find the right model for your project</p>
+        <hr class="border-brand-border mb-8" />
         <ModelsList title="Language Models" models={languageModels} />
         <ModelsList title="Image Models" models={imageModels} />
         <ModelsList title="Embedding Models" models={embeddingModels} />
