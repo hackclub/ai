@@ -6,6 +6,7 @@ import type { AppVariables, ModelType } from "../types";
 import { Header } from "../views/components/Header";
 import { Layout } from "../views/layout";
 import { ModelPage } from "../views/model";
+import { Models } from "../views/models";
 
 const models = new Hono<{ Variables: AppVariables }>();
 
@@ -26,6 +27,28 @@ function getModelType(model: OpenRouterModel): ModelType {
 
   return "language";
 }
+
+models.get("/", requireAuth, async (c) => {
+  const user = c.get("user");
+
+  const { languageModels, imageModels, embeddingModels } =
+    await Sentry.startSpan({ name: "fetch.models" }, async () => {
+      try {
+        return await fetchAllModels();
+      } catch {
+        return { languageModels: [], imageModels: [], embeddingModels: [] };
+      }
+    });
+
+  return c.html(
+    <Models
+      user={user}
+      languageModels={languageModels}
+      imageModels={imageModels}
+      embeddingModels={embeddingModels}
+    />,
+  );
+});
 
 models.get("/*", requireAuth, async (c) => {
   const user = c.get("user");

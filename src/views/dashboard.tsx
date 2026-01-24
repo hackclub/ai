@@ -1,89 +1,27 @@
+import type { Child } from "hono/jsx";
 import { allowedLanguageModels, env } from "../env";
-import type { OpenRouterModel } from "../lib/models";
-import type {
-  DashboardApiKey,
-  DashboardRequestLog,
-  Stats,
-  User,
-} from "../types";
-import { EmptyState } from "./components/EmptyState";
+import type { Stats, User } from "../types";
 import { Header } from "./components/Header";
-import { Check, ChevronDown, Copy } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
-import { Modal, ModalActions, ModalButton } from "./components/Modal";
-import { OnboardingBanner } from "./components/OnboardingBanner";
 import { StatCard } from "./components/StatCard";
 import { SurveyBanner } from "./components/SurveyBanner";
-import { Table } from "./components/Table";
 import { Layout } from "./layout";
 
 type DashboardProps = {
   user: User;
-  apiKeys: DashboardApiKey[];
   stats: Stats;
-  recentLogs: DashboardRequestLog[];
-  languageModels: OpenRouterModel[];
-  imageModels: OpenRouterModel[];
-  embeddingModels: OpenRouterModel[];
   enforceIdv: boolean;
-  showOnboarding: boolean;
 };
 
-export const Dashboard = ({
-  user,
-  apiKeys,
-  stats,
-  recentLogs,
-  languageModels,
-  imageModels,
-  embeddingModels,
-  enforceIdv,
-  showOnboarding,
-}: DashboardProps) => {
+export const Dashboard = ({ user, stats, enforceIdv }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
   return (
-    <Layout title="Dashboard" includeHtmx includeAlpine>
-      <div
-        x-data={`{
-          createModal: false,
-          createdModal: false,
-          revokeModal: false,
-          newKey: '',
-          keyName: '',
-          revokeKeyId: '',
-          revokeKeyName: '',
-          
-          async createKey() {
-            const res = await fetch('/api/keys', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: this.keyName })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              this.newKey = data.key;
-              this.keyName = '';
-              this.createModal = false;
-              this.createdModal = true;
-              htmx.trigger('#api-keys-list', 'refresh');
-            }
-          },
-          
-          async revokeKey() {
-            const res = await fetch('/api/keys/' + this.revokeKeyId, { method: 'DELETE' });
-            if (res.ok) {
-              this.revokeModal = false;
-              htmx.trigger('#api-keys-list', 'refresh');
-            }
-          }
-        }`}
-      >
+    <Layout title="Dashboard" includeAlpine>
+      <div>
         <Header title="hackai" user={user} showGlobalStats />
 
         {showIdvBanner && <IdvBanner />}
-        <SurveyBanner />
-        {showOnboarding && <OnboardingBanner />}
 
         <div
           class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner ? "grayscale opacity-20 pointer-events-none select-none" : ""}`}
@@ -110,288 +48,205 @@ export const Dashboard = ({
             />
           </div>
 
-          <ModelsList title="Language Models" models={languageModels} />
-          <ModelsList title="Image Models" models={imageModels} />
-          <ModelsList title="Embedding Models" models={embeddingModels} />
+          {/*<SurveyBanner />*/}
 
-          <div class="mb-12">
-            <div class="flex justify-between items-center mb-6">
-              <h2 class="text-2xl font-bold text-brand-heading">API Keys</h2>
-              <button
-                type="button"
-                x-on:click="createModal = true"
-                class="px-6 py-2.5 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover hover:tracking-wider transition-all"
-              >
-                Create New Key
-              </button>
-            </div>
-            <div
-              id="api-keys-list"
-              hx-get="/api/keys/partial"
-              hx-trigger="refresh"
-              hx-swap="innerHTML"
-            >
-              <ApiKeysList apiKeys={apiKeys} />
-            </div>
+          <h2 class="text-2xl font-bold mb-6 text-brand-heading">
+            Quick Links
+          </h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-12">
+            <QuickLinkCard
+              href="/keys"
+              title="API Keys"
+              description="Create and manage your API keys for authentication."
+              icon={
+                <svg
+                  class="w-8 h-8"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                  />
+                </svg>
+              }
+            />
+            <QuickLinkCard
+              href="/models"
+              title="Models"
+              description="Browse available language, image and embedding models."
+              icon={
+                <svg
+                  class="w-8 h-8"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              }
+            />
+            <QuickLinkCard
+              href="/activity"
+              title="Activity"
+              description="View your recent API requests and usage history."
+              icon={
+                <svg
+                  class="w-8 h-8"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              }
+            />
           </div>
 
           <h2 class="text-2xl font-bold mb-6 text-brand-heading">
-            Recent Requests
+            Quickstart Guide
           </h2>
-          <RecentRequestsTable recentLogs={recentLogs} />
-        </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-12">
+            <QuickstartCard
+              step={1}
+              title="Get your API key"
+              description="Create a new API key from the Keys page. Keep it secure and never share it publicly."
+            >
+              <a
+                href="/keys"
+                class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+              >
+                Create API Key
+              </a>
+            </QuickstartCard>
 
-        <CreateKeyModal />
-        <CreatedModal />
-        <RevokeKeyModal />
+            <QuickstartCard
+              step={2}
+              title="Make your first request"
+              description="Use curl or your favorite HTTP client to make a request:"
+            >
+              <div class="bg-brand-bg border border-brand-border p-4 rounded-xl font-mono text-xs text-brand-text leading-relaxed overflow-x-auto select-text">
+                <div>curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
+                <div class="pl-4">
+                  -H "Authorization: Bearer YOUR_API_KEY" \
+                </div>
+                <div class="pl-4">-H "Content-Type: application/json" \</div>
+                <div class="pl-4">
+                  -d '
+                  {`{"model": "${allowedLanguageModels[0]}", "messages": [{"role": "user", "content": "Hi"}]}`}
+                  '
+                </div>
+              </div>
+            </QuickstartCard>
+
+            <QuickstartCard
+              step={3}
+              title="Explore available models"
+              description="Browse our collection of language, image and embedding models to find the right one for your project."
+            >
+              <a
+                href="/models"
+                class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+              >
+                Browse Models
+              </a>
+            </QuickstartCard>
+
+            <QuickstartCard
+              step={4}
+              title="Read the documentation"
+              description="Learn about all the available endpoints, parameters and best practices for using the API."
+            >
+              <a
+                href="/docs"
+                class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+              >
+                View Docs
+              </a>
+            </QuickstartCard>
+          </div>
+        </div>
       </div>
     </Layout>
   );
 };
 
-export const ApiKeysList = ({ apiKeys }: { apiKeys: DashboardApiKey[] }) => {
-  if (apiKeys.length === 0) {
-    return <EmptyState message="No API keys yet. Create one to get started." />;
-  }
-
-  return (
-    <Table
-      columns={[
-        { header: "Name", key: "name" },
-        {
-          header: "Key",
-          render: (row) => (
-            <code class="bg-brand-bg px-2 py-1 rounded-lg text-xs font-mono text-brand-heading border border-brand-border">
-              {row.keyPreview}
-            </code>
-          ),
-        },
-        {
-          header: "Created",
-          render: (row) => new Date(row.createdAt).toLocaleDateString(),
-        },
-        {
-          header: "Actions",
-          render: (row) => (
-            <button
-              type="button"
-              x-on:click={`revokeKeyId = '${row.id}'; revokeKeyName = '${row.name}'; revokeModal = true`}
-              class="px-3 py-2 text-xs font-medium rounded-full bg-transparent text-red-500 border-2 border-red-500/30 hover:bg-red-500/10 transition-all"
-            >
-              Revoke
-            </button>
-          ),
-        },
-      ]}
-      data={apiKeys}
-    />
-  );
-};
-
-const ModelsList = ({
+const QuickLinkCard = ({
+  href,
   title,
-  models,
+  description,
+  icon,
 }: {
+  href: string;
   title: string;
-  models: OpenRouterModel[];
+  description: string;
+  icon: Child;
 }) => {
   return (
-    <div class="mb-12" x-data="{ expanded: window.innerWidth >= 1024 }">
-      <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-bold text-brand-heading">{title}</h2>
-        {models.length > 3 && (
-          <button
-            type="button"
-            x-on:click="expanded = !expanded"
-            class="text-sm font-medium text-brand-primary hover:text-brand-primary-hover transition-colors flex items-center gap-1"
-            title={`expanded ? 'Show less' : 'Show all ${models.length}'`}
-          >
-            <span
-              x-text={`expanded ? 'Show less' : 'Show all ${models.length}'`}
-            />
-            <ChevronDown
-              class="w-4 h-4 transition-transform"
-              x-bind:class="expanded ? 'rotate-180' : ''"
-            />
-          </button>
-        )}
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {models.map((model, index) => (
-          <div
-            x-show={index < 3 ? "true" : "expanded"}
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 -translate-y-2"
-            x-transition:enter-end="opacity-100 translate-y-0"
-          >
-            <ModelCard model={model} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const stripMarkdownLinks = (text: string) =>
-  text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-
-const ModelCard = ({ model }: { model: OpenRouterModel }) => {
-  const displayName = model.name || model.id;
-  const rawDescription = model.description || "";
-  const description = stripMarkdownLinks(rawDescription);
-  const truncatedDescription =
-    description.length > 250 ? `${description.slice(0, 250)}...` : description;
-
-  return (
     <a
-      href={`/models/${model.id}`}
-      class="block bg-brand-surface border-2 border-brand-border p-4 rounded-xl h-full flex flex-col hover:border-brand-primary/50 hover:shadow-md transition-all"
-      x-data="{ copied: false }"
+      href={href}
+      class="block bg-brand-surface border-2 border-brand-border p-6 rounded-2xl hover:border-brand-primary/50 hover:shadow-lg transition-all group"
     >
-      <div class="flex flex-col gap-2 flex-1">
-        <div class="flex items-start justify-between gap-4 flex-1">
-          <div class="flex-1 min-w-0">
-            <h3 class="font-bold text-brand-heading text-base truncate">
-              {displayName}
-            </h3>
-            {truncatedDescription && (
-              <p class="text-sm text-brand-text mt-1 line-clamp-2 sm:line-clamp-3">
-                {truncatedDescription}
-              </p>
-            )}
-          </div>
+      <div class="flex items-start gap-4">
+        {icon}
+        <div class="flex-1 min-w-0">
+          <h3 class="font-bold text-lg text-brand-heading mb-1">{title}</h3>
+          <p class="text-sm text-brand-text">{description}</p>
         </div>
-        <div class="flex items-center gap-2 mt-auto">
-          <button
-            type="button"
-            {...{
-              "x-on:click.stop.prevent": `navigator.clipboard.writeText('${model.id}'); copied = true; setTimeout(() => copied = false, 2000)`,
-            }}
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-transparent border border-brand-border hover:border-brand-primary/50 transition-colors cursor-pointer group"
-            title="Click to copy model ID"
-          >
-            <code class="text-xs font-mono text-brand-primary">{model.id}</code>
-            <span x-show="!copied">
-              <Copy class="w-3.5 h-3.5 text-brand-text/50 group-hover:text-brand-primary transition-colors" />
-            </span>
-            <span x-show="copied" x-cloak>
-              <Check class="w-3.5 h-3.5 text-green-500" />
-            </span>
-          </button>
-        </div>
+        <svg
+          class="w-5 h-5 text-brand-text/40 group-hover:text-brand-primary transition-colors flex-shrink-0 mt-1"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
       </div>
     </a>
   );
 };
 
-const RecentRequestsTable = ({
-  recentLogs,
+const QuickstartCard = ({
+  step,
+  title,
+  description,
+  children,
 }: {
-  recentLogs: DashboardRequestLog[];
+  step: number;
+  title: string;
+  description: string;
+  children?: Child;
 }) => {
-  if (recentLogs.length === 0) {
-    return <EmptyState message="No requests yet." />;
-  }
-
   return (
-    <Table
-      columns={[
-        {
-          header: "Time",
-          render: (row) => {
-            const diff = Math.floor(
-              (Date.now() - new Date(row.timestamp).getTime()) / 1000,
-            );
-            if (diff < 60) return "just now";
-            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-            if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-            return new Date(row.timestamp).toLocaleDateString();
-          },
-        },
-        { header: "Model", key: "model" },
-        { header: "Tokens", render: (row) => row.totalTokens.toLocaleString() },
-        { header: "Duration", render: (row) => `${row.duration}ms` },
-        { header: "IP", key: "ip" },
-      ]}
-      data={recentLogs}
-    />
+    <div class="bg-brand-surface border-2 border-brand-border p-6 rounded-2xl">
+      <div class="flex items-start gap-4">
+        <div class="flex-shrink-0 w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center text-white font-bold text-lg">
+          {step}
+        </div>
+        <div class="flex-1">
+          <h3 class="font-bold text-lg text-brand-heading mb-2">{title}</h3>
+          <p class="text-sm text-brand-text mb-4">{description}</p>
+          {children}
+        </div>
+      </div>
+    </div>
   );
 };
-
-const CreateKeyModal = () => (
-  <Modal name="createModal" title="Create New API Key" class="select-none">
-    <div class="mb-6">
-      <label
-        class="block text-sm font-bold text-brand-heading mb-2"
-        for="keyName"
-      >
-        Key Name
-      </label>
-      <input
-        type="text"
-        id="keyName"
-        x-model="keyName"
-        class="w-full px-4 py-3 rounded-xl border-2 border-brand-border bg-brand-bg/50 focus:border-brand-primary outline-none transition-colors font-medium text-brand-text"
-        placeholder="e.g. My Project"
-      />
-    </div>
-    <ModalActions>
-      <ModalButton variant="secondary" close="createModal">
-        Cancel
-      </ModalButton>
-      <ModalButton variant="primary" onClick="createKey()">
-        Create
-      </ModalButton>
-    </ModalActions>
-  </Modal>
-);
-
-const CreatedModal = () => (
-  <Modal name="createdModal" title="API Key Created" class="select-none">
-    <p class="mb-6 text-brand-text">
-      Save this key now. You won't see it again.{" "}
-      <b>Don't share it or commit it to a public repo!</b>
-    </p>
-    <div
-      class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl font-mono text-sm break-all text-brand-primary font-bold select-text"
-      x-text="newKey"
-    />
-    <p class="mb-3 text-sm font-bold text-brand-heading">Example usage:</p>
-    <div class="bg-brand-bg border-2 border-brand-border p-4 mb-6 rounded-xl font-mono text-xs text-brand-text leading-relaxed overflow-x-auto select-text">
-      <div>curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
-      <div class="pl-4">
-        -H "Authorization: Bearer{" "}
-        <span class="text-brand-primary" x-text="newKey" />" \
-      </div>
-      <div class="pl-4">-H "Content-Type: application/json" \</div>
-      <div class="pl-4">
-        -d '{`{"model": "`}
-        <span class="text-brand-primary">{allowedLanguageModels[0]}</span>
-        {`", "messages": [{"role": "user", "content": "Hi"}]}`}'
-      </div>
-    </div>
-    <ModalActions>
-      <ModalButton variant="primary" close="createdModal">
-        Done
-      </ModalButton>
-    </ModalActions>
-  </Modal>
-);
-
-const RevokeKeyModal = () => (
-  <Modal name="revokeModal" title="Revoke API Key" class="select-none">
-    <p class="mb-6 text-brand-text">
-      Revoke <strong x-text="revokeKeyName" class="text-brand-heading" />? This
-      can't be undone.
-    </p>
-    <ModalActions>
-      <ModalButton variant="secondary" close="revokeModal">
-        Cancel
-      </ModalButton>
-      <ModalButton variant="primary" onClick="revokeKey()">
-        Revoke Key
-      </ModalButton>
-    </ModalActions>
-  </Modal>
-);

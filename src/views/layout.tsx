@@ -17,7 +17,7 @@ export const Layout = ({
 }: LayoutProps) => {
   return (
     <>
-      {html`<!DOCTYPE html>`}
+      {html`<!doctype html>`}
       <html lang="en">
         <head>
           <meta charset="UTF-8" />
@@ -60,46 +60,58 @@ export const Layout = ({
             </>
           )}
           {html`
-          <script>
-            tailwind.config = {
-              theme: {
-                extend: {
-                  fontFamily: {
-                    sans: ['Google Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            <script>
+              tailwind.config = {
+                theme: {
+                  extend: {
+                    fontFamily: {
+                      sans: [
+                        "Google Sans",
+                        "ui-sans-serif",
+                        "system-ui",
+                        "sans-serif",
+                      ],
+                    },
+                    colors: {
+                      brand: {
+                        bg: "#09090b", // Zinc 950
+                        surface: "#18181b", // Zinc 900
+                        primary: "#ec3750", // Hack Club Red
+                        "primary-hover": "#d62640",
+                        heading: "#f4f4f5", // Zinc 100
+                        text: "#a1a1aa", // Zinc 400
+                        border: "#27272a", // Zinc 800
+                      },
+                    },
+                    borderRadius: {
+                      xl: "1rem",
+                      "2xl": "1.5rem",
+                      "3xl": "2rem",
+                    },
                   },
-                  colors: {
-                    brand: {
-                      bg: '#09090b', // Zinc 950
-                      surface: '#18181b', // Zinc 900
-                      primary: '#ec3750', // Hack Club Red
-                      'primary-hover': '#d62640',
-                      heading: '#f4f4f5', // Zinc 100
-                      text: '#a1a1aa', // Zinc 400
-                      border: '#27272a', // Zinc 800
-                    }
-                  },
-                  borderRadius: {
-                    'xl': '1rem',
-                    '2xl': '1.5rem',
-                    '3xl': '2rem',
-                  }
-                }
-              }
-            }
-          </script>
-        `}
+                },
+              };
+            </script>
+          `}
           {html`
-          <style>
-            @view-transition {
-              navigation: auto;
-            }
-            [x-cloak] {
-              display: none !important;
-            }
-          </style>
-        `}
+            <style>
+              @view-transition {
+                navigation: auto;
+              }
+              ::view-transition-old(root),
+              ::view-transition-new(root) {
+                animation-duration: 100ms;
+              }
+              [x-cloak] {
+                display: none !important;
+              }
+            </style>
+          `}
         </head>
         <body class="bg-brand-bg text-brand-text transition-colors duration-200 min-h-screen flex flex-col">
+          {/*<div class="w-full bg-indigo-800 text-white text-center py-2 px-4 text-sm font-semibold">
+            New:
+          </div>*/}
           {env.NODE_ENV === "development" && (
             <div class="w-full bg-amber-800 text-white text-center py-2 px-4 text-sm font-semibold">
               🛠️ You're in dev mode, go wild!

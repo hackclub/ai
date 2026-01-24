@@ -8,7 +8,7 @@ import { db } from "../db";
 import { apiKeys } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
-import { ApiKeysList } from "../views/dashboard";
+import { ApiKeysList } from "../views/keys";
 
 const api = new Hono<{ Variables: AppVariables }>();
 

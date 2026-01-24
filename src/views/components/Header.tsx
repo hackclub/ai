@@ -5,11 +5,9 @@ import { Hamburger } from "./Icons";
 type HeaderProps = {
   title: string;
   user: User;
-  showBackToDashboard?: boolean;
-  showGlobalStats?: boolean;
 };
 
-export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
+export const Header = ({ title, user }: HeaderProps) => {
   return (
     <header class="py-6 sm:mb-8 relative z-50">
       <div class="max-w-7xl mx-auto px-4 flex justify-between items-center gap-4">
@@ -26,19 +24,23 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
 
         {/* Desktop Navigation */}
         <div class="hidden md:flex items-center gap-6">
-          {showBackToDashboard && (
-            <a
-              href="/dashboard"
-              class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-            >
-              Back to Dashboard
-            </a>
-          )}
           <a
-            href="https://hackclub.slack.com/archives/C099S1LLFFU"
+            href="/keys"
             class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
           >
-            Support/Bug Reports
+            Keys
+          </a>
+          <a
+            href="/models"
+            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+          >
+            Models
+          </a>
+          <a
+            href="/activity"
+            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+          >
+            Activity
           </a>
           <a
             href="/docs"
@@ -81,7 +83,7 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
           aria-label="Toggle menu"
           type="button"
         >
-          <Hamburger title="Toggle menu" />
+          <Hamburger class="w-6 h-6" title="Toggle menu" />
         </button>
       </div>
 
@@ -90,19 +92,23 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
         id="mobile-menu"
         class="hidden md:hidden absolute top-full left-0 right-0 bg-brand-surface border-b-2 border-brand-border shadow-xl p-4 flex flex-col gap-4"
       >
-        {showBackToDashboard && (
-          <a
-            href="/dashboard"
-            class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-          >
-            Back to Dashboard
-          </a>
-        )}
         <a
-          href="https://hackclub.slack.com/archives/C099S1LLFFU"
+          href="/keys"
           class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
         >
-          Support/Bug Reports
+          Keys
+        </a>
+        <a
+          href="/models"
+          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+        >
+          Models
+        </a>
+        <a
+          href="/activity"
+          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+        >
+          Activity
         </a>
         <a
           href="/docs"
@@ -144,10 +150,12 @@ export const Header = ({ title, user, showBackToDashboard }: HeaderProps) => {
 
       {html`
         <script>
-          document.getElementById('mobile-menu-toggle').addEventListener('click', function() {
-            const menu = document.getElementById('mobile-menu');
-            menu.classList.toggle('hidden');
-          });
+          document
+            .getElementById("mobile-menu-toggle")
+            .addEventListener("click", function () {
+              const menu = document.getElementById("mobile-menu");
+              menu.classList.toggle("hidden");
+            });
         </script>
       `}
     </header>

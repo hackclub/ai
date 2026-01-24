@@ -15,12 +15,14 @@ import { trimTrailingSlash } from "hono/trailing-slash";
 
 import { env } from "./env";
 import { runMigrations } from "./migrate";
+import activity from "./routes/activity";
 import api from "./routes/api";
 import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
 import docs from "./routes/docs";
 import global from "./routes/global";
 import internal from "./routes/internal";
+import keys from "./routes/keys";
 import models from "./routes/models";
 import proxy from "./routes/proxy";
 import up from "./routes/up";
@@ -72,12 +74,14 @@ app.onError((err, c) => {
 });
 
 app.route("/", dashboard);
+app.route("/", activity);
 app.route("/auth", auth);
 app.route("/proxy/v1", proxy);
 app.route("/api", api);
 app.route("/docs", docs);
 app.route("/global", global);
 app.route("/internal", internal);
+app.route("/keys", keys);
 app.route("/models", models);
 app.route("/up", up);
 

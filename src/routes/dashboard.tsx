@@ -1,11 +1,10 @@
 import * as Sentry from "@sentry/bun";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { db } from "../db";
-import { apiKeys, requestLogs, sessions } from "../db/schema";
+import { requestLogs, sessions } from "../db/schema";
 import { allowedLanguageModels, env } from "../env";
-import { fetchAllModels } from "../lib/models";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -44,22 +43,6 @@ dashboard.get("/", async (c) => {
 dashboard.get("/dashboard", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const keys = await Sentry.startSpan(
-    { name: "db.select.apiKeys" },
-    async () => {
-      return await db
-        .select({
-          id: apiKeys.id,
-          name: apiKeys.name,
-          createdAt: apiKeys.createdAt,
-          keyPreview: sql<string>`CONCAT(SUBSTRING(${apiKeys.key}, 1, 24), '...')`,
-        })
-        .from(apiKeys)
-        .where(and(eq(apiKeys.userId, user.id), isNull(apiKeys.revokedAt)))
-        .orderBy(desc(apiKeys.createdAt));
-    },
-  );
-
   const stats = await Sentry.startSpan(
     { name: "db.select.userStats" },
     async () => {
@@ -75,42 +58,9 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
     },
   );
 
-  const recentLogs = await Sentry.startSpan(
-    { name: "db.select.recentLogs" },
-    async () => {
-      return await db
-        .select({
-          id: requestLogs.id,
-          model: requestLogs.model,
-          totalTokens: requestLogs.totalTokens,
-          timestamp: requestLogs.timestamp,
-          duration: requestLogs.duration,
-          ip: requestLogs.ip,
-        })
-        .from(requestLogs)
-        .where(eq(requestLogs.userId, user.id))
-        .orderBy(desc(requestLogs.timestamp))
-        .limit(50);
-    },
-  );
-
-  const { languageModels, imageModels, embeddingModels } =
-    await Sentry.startSpan({ name: "fetch.models" }, async () => {
-      try {
-        return await fetchAllModels();
-      } catch {
-        return { languageModels: [], imageModels: [], embeddingModels: [] };
-      }
-    });
-
-  const totalRequests = stats[0]?.totalRequests ?? 0;
-  const showOnboarding =
-    totalRequests < 30 || c.req.query("onboarding") !== undefined;
-
   return c.html(
     <Dashboard
       user={user}
-      apiKeys={keys}
       stats={
         stats[0] || {
           totalRequests: 0,
@@ -119,12 +69,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
           totalCompletionTokens: 0,
         }
       }
-      recentLogs={recentLogs}
-      languageModels={languageModels}
-      imageModels={imageModels}
-      embeddingModels={embeddingModels}
       enforceIdv={env.ENFORCE_IDV || false}
-      showOnboarding={showOnboarding}
     />,
   );
 });
