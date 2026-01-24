@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
+import { HTTPException } from "hono/http-exception";
 import { proxy as honoProxy } from "hono/proxy";
 import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -92,7 +93,7 @@ const proxy = new Hono<{ Variables: AppVariables }>();
 
 const logRequest = (
   c: Ctx,
-  body: ProxyReq,
+  body: ProxyReq | Record<string, unknown>,
   resBody: unknown,
   usage: ReturnType<typeof resolveUsage>,
   ms: number,
@@ -104,7 +105,7 @@ const logRequest = (
         apiKeyId: c.get("apiKey").id,
         userId: c.get("user").id,
         slackId: c.get("user").slackId,
-        model: body.model,
+        model: (body as ProxyReq).model || "unknown",
         promptTokens: usage.prompt,
         completionTokens: usage.completion,
         totalTokens: usage.total,
@@ -121,52 +122,74 @@ const logRequest = (
 
 async function handleProxy(c: Ctx, endpoint: string) {
   const start = Date.now();
-  const body = (await c.req.json()) as ProxyReq;
-  body.model = resolveModel(body.model, MODEL_POOL);
-  body.user = `user_${c.get("user").id}`;
-  if (endpoint !== "embeddings") body.usage = { include: true };
+  let body: ProxyReq = { model: "unknown" }; // Default for error logging
 
-  const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify(body),
-  });
+  try {
+    body = (await c.req.json()) as ProxyReq;
+    body.model = resolveModel(body.model, MODEL_POOL);
+    body.user = `user_${c.get("user").id}`;
+    if (endpoint !== "embeddings") body.usage = { include: true };
 
-  if (!body.stream) {
-    const data = await res.json();
-    await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
-    return c.json(data, res.status as ContentfulStatusCode);
-  }
+    const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify(body),
+    });
 
-  return stream(c, async (s) => {
-    const reader = res.body?.getReader(),
-      decoder = new TextDecoder(),
-      chunks: string[] = [];
-    let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
-    while (reader) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const part = decoder.decode(value, { stream: true });
-      chunks.push(part);
-      await s.write(value);
-      for (const line of part
-        .split("\n")
-        .filter((l) => l.startsWith("data: "))) {
-        const raw = line.slice(6).trim();
-        if (raw !== "[DONE]")
-          try {
-            usage = resolveUsage(JSON.parse(raw));
-          } catch {}
-      }
+    if (!body.stream) {
+      const data = await res.json();
+      await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
+      return c.json(data, res.status as ContentfulStatusCode);
     }
+
+    return stream(c, async (s) => {
+      const reader = res.body?.getReader(),
+        decoder = new TextDecoder(),
+        chunks: string[] = [];
+      let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const part = decoder.decode(value, { stream: true });
+        chunks.push(part);
+        await s.write(value);
+
+        for (const line of part
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))) {
+          const raw = line.slice(6).trim();
+          if (raw !== "[DONE]")
+            try {
+              const chunkUsage = resolveUsage(JSON.parse(raw));
+              if (chunkUsage.total > 0 || chunkUsage.cost > 0) {
+                usage = chunkUsage;
+              }
+            } catch {}
+        }
+      }
+      await logRequest(
+        c,
+        body,
+        { stream: true, content: chunks.join("\n") },
+        usage,
+        Date.now() - start,
+      );
+    });
+  } catch (error) {
+    const duration = Date.now() - start;
+    console.error(`${endpoint} proxy error:`, error);
+
     await logRequest(
       c,
       body,
-      { stream: true, content: chunks.join("\n") },
-      usage,
-      Date.now() - start,
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { prompt: 0, completion: 0, total: 0, cost: 0 },
+      duration,
     );
-  });
+
+    throw new HTTPException(500, { message: "Internal server error" });
+  }
 }
 
 proxy.use("*", bodyLimit({ maxSize: 40 * 1024 * 1024 }), blockAICodingAgents);
@@ -266,7 +289,11 @@ proxy.post(
       (ch.message?.images || []).flatMap((img) => {
         const url = img.image_url?.url;
         return url?.startsWith("data:")
-          ? [body.response_format === "url" ? { url } : { b64_json: url.split(",")[1] }]
+          ? [
+              body.response_format === "url"
+                ? { url }
+                : { b64_json: url.split(",")[1] },
+            ]
           : [];
       }),
     );
