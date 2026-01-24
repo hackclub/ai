@@ -11,6 +11,9 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 - usage statistic logging
 - (optional) sentry support
 - coding tool (e.g. copilot, cursor) blocking
+- spending limits
+- replicate support (optional, behind a feature flag)
+- posthog analytics + feature flags
 
 is it the best code? probably not. but hey, it works!
 
