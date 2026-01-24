@@ -136,13 +136,14 @@ async function handleProxy(c: Ctx, endpoint: string) {
       body: JSON.stringify(body),
     });
 
-    if (!body.stream) {
+    if (!body.stream && endpoint !== "embeddings") {
       const data = await res.json();
       await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
       return c.json(data, res.status as ContentfulStatusCode);
     }
 
     return stream(c, async (s) => {
+      c.header("Content-Type", "text/event-stream");
       const reader = res.body?.getReader(),
         decoder = new TextDecoder(),
         chunks: string[] = [];

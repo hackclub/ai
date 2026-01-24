@@ -33,7 +33,6 @@ const app = new Hono<{ Variables: AppVariables & RequestIdVariables }>();
 
 app.use("*", secureHeaders());
 app.use("/*", requestId(), trimTrailingSlash());
-app.use("/*", csrf({ origin: env.BASE_URL }));
 app.use(
   "/proxy/v1/*",
   cors({
