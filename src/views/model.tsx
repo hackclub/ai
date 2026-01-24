@@ -340,7 +340,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
         : "bg-green-500/10 text-green-400 border border-green-500/20";
 
   return (
-    <Layout title={`${displayName} - Hack Club AI`} includeAlpine>
+    <Layout title={`${displayName} - Hack Club AI`} includeAlpine user={user}>
       <Header title="hackai" user={user} showGlobalStats />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">

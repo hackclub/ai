@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { apiKeys } from "../db/schema";
+import { captureEvent } from "../lib/posthog";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { ApiKeysList } from "../views/keys";
@@ -55,6 +56,8 @@ api.post("/keys", arktypeValidator("json", createKeySchema), async (c) => {
         .returning();
     },
   );
+
+  captureEvent(user, "api_key_created", { keyId: apiKey.id, keyName: name });
 
   return c.json({ key: apiKey.key, name: apiKey.name, id: apiKey.id });
 });

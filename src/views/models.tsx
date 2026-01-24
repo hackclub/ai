@@ -18,7 +18,7 @@ export const Models = ({
   embeddingModels,
 }: ModelsProps) => {
   return (
-    <Layout title="Models" includeAlpine>
+    <Layout title="Models" includeAlpine user={user}>
       <Header title="hackai" user={user} showGlobalStats />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h1 class="text-4xl font-bold mb-2 text-brand-heading">Models</h1>

@@ -10,6 +10,7 @@ import {
   allowedLanguageModels,
   env,
 } from "../../env";
+import { captureEvent } from "../../lib/posthog";
 import type { AppVariables } from "../../types";
 
 export type Ctx = Context<{ Variables: AppVariables }>;
@@ -81,15 +82,18 @@ export const logRequest = (
   resBody: unknown,
   usage: ReturnType<typeof resolveUsage>,
   ms: number,
-) =>
+) => {
+  const user = c.get("user");
+  const model = (body as ProxyReq).model || "unknown";
+
   Sentry.startSpan({ name: "db.log" }, () =>
     db
       .insert(requestLogs)
       .values({
         apiKeyId: c.get("apiKey").id,
-        userId: c.get("user").id,
-        slackId: c.get("user").slackId,
-        model: (body as ProxyReq).model || "unknown",
+        userId: user.id,
+        slackId: user.slackId,
+        model,
         promptTokens: usage.prompt,
         completionTokens: usage.completion,
         totalTokens: usage.total,
@@ -103,3 +107,13 @@ export const logRequest = (
       })
       .catch((e) => console.error("Logging failed:", e)),
   );
+
+  captureEvent(user, "api_request", {
+    model,
+    promptTokens: usage.prompt,
+    completionTokens: usage.completion,
+    totalTokens: usage.total,
+    cost: usage.cost,
+    duration: ms,
+  });
+};

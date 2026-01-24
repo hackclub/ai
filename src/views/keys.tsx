@@ -13,7 +13,7 @@ type KeysProps = {
 
 export const Keys = ({ user, apiKeys }: KeysProps) => {
   return (
-    <Layout title="API Keys" includeHtmx includeAlpine>
+    <Layout title="API Keys" includeHtmx includeAlpine user={user}>
       <div
         x-data={`{
           createModal: false,

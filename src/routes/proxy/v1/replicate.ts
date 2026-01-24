@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { replicateModelCosts } from "../../../config/replicate-models";
 import { env } from "../../../env";
+import { isFeatureEnabled } from "../../../lib/posthog";
 import { checkSpendingLimit } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import { logRequest, standardLimiter } from "../shared";
@@ -14,6 +16,14 @@ replicate.post(
   standardLimiter,
   checkSpendingLimit,
   async (c) => {
+    const user = c.get("user");
+    const enabled = await isFeatureEnabled(user, "enable_replicate");
+    if (!enabled) {
+      throw new HTTPException(403, {
+        message: "Replicate access is not enabled for your account",
+      });
+    }
+
     const start = Date.now();
     const body = await c.req.json();
 

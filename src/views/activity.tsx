@@ -13,7 +13,7 @@ type ActivityProps = {
 
 export const Activity = ({ user, stats, recentLogs }: ActivityProps) => {
   return (
-    <Layout title="Activity">
+    <Layout title="Activity" user={user}>
       <Header title="hackai" user={user} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">

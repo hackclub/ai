@@ -10,7 +10,7 @@ type ReplicateModelsProps = {
 
 export const ReplicateModels = ({ user, categories }: ReplicateModelsProps) => {
   return (
-    <Layout title="Replicate Models" includeAlpine>
+    <Layout title="Replicate Models" includeAlpine user={user}>
       <Header title="hackai" user={user} />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <div class="flex items-center gap-3 mb-2">

@@ -5,6 +5,7 @@ import { getCookie } from "hono/cookie";
 import { db } from "../db";
 import { requestLogs, sessions } from "../db/schema";
 import { allowedLanguageModels, env } from "../env";
+import { isFeatureEnabled } from "../lib/posthog";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -43,9 +44,8 @@ dashboard.get("/", async (c) => {
 dashboard.get("/dashboard", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const stats = await Sentry.startSpan(
-    { name: "db.select.userStats" },
-    async () => {
+  const [stats, replicateEnabled] = await Promise.all([
+    Sentry.startSpan({ name: "db.select.userStats" }, async () => {
       return await db
         .select({
           totalRequests: sql<number>`COUNT(*)::int`,
@@ -55,8 +55,9 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
         })
         .from(requestLogs)
         .where(eq(requestLogs.userId, user.id));
-    },
-  );
+    }),
+    isFeatureEnabled(user, "enable_replicate"),
+  ]);
 
   return c.html(
     <Dashboard
@@ -70,6 +71,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
         }
       }
       enforceIdv={env.ENFORCE_IDV || false}
+      replicateEnabled={replicateEnabled}
     />,
   );
 });

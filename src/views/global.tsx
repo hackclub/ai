@@ -15,7 +15,7 @@ type GlobalProps = {
 
 export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
   return (
-    <Layout title="Global Statistics">
+    <Layout title="Global Statistics" user={user}>
       <Header title="hackai stats" user={user} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">

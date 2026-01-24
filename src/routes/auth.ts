@@ -7,6 +7,7 @@ import { rateLimiter } from "hono-rate-limiter";
 import { db } from "../db";
 import { sessions, users } from "../db/schema";
 import { env } from "../env";
+import { captureEvent, identifyUser } from "../lib/posthog";
 import type { AppVariables } from "../types";
 
 interface HackClubIdentityResponse {
@@ -159,6 +160,9 @@ auth.get("/callback", async (c) => {
       maxAge: 60 * 60 * 24 * 30,
       path: "/",
     });
+
+    identifyUser(user);
+    captureEvent(user, "user_signed_in");
 
     return c.redirect("/dashboard");
   } catch (error) {
