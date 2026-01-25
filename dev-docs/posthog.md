@@ -34,8 +34,9 @@ This is what the `POSTHOG_API_HOST` variable is for. The `POSTHOG_UI_HOST` varia
 
 ## Feature flags
 
-As of 25th January 2026, we currently have only one feature flag configured in PostHog:
+As of 25th January 2026, we currently have only two feature flags configured in PostHog:
 
 - `enable_replicate`: Can the user access Replicate-powered features?
+- `enable_ocr`: Can the user access Mistral OCR-powered features?
 
 Make sure to delete feature flags from PostHog when they're no longer needed to keep things tidy!
