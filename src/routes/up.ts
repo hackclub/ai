@@ -42,54 +42,46 @@ up.get("/", async (c) => {
   }
 
   try {
-    const embeddingResponse = await fetch(
-      `${env.OPENAI_API_URL}/v1/embeddings`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
-        },
-        body: JSON.stringify({
-          model: "thenlper/gte-base",
-          input: "Health check",
-          encoding_format: "float",
+    const [embeddingResponse, creditsResponse, keyResponse, replicateResponse] =
+      await Promise.all([
+        fetch(`${env.OPENAI_API_URL}/v1/embeddings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+            ...openRouterHeaders,
+          },
+          body: JSON.stringify({
+            model: "thenlper/gte-base",
+            input: "Health check",
+            encoding_format: "float",
+          }),
         }),
-      },
-    );
+        fetch("https://openrouter.ai/api/v1/credits", {
+          headers: {
+            Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}`,
+          },
+        }),
+        fetch("https://openrouter.ai/api/v1/key", {
+          headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+        }),
+        fetch(
+          `https://replicate.com/api/users/${env.REPLICATE_USERNAME}/unused-credit`,
+          { headers: { cookie: `sessionid=${env.REPLICATE_SESSION_ID}` } },
+        ),
+      ]);
 
-    const url = "https://openrouter.ai/api/v1/credits";
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}` },
-    });
-    const { data } = (await response.json()) as {
-      data: { total_credits: number; total_usage: number };
-    };
-    const balanceRemaining = data.total_credits - data.total_usage;
+    const [creditsBody, keyBody, replicateBody] = await Promise.all([
+      creditsResponse.json() as Promise<{
+        data: { total_credits: number; total_usage: number };
+      }>,
+      keyResponse.json() as Promise<{ data: { limit_remaining: number } }>,
+      replicateResponse.json() as Promise<{ unused_credit: string }>,
+    ]);
 
-    const keyResponse = await fetch("https://openrouter.ai/api/v1/key", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      },
-    });
-    const keyBody = (await keyResponse.json()) as {
-      data: { limit_remaining: number };
-    };
+    const balanceRemaining =
+      creditsBody.data.total_credits - creditsBody.data.total_usage;
     const dailyKeyUsageRemaining = keyBody.data.limit_remaining;
-
-    const replicateResponse = await fetch(
-      `https://replicate.com/api/users/${env.REPLICATE_USERNAME}/unused-credit`,
-      {
-        headers: {
-          cookie: `sessionid=${env.REPLICATE_SESSION_ID}`,
-        },
-      },
-    );
-    const replicateBody = (await replicateResponse.json()) as {
-      unused_credit: string;
-    };
     const replicateUnusedCredit = parseFloat(replicateBody.unused_credit);
 
     const status: "up" | "down" =

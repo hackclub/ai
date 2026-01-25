@@ -50,11 +50,22 @@ BASE_URL=https://ai.hackclub.com
 NODE_ENV=production # not needed for docker compose
 PORT=54321 # not needed for docker compose
 
-SENTRY_DSN= # sentry.io support (optional)
-
-# (optional) openrouter provisioning key - get it from https://openrouter.ai/account
+# openrouter provisioning key - get it from https://openrouter.ai/account
 # this is used to view remaining credit balance
 OPENROUTER_PROVISIONING_KEY=
+
+# replicate - for image generation/stt/tts/etc
+REPLICATE_API_KEY=
+REPLICATE_SESSION_ID=
+REPLICATE_USERNAME=
+
+# posthog analytics + feature flags
+POSTHOG_API_KEY=
+POSTHOG_UI_HOST=https://us.posthog.com
+POSTHOG_API_HOST=https://us.i.posthog.com/
+
+# sentry.io support (optional)
+SENTRY_DSN=
 ```
 
 ## tech stack
@@ -66,3 +77,8 @@ OPENROUTER_PROVISIONING_KEY=
 - alpine + htmx + `hono/jsx` for the frontend
   - developing HCAI? turn on alpine + htmx in the layout if you need to use them!
 - sentry for error tracking (optional)
+- openrouter as the main LLM provider
+- replicate for image generation + speech to text + text to speech + other models
+- posthog for analytics + feature flags
+- biome for code formatting + linting
+- openai for moderation API
