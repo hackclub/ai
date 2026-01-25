@@ -5,9 +5,10 @@ import { Hamburger } from "./Icons";
 type HeaderProps = {
   title: string;
   user: User;
+  replicateEnabled?: boolean;
 };
 
-export const Header = ({ title, user }: HeaderProps) => {
+export const Header = ({ title, user, replicateEnabled }: HeaderProps) => {
   return (
     <header class="py-6 sm:mb-8 relative z-50">
       <div class="max-w-7xl mx-auto px-4 flex justify-between items-center gap-4">
@@ -48,6 +49,14 @@ export const Header = ({ title, user }: HeaderProps) => {
           >
             Docs
           </a>
+          {replicateEnabled && (
+            <a
+              href="/replicate"
+              class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+            >
+              Replicate
+            </a>
+          )}
           <a
             href="/global"
             class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
@@ -116,6 +125,14 @@ export const Header = ({ title, user }: HeaderProps) => {
         >
           Docs
         </a>
+        {replicateEnabled && (
+          <a
+            href="/replicate"
+            class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+          >
+            Replicate
+          </a>
+        )}
         <a
           href="/global"
           class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"

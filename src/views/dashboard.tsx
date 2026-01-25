@@ -24,7 +24,7 @@ export const Dashboard = ({
   return (
     <Layout title="Dashboard" includeAlpine user={user}>
       <div>
-        <Header title="hackai" user={user} />
+        <Header title="hackai" user={user} replicateEnabled={replicateEnabled} />
 
         {showIdvBanner && <IdvBanner />}
 
