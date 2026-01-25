@@ -12,17 +12,18 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
   {
     name: "Text to Speech",
     models: [
-      { id: "minimax/speech-02-turbo", costPerRequest: 0.001 },
-      { id: "resemble-ai/chatterbox-pro", costPerRequest: 0.04 },
-      { id: "zsxkib/dia", costPerRequest: 0.029 },
-      { id: "lucataco/xtts-v2", costPerRequest: 0.013 },
+      { id: "minimax/speech-02-turbo", costPerRequest: 0.0045 },
+      { id: "resemble-ai/chatterbox-pro", costPerRequest: 0.07 },
+      { id: "zsxkib/dia", costPerRequest: 0.069 },
+      { id: "lucataco/xtts-v2", costPerRequest: 0.053 },
+      { id: "qwen/qwen3-tts", costPerRequest: 0.06 },
     ],
   },
   {
     name: "Speech to Text",
     models: [
-      { id: "vaibhavs10/incredibly-fast-whisper", costPerRequest: 0.0037 },
-      { id: "nvidia/parakeet-rnnt-1.1b", costPerRequest: 0.001 },
+      { id: "vaibhavs10/incredibly-fast-whisper", costPerRequest: 0.02 },
+      { id: "nvidia/parakeet-rnnt-1.1b", costPerRequest: 0.02 },
     ],
   },
   {
