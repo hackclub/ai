@@ -30,9 +30,18 @@ replicate.post(
     }
 
     const { owner, model } = c.req.param();
-    const modelId = `${owner}/${model}`;
+    const fullModelId = `${owner}/${model}`;
+    const [modelName, version] = model.split(":");
+    const baseModelId = `${owner}/${modelName}`;
 
-    if (!allowedReplicateModels.includes(modelId)) {
+    if (!/^[a-z0-9_-]+$/.test(owner) || !/^[a-z0-9_-]+$/.test(modelName)) {
+      throw new HTTPException(400, { message: "Invalid model identifier" });
+    }
+    if (version && !/^[a-f0-9]{64}$/.test(version)) {
+      throw new HTTPException(400, { message: "Invalid version hash" });
+    }
+
+    if (!allowedReplicateModels.includes(baseModelId)) {
       throw new HTTPException(400, {
         message: `Invalid model. Allowed models: ${allowedReplicateModels.join(", ")}`,
       });
@@ -41,8 +50,12 @@ replicate.post(
     const start = Date.now();
     const body = await c.req.json();
 
-    const res = await fetch(
-      `https://api.replicate.com/v1/models/${modelId}/predictions`,
+    const apiPath = version
+      ? `https://api.replicate.com/v1/predictions`
+      : `https://api.replicate.com/v1/models/${baseModelId}/predictions`;
+    const apiBody = version ? { ...body, version } : body;
+
+    const res = await fetch(apiPath,
       {
         method: "POST",
         headers: {
@@ -50,16 +63,16 @@ replicate.post(
           "Content-Type": "application/json",
           Prefer: "wait=60",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(apiBody),
       },
     );
 
     const data = await res.json();
-    const cost = replicateModelCosts.get(modelId) || 0;
+    const cost = replicateModelCosts.get(baseModelId) || 0;
 
     await logRequest(
       c,
-      { model: modelId, stream: false },
+      { model: fullModelId, stream: false },
       data,
       { prompt: 0, completion: 0, total: 0, cost },
       Date.now() - start,
