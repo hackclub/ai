@@ -19,7 +19,8 @@ const envSchema = type({
   "OPENROUTER_PROVISIONING_KEY?": "string",
   REPLICATE_API_KEY: "string",
   POSTHOG_API_KEY: "string",
-  POSTHOG_HOST: "string",
+  POSTHOG_UI_HOST: "string = 'https://us.posthog.com'",
+  POSTHOG_API_HOST: "string = 'https://us.i.posthog.com/'",
 });
 
 const result = envSchema(process.env);

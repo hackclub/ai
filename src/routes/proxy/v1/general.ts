@@ -29,7 +29,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
     body = (await c.req.json()) as ProxyReq;
     body.model = resolveModel(body.model, MODEL_POOL);
     body.user = `user_${c.get("user").id}`;
-    if (endpoint !== "embeddings") body.usage = { include: true };
+    body.usage = { include: true };
 
     const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
       method: "POST",

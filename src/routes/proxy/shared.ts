@@ -14,6 +14,25 @@ import { captureEvent } from "../../lib/posthog";
 import type { AppVariables } from "../../types";
 
 export type Ctx = Context<{ Variables: AppVariables }>;
+
+const SAFE_HEADERS = [
+  "user-agent",
+  "content-type",
+  "accept",
+  "accept-language",
+  "origin",
+  "referer",
+];
+
+const sanitizeHeaders = (headers: Headers): Record<string, string> => {
+  const safe: Record<string, string> = {};
+  for (const key of SAFE_HEADERS) {
+    const value = headers.get(key);
+    if (value) safe[key] = value;
+  }
+  return safe;
+};
+
 export type ProxyReq = {
   model: string;
   stream?: boolean;
@@ -72,9 +91,7 @@ export const apiHeaders = () => ({
 });
 
 export const resolveModel = (model: string, pool: string[]) =>
-  pool.includes(model)
-    ? model
-    : pool.find((m) => m.split("/")[1] === model) || pool[0];
+  pool.includes(model) ? model : pool[0];
 
 export const logRequest = (
   c: Ctx,
@@ -101,7 +118,7 @@ export const logRequest = (
         request: body,
         response: resBody,
         duration: ms,
-        headers: c.req.raw.headers,
+        headers: sanitizeHeaders(c.req.raw.headers),
         ip: c.get("ip"),
         timestamp: new Date(),
       })

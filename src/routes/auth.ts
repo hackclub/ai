@@ -42,12 +42,36 @@ auth.use(
 auth.get("/login", (c) => {
   const clientId = env.HACK_CLUB_CLIENT_ID;
   const redirectUri = `${env.BASE_URL}/auth/callback`;
-  const authUrl = `https://auth.hackclub.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email+name+slack_id+verification_status`;
+  const state = crypto.randomUUID();
+
+  setCookie(c, "oauth_state", state, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "Lax",
+    maxAge: 600,
+    path: "/auth",
+  });
+
+  const authUrl = `https://auth.hackclub.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email+name+slack_id+verification_status&state=${state}`;
   return c.redirect(authUrl);
 });
 
 auth.get("/callback", async (c) => {
   const code = c.req.query("code");
+  const state = c.req.query("state");
+  const storedState = getCookie(c, "oauth_state");
+
+  setCookie(c, "oauth_state", "", {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "Lax",
+    maxAge: 0,
+    path: "/auth",
+  });
+
+  if (!state || !storedState || state !== storedState) {
+    throw new HTTPException(400, { message: "Invalid state parameter" });
+  }
 
   if (!code) {
     return c.redirect("/");
