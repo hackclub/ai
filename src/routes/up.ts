@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { rateLimiter } from "hono-rate-limiter";
 import { env } from "../env";
+import { openRouterHeaders } from "../lib/models";
 
 const up = new Hono();
 
@@ -19,11 +20,6 @@ type CacheEntry =
 
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 30 * 1000; // 30 seconds
-
-const openRouterHeaders = {
-  "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
-  "X-Title": "Hack Club AI",
-};
 
 const limiter = rateLimiter({
   limit: 140,

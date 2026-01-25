@@ -10,6 +10,7 @@ import {
   allowedLanguageModels,
   env,
 } from "../../env";
+import { openRouterHeaders } from "../../lib/models";
 import { captureEvent } from "../../lib/posthog";
 import type { AppVariables } from "../../types";
 
@@ -86,8 +87,7 @@ export const resolveUsage = (data: unknown) => {
 export const apiHeaders = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-  "HTTP-Referer": `${env.BASE_URL}/global`,
-  "X-Title": "Hack Club AI",
+  ...openRouterHeaders,
 });
 
 export const resolveModel = (model: string, pool: string[]) =>

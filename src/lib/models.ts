@@ -38,171 +38,96 @@ type OpenRouterModelsResponse = { data: OpenRouterModel[] };
 
 type ModelsCache = { data: OpenRouterModelsResponse; timestamp: number };
 
-let languageModelsCache: ModelsCache | null = null;
-let languageModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
+type ModelsCacheState = {
+  cache: ModelsCache | null;
+  fetchPromise: Promise<OpenRouterModelsResponse> | null;
+};
 
-let imageModelsCache: ModelsCache | null = null;
-let imageModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
-
-let embeddingModelsCache: ModelsCache | null = null;
-let embeddingModelsCacheFetch: Promise<OpenRouterModelsResponse> | null = null;
+const cacheState: Record<string, ModelsCacheState> = {
+  language: { cache: null, fetchPromise: null },
+  image: { cache: null, fetchPromise: null },
+  embedding: { cache: null, fetchPromise: null },
+};
 
 const CACHE_TTL = 5 * 60 * 1000;
 
-const openRouterHeaders = {
+export const openRouterHeaders = {
   "HTTP-Referer": `${env.BASE_URL}/global?utm_source=openrouter`,
   "X-Title": "Hack Club AI",
 };
 
-export async function fetchLanguageModels(): Promise<OpenRouterModelsResponse> {
-  const now = Date.now();
+function createModelsFetcher(
+  key: string,
+  endpoint: string,
+  allowedModels: string[],
+): () => Promise<OpenRouterModelsResponse> {
+  return async () => {
+    const state = cacheState[key];
+    const now = Date.now();
 
-  if (languageModelsCache && now - languageModelsCache.timestamp < CACHE_TTL) {
-    return languageModelsCache.data;
-  }
-
-  if (languageModelsCacheFetch) {
-    return languageModelsCacheFetch;
-  }
-
-  languageModelsCacheFetch = (async () => {
-    try {
-      const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
-        },
-      });
-
-      const data = (await response.json()) as OpenRouterModelsResponse;
-
-      if (!response.ok || !data.data || !Array.isArray(data.data)) {
-        languageModelsCacheFetch = null;
-        return data;
-      }
-
-      const orderMap = new Map(
-        allowedLanguageModels.map((id, index) => [id, index]),
-      );
-      data.data = data.data
-        .filter((model) => orderMap.has(model.id))
-        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-
-      languageModelsCache = { data, timestamp: now };
-      languageModelsCacheFetch = null;
-
-      return data;
-    } catch (error) {
-      languageModelsCacheFetch = null;
-      throw error;
+    if (state.cache && now - state.cache.timestamp < CACHE_TTL) {
+      return state.cache.data;
     }
-  })();
 
-  return languageModelsCacheFetch;
-}
-
-export async function fetchImageModels(): Promise<OpenRouterModelsResponse> {
-  const now = Date.now();
-
-  if (imageModelsCache && now - imageModelsCache.timestamp < CACHE_TTL) {
-    return imageModelsCache.data;
-  }
-
-  if (imageModelsCacheFetch) {
-    return imageModelsCacheFetch;
-  }
-
-  imageModelsCacheFetch = (async () => {
-    try {
-      const response = await fetch(`${env.OPENAI_API_URL}/v1/models`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          ...openRouterHeaders,
-        },
-      });
-
-      const data = (await response.json()) as OpenRouterModelsResponse;
-
-      if (!response.ok || !data.data || !Array.isArray(data.data)) {
-        imageModelsCacheFetch = null;
-        return data;
-      }
-
-      const orderMap = new Map(
-        allowedImageModels.map((id, index) => [id, index]),
-      );
-      data.data = data.data
-        .filter((model) => orderMap.has(model.id))
-        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-
-      imageModelsCache = { data, timestamp: now };
-      imageModelsCacheFetch = null;
-
-      return data;
-    } catch (error) {
-      imageModelsCacheFetch = null;
-      throw error;
+    if (state.fetchPromise) {
+      return state.fetchPromise;
     }
-  })();
 
-  return imageModelsCacheFetch;
-}
-
-export async function fetchEmbeddingModels(): Promise<OpenRouterModelsResponse> {
-  const now = Date.now();
-
-  if (
-    embeddingModelsCache &&
-    now - embeddingModelsCache.timestamp < CACHE_TTL
-  ) {
-    return embeddingModelsCache.data;
-  }
-
-  if (embeddingModelsCacheFetch) {
-    return embeddingModelsCacheFetch;
-  }
-
-  embeddingModelsCacheFetch = (async () => {
-    try {
-      const response = await fetch(
-        `${env.OPENAI_API_URL}/v1/embeddings/models`,
-        {
+    state.fetchPromise = (async () => {
+      try {
+        const response = await fetch(`${env.OPENAI_API_URL}${endpoint}`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${env.OPENAI_API_KEY}`,
             ...openRouterHeaders,
           },
-        },
-      );
+        });
 
-      const data = (await response.json()) as OpenRouterModelsResponse;
+        const data = (await response.json()) as OpenRouterModelsResponse;
 
-      if (!response.ok || !data.data || !Array.isArray(data.data)) {
-        embeddingModelsCacheFetch = null;
+        if (!response.ok || !data.data || !Array.isArray(data.data)) {
+          state.fetchPromise = null;
+          return data;
+        }
+
+        const orderMap = new Map(allowedModels.map((id, index) => [id, index]));
+        data.data = data.data
+          .filter((model) => orderMap.has(model.id))
+          .sort(
+            (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0),
+          );
+
+        state.cache = { data, timestamp: now };
+        state.fetchPromise = null;
+
         return data;
+      } catch (error) {
+        state.fetchPromise = null;
+        throw error;
       }
+    })();
 
-      const orderMap = new Map(
-        allowedEmbeddingModels.map((id, index) => [id, index]),
-      );
-      data.data = data.data
-        .filter((model) => orderMap.has(model.id))
-        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-
-      embeddingModelsCache = { data, timestamp: now };
-      embeddingModelsCacheFetch = null;
-
-      return data;
-    } catch (error) {
-      embeddingModelsCacheFetch = null;
-      throw error;
-    }
-  })();
-
-  return embeddingModelsCacheFetch;
+    return state.fetchPromise;
+  };
 }
+
+export const fetchLanguageModels = createModelsFetcher(
+  "language",
+  "/v1/models",
+  allowedLanguageModels,
+);
+
+export const fetchImageModels = createModelsFetcher(
+  "image",
+  "/v1/models",
+  allowedImageModels,
+);
+
+export const fetchEmbeddingModels = createModelsFetcher(
+  "embedding",
+  "/v1/embeddings/models",
+  allowedEmbeddingModels,
+);
 
 type AllModelsResponse = {
   languageModels: OpenRouterModel[];

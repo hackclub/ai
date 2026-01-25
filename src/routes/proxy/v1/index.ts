@@ -1,16 +1,14 @@
-import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
 
-import { db } from "../../../db";
-import { requestLogs } from "../../../db/schema";
 import { env } from "../../../env";
 import {
   fetchEmbeddingModels,
   fetchImageModels,
   fetchLanguageModels,
 } from "../../../lib/models";
+import { getUserStats } from "../../../lib/stats";
 import { blockAICodingAgents, requireApiKey } from "../../../middleware/auth";
 import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
@@ -42,25 +40,9 @@ proxy.get("/embeddings/models", etag(), async (c) =>
   c.json(await fetchEmbeddingModels()),
 );
 
-proxy.get("/stats", standardLimiter, async (c) => {
-  const [stats] = await db
-    .select({
-      totalRequests: sql<number>`COUNT(*)::int`,
-      totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-      totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
-      totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
-    })
-    .from(requestLogs)
-    .where(eq(requestLogs.userId, c.get("user").id));
-  return c.json(
-    stats || {
-      totalRequests: 0,
-      totalTokens: 0,
-      totalPromptTokens: 0,
-      totalCompletionTokens: 0,
-    },
-  );
-});
+proxy.get("/stats", standardLimiter, async (c) =>
+  c.json(await getUserStats(c.get("user").id)),
+);
 
 proxy.route("/", general);
 proxy.route("/", moderations);

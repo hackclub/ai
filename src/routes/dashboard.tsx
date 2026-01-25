@@ -1,11 +1,12 @@
 import * as Sentry from "@sentry/bun";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { db } from "../db";
-import { requestLogs, sessions } from "../db/schema";
+import { sessions } from "../db/schema";
 import { allowedLanguageModels, env } from "../env";
 import { isFeatureEnabled } from "../lib/posthog";
+import { getUserStats } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -19,8 +20,8 @@ dashboard.get("/", async (c) => {
   if (sessionToken) {
     const [session] = await Sentry.startSpan(
       { name: "db.select.session" },
-      async () => {
-        return await db
+      () =>
+        db
           .select()
           .from(sessions)
           .where(
@@ -29,8 +30,7 @@ dashboard.get("/", async (c) => {
               gt(sessions.expiresAt, new Date()),
             ),
           )
-          .limit(1);
-      },
+          .limit(1),
     );
 
     if (session) {
@@ -45,31 +45,14 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
   const user = c.get("user");
 
   const [stats, replicateEnabled] = await Promise.all([
-    Sentry.startSpan({ name: "db.select.userStats" }, async () => {
-      return await db
-        .select({
-          totalRequests: sql<number>`COUNT(*)::int`,
-          totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-          totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
-          totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
-        })
-        .from(requestLogs)
-        .where(eq(requestLogs.userId, user.id));
-    }),
+    getUserStats(user.id),
     isFeatureEnabled(user, "enable_replicate"),
   ]);
 
   return c.html(
     <Dashboard
       user={user}
-      stats={
-        stats[0] || {
-          totalRequests: 0,
-          totalTokens: 0,
-          totalPromptTokens: 0,
-          totalCompletionTokens: 0,
-        }
-      }
+      stats={stats}
       enforceIdv={env.ENFORCE_IDV || false}
       replicateEnabled={replicateEnabled}
     />,

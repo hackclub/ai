@@ -16,6 +16,12 @@ const BLOCKED_USER_AGENTS = blockedUserAgentsConfig.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
   "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
+const createBlockedException = () =>
+  new HTTPException(403, {
+    message: BLOCKED_MESSAGE,
+    res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
+  });
+
 export async function blockAICodingAgents(c: Context, next: Next) {
   const referer = c.req.header("Referer") || c.req.header("HTTP-Referer");
   const xTitle = c.req.header("X-Title");
@@ -26,38 +32,27 @@ export async function blockAICodingAgents(c: Context, next: Next) {
   const refererLower = (referer || "").toLowerCase();
   const xTitleLower = (xTitle || "").toLowerCase();
   const userAgentLower = (userAgent || "").toLowerCase();
-  const ex = new HTTPException(403, {
-    message: BLOCKED_MESSAGE,
-    res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
-  });
 
-  for (let i = 0; i < BLOCKED_APPS.length; i++) {
-    const app = BLOCKED_APPS[i];
-    if (refererLower.includes(app) || xTitleLower.includes(app)) {
-      throw ex;
-    }
+  if (
+    BLOCKED_APPS.some(
+      (app) => refererLower.includes(app) || xTitleLower.includes(app),
+    )
+  ) {
+    throw createBlockedException();
   }
 
-  for (let i = 0; i < BLOCKED_USER_AGENTS.length; i++) {
-    const blockedAgent = BLOCKED_USER_AGENTS[i];
-    if (userAgentLower.includes(blockedAgent)) {
-      throw ex;
-    }
+  if (BLOCKED_USER_AGENTS.some((agent) => userAgentLower.includes(agent))) {
+    throw createBlockedException();
   }
 
   if (c.req.method === "POST") {
     try {
-      const clone = c.req.raw.clone();
-      const body = await clone.text();
-
-      for (const blockedPrompt of blockedPromptsConfig) {
-        if (body.includes(blockedPrompt)) {
-          throw ex;
-        }
+      const body = await c.req.raw.clone().text();
+      if (blockedPromptsConfig.some((prompt) => body.includes(prompt))) {
+        throw createBlockedException();
       }
     } catch (e) {
       if (e instanceof HTTPException) throw e;
-      // Ignore JSON parse errors or other issues, let the route handle validation
     }
   }
 
