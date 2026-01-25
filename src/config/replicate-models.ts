@@ -27,6 +27,17 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
     ],
   },
   {
+    name: "OCR",
+    models: [
+      { id: "cuuupid/glm-4v-9b", costPerRequest: 0.13 },
+      {
+        id: "lucataco/deepseek-ocr",
+        costPerRequest: 0.0063,
+      },
+      { id: "abiruyt/text-extract-ocr", costPerRequest: 0.0019 },
+    ],
+  },
+  {
     name: "Image Upscaling",
     models: [
       { id: "fermatresearch/magic-image-refiner", costPerRequest: 0.029 },
