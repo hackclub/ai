@@ -53,6 +53,14 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
       { id: "arielreplicate/robust_video_matting", costPerRequest: 0.046 },
     ],
   },
+  {
+    name: "Music Generation",
+    models: [
+      { id: "google/lyria-2", costPerRequest: 0.12 },
+      { id: "meta/musicgen", costPerRequest: 0.076 },
+      { id: "minimax/music-1.5", costPerRequest: 0.03 },
+    ],
+  },
 ];
 
 export const replicateModelCosts = new Map(
