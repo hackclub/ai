@@ -49,8 +49,11 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
     name: "Image Utilities",
     models: [
       { id: "lucataco/remove-bg", costPerRequest: 0.00028 },
+      { id: "851-labs/background-remover", costPerRequest: 0.00052 },
       { id: "zsxkib/ic-light-background", costPerRequest: 0.029 },
       { id: "arielreplicate/robust_video_matting", costPerRequest: 0.046 },
+      { id: "lucataco/rembg-video", costPerRequest: 0.1 },
+      { id: "falcons-ai/nsfw_image_detection", costPerRequest: 0.0003 },
     ],
   },
   {
