@@ -2,7 +2,7 @@ import { PostHog } from "posthog-node";
 import { env } from "../env";
 import type { User } from "../types";
 
-export const posthog = new PostHog(env.POSTHOG_API_KEY, {
+const posthog = new PostHog(env.POSTHOG_API_KEY, {
   host: env.POSTHOG_API_HOST,
 });
 

@@ -4,7 +4,7 @@ import { Header } from "./components/Header";
 import { Check, ChevronDown, Copy } from "./components/Icons";
 import { Layout } from "./layout";
 
-export type ModelPageProps = {
+type ModelPageProps = {
   model: OpenRouterModel;
   modelType: ModelType;
   user: User;

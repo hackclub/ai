@@ -80,6 +80,7 @@ const ModelCard = ({ model }: { model: ReplicateModel }) => {
         ) : (
           <div class="w-full h-full flex items-center justify-center text-brand-text/30">
             <svg
+              aria-hidden="true"
               class="w-12 h-12"
               fill="none"
               viewBox="0 0 24 24"

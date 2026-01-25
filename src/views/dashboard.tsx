@@ -24,7 +24,11 @@ export const Dashboard = ({
   return (
     <Layout title="Dashboard" includeAlpine user={user}>
       <div>
-        <Header title="hackai" user={user} replicateEnabled={replicateEnabled} />
+        <Header
+          title="hackai"
+          user={user}
+          replicateEnabled={replicateEnabled}
+        />
 
         {showIdvBanner && <IdvBanner />}
 
@@ -65,6 +69,7 @@ export const Dashboard = ({
               description="Create and manage your API keys for authentication."
               icon={
                 <svg
+                  aria-hidden="true"
                   class="w-8 h-8"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -85,6 +90,7 @@ export const Dashboard = ({
               description="Browse available language, image and embedding models."
               icon={
                 <svg
+                  aria-hidden="true"
                   class="w-8 h-8"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -105,6 +111,7 @@ export const Dashboard = ({
               description="View your recent API requests and usage history."
               icon={
                 <svg
+                  aria-hidden="true"
                   class="w-8 h-8"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -126,6 +133,7 @@ export const Dashboard = ({
                 description="Remove backgrounds, use STT/TTS, upscale images and more with Replicate models."
                 icon={
                   <svg
+                    aria-hidden="true"
                     class="w-8 h-8"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -224,6 +232,7 @@ const QuickLinkCard = ({
           <p class="text-sm text-brand-text">{description}</p>
         </div>
         <svg
+          aria-hidden="true"
           class="w-5 h-5 text-brand-text/40 group-hover:text-brand-primary transition-colors flex-shrink-0 mt-1"
           fill="none"
           viewBox="0 0 24 24"
@@ -283,7 +292,7 @@ const ExploreModelsCard = ({ stepNum }: { stepNum: number }) => {
       </a>
     </QuickstartCard>
   );
-}
+};
 
 const ReadDocsCard = ({ stepNum }: { stepNum: number }) => {
   return (
@@ -300,4 +309,4 @@ const ReadDocsCard = ({ stepNum }: { stepNum: number }) => {
       </a>
     </QuickstartCard>
   );
-}
+};

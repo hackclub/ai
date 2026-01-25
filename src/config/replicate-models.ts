@@ -1,4 +1,4 @@
-export type ReplicateModelConfig = {
+type ReplicateModelConfig = {
   id: string;
   costPerRequest: number;
 };

@@ -120,14 +120,15 @@ export const Layout = ({
                   defaults: '2025-11-30',
                   person_profiles: 'identified_only',
                 });
-                ${user
-                  ? `posthog.identify('${user.slackId}', {
+                ${
+                  user
+                    ? `posthog.identify('${user.slackId}', {
                     userId: '${user.id}',
                     email: ${user.email ? `'${user.email}'` : "null"},
                     name: ${user.name ? `'${user.name}'` : "null"},
                     isIdvVerified: ${user.isIdvVerified},
                   });`
-                  : ""
+                    : ""
                 }
               `,
             }}
