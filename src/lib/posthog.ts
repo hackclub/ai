@@ -3,7 +3,7 @@ import { env } from "../env";
 import type { User } from "../types";
 
 export const posthog = new PostHog(env.POSTHOG_API_KEY, {
-  host: env.POSTHOG_HOST,
+  host: env.POSTHOG_API_HOST,
 });
 
 export const identifyUser = (user: User) => {
