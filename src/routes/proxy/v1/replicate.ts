@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { replicateModelCosts } from "../../../config/replicate-models";
+import {
+  allowedReplicateModels,
+  replicateModelCosts,
+} from "../../../config/replicate-models";
 import { env } from "../../../env";
 import { isFeatureEnabled } from "../../../lib/posthog";
 import { requireApiKey } from "../../../middleware/auth";
@@ -28,6 +31,12 @@ replicate.post(
 
     const { owner, model } = c.req.param();
     const modelId = `${owner}/${model}`;
+
+    if (!allowedReplicateModels.includes(modelId)) {
+      throw new HTTPException(400, {
+        message: `Invalid model. Allowed models: ${allowedReplicateModels.join(", ")}`,
+      });
+    }
 
     const start = Date.now();
     const body = await c.req.json();
