@@ -22,7 +22,13 @@ export const ReplicateModels = ({ user, categories }: ReplicateModelsProps) => {
           </span>
         </div>
         <p class="text-lg mb-4">
-          Run machine learning models via Replicate's predictions API
+          Run AI models via Replicate's predictions API.{" "}
+          <a
+            href="https://docs.ai.hackclub.com/guide/replicate.html"
+            class="text-brand-primary font-bold"
+          >
+            View the docs...
+          </a>
         </p>
         <hr class="border-brand-border mb-8" />
 
