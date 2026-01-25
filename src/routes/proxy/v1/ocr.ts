@@ -9,21 +9,31 @@ import { checkSpendingLimit } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import { type Ctx, logRequest, resolveUsage, standardLimiter } from "../shared";
 
+const MISTRAL_API_URL = "https://api.mistral.ai";
+
+type ResponseFormat =
+  | { type: "text" }
+  | { type: "json_object" }
+  | { type: "json_schema"; json_schema: Record<string, unknown> };
+
 type OCRDocument =
   | { type: "image_url"; image_url: string }
   | { type: "document_url"; document_url: string }
-  | { type: "base64"; data: string; mime_type?: string };
+  | { type: "file"; file_id: string };
 
 type OCRRequest = {
   model?: string;
   document: OCRDocument;
-  pages?: number[] | string;
+  id?: string;
+  pages?: number[];
   include_image_base64?: boolean;
   image_limit?: number;
   image_min_size?: number;
-  table_format?: "markdown" | "html" | null;
+  table_format?: "markdown" | "html";
   extract_header?: boolean;
   extract_footer?: boolean;
+  document_annotation_format?: ResponseFormat;
+  bbox_annotation_format?: ResponseFormat;
 };
 
 const ALLOWED_OCR_MODELS = ["mistral-ocr-latest"];
@@ -37,8 +47,8 @@ const validateDocument = (doc: unknown): doc is OCRDocument => {
   if (d.type === "document_url" && typeof d.document_url === "string") {
     return d.document_url.startsWith("https://");
   }
-  if (d.type === "base64" && typeof d.data === "string") {
-    return d.data.length < 50 * 1024 * 1024;
+  if (d.type === "file" && typeof d.file_id === "string") {
+    return d.file_id.length > 0;
   }
   return false;
 };
@@ -77,12 +87,6 @@ ocr.post(
       });
     }
 
-    if (!env.MISTRAL_API_KEY) {
-      throw new HTTPException(503, {
-        message: "OCR service is not configured",
-      });
-    }
-
     const start = Date.now();
     let body: OCRRequest;
 
@@ -95,7 +99,7 @@ ocr.post(
     if (!validateDocument(body.document)) {
       throw new HTTPException(400, {
         message:
-          "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'base64'. URLs must use HTTPS.",
+          "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'file'. URLs must use HTTPS.",
       });
     }
 
@@ -104,8 +108,7 @@ ocr.post(
       : "mistral-ocr-latest";
 
     try {
-      const mistralUrl = env.MISTRAL_API_URL || "https://api.mistral.ai";
-      const res = await fetch(`${mistralUrl}/v1/ocr`, {
+      const res = await fetch(`${MISTRAL_API_URL}/v1/ocr`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -114,6 +117,7 @@ ocr.post(
         body: JSON.stringify({
           model,
           document: body.document,
+          id: body.id,
           pages: body.pages,
           include_image_base64: body.include_image_base64,
           image_limit: body.image_limit,
@@ -121,6 +125,8 @@ ocr.post(
           table_format: body.table_format,
           extract_header: body.extract_header,
           extract_footer: body.extract_footer,
+          document_annotation_format: body.document_annotation_format,
+          bbox_annotation_format: body.bbox_annotation_format,
         }),
       });
 
