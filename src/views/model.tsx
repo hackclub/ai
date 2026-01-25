@@ -341,7 +341,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
 
   return (
     <Layout title={`${displayName} - Hack Club AI`} includeAlpine user={user}>
-      <Header title="hackai" user={user} showGlobalStats />
+      <Header title="hackai" user={user} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         {/* Back link */}

@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/bun";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Context, Next } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import type { AppVariables } from "../types";

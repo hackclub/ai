@@ -76,7 +76,7 @@ models.get("/*", requireAuth, async (c) => {
   if (!model) {
     return c.html(
       <Layout title="Model Not Found" includeAlpine>
-        <Header title="hackai" user={user} showGlobalStats />
+        <Header title="hackai" user={user} />
         <div class="w-full max-w-6xl mx-auto px-4 py-8">
           <div class="bg-white border-2 border-brand-border rounded-2xl p-8 text-center">
             <h1 class="text-2xl font-bold text-brand-heading mb-4">

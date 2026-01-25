@@ -1,6 +1,6 @@
 import {
-  replicateCategories,
   type ReplicateCategoryConfig,
+  replicateCategories,
 } from "../config/replicate-models";
 import { env } from "../env";
 

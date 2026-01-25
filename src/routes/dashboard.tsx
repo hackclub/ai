@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/bun";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { db } from "../db";

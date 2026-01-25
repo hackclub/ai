@@ -20,7 +20,6 @@ const envSchema = type({
   REPLICATE_API_KEY: "string",
   POSTHOG_API_KEY: "string",
   POSTHOG_HOST: "string",
-  
 });
 
 const result = envSchema(process.env);

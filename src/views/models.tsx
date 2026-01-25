@@ -19,7 +19,7 @@ export const Models = ({
 }: ModelsProps) => {
   return (
     <Layout title="Models" includeAlpine user={user}>
-      <Header title="hackai" user={user} showGlobalStats />
+      <Header title="hackai" user={user} />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h1 class="text-4xl font-bold mb-2 text-brand-heading">Models</h1>
         <p class="text-lg mb-4">Find the right model for your project</p>

@@ -59,7 +59,9 @@ up.get("/", async (c) => {
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}` },
       });
-      const { data } = await response.json();
+      const { data } = (await response.json()) as {
+        data: { total_credits: number; total_usage: number };
+      };
       const balanceRemaining = data.total_credits - data.total_usage;
 
       const keyResponse = await fetch("https://openrouter.ai/api/v1/key", {
@@ -68,7 +70,9 @@ up.get("/", async (c) => {
           Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         },
       });
-      const keyBody = await keyResponse.json();
+      const keyBody = (await keyResponse.json()) as {
+        data?: { limit_remaining?: number };
+      };
       const dailyKeyUsageRemaining = keyBody.data?.limit_remaining;
 
       const cached = {
@@ -85,7 +89,7 @@ up.get("/", async (c) => {
     cache.set("up", cached);
     return c.json(cached, status === "up" ? 200 : 503);
   } catch {
-    const cached = { status: "down", timestamp: now };
+    const cached: CacheEntry = { status: "down", timestamp: now };
     cache.set("up", cached);
     return c.json(cached, 503);
   }

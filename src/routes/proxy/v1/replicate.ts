@@ -12,7 +12,7 @@ import { logRequest, standardLimiter } from "../shared";
 const replicate = new Hono<{ Variables: AppVariables }>();
 
 replicate.post(
-  "/predictions",
+  "/replicate/models/:owner/:model/predictions",
   standardLimiter,
   checkSpendingLimit,
   async (c) => {
@@ -24,21 +24,26 @@ replicate.post(
       });
     }
 
+    const { owner, model } = c.req.param();
+    const modelId = `${owner}/${model}`;
+
     const start = Date.now();
     const body = await c.req.json();
 
-    const res = await fetch("https://api.replicate.com/v1/predictions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.REPLICATE_API_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "wait=60",
+    const res = await fetch(
+      `https://api.replicate.com/v1/models/${modelId}/predictions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.REPLICATE_API_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "wait=60",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+    );
 
     const data = await res.json();
-    const modelId = body.model;
     const cost = replicateModelCosts.get(modelId) || 0;
 
     await logRequest(
