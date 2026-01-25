@@ -14,6 +14,7 @@ import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
 import general from "./general";
 import moderations from "./moderations";
+import ocr from "./ocr";
 import replicate from "./replicate";
 
 const proxy = new Hono<{ Variables: AppVariables }>();
@@ -46,6 +47,7 @@ proxy.get("/stats", standardLimiter, async (c) =>
 
 proxy.route("/", general);
 proxy.route("/", moderations);
+proxy.route("/", ocr);
 proxy.route("/", replicate);
 
 export default proxy;
