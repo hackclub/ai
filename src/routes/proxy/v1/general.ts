@@ -4,6 +4,7 @@ import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { allowedImageModels, env } from "../../../env";
+import { requireApiKey } from "../../../middleware/auth";
 import { checkSpendingLimit } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import {
@@ -94,12 +95,17 @@ async function handleProxy(c: Ctx, endpoint: string) {
 }
 
 for (const ep of ["chat/completions", "responses", "embeddings"])
-  general.post(`/${ep}`, standardLimiter, checkSpendingLimit, (c) =>
-    handleProxy(c, ep),
+  general.post(
+    `/${ep}`,
+    requireApiKey,
+    standardLimiter,
+    checkSpendingLimit,
+    (c) => handleProxy(c, ep),
   );
 
 general.post(
   "/images/generations",
+  requireApiKey,
   standardLimiter,
   checkSpendingLimit,
   async (c) => {

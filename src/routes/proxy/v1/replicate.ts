@@ -5,6 +5,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { replicateModelCosts } from "../../../config/replicate-models";
 import { env } from "../../../env";
 import { isFeatureEnabled } from "../../../lib/posthog";
+import { requireApiKey } from "../../../middleware/auth";
 import { checkSpendingLimit } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import { logRequest, standardLimiter } from "../shared";
@@ -13,6 +14,7 @@ const replicate = new Hono<{ Variables: AppVariables }>();
 
 replicate.post(
   "/replicate/models/:owner/:model/predictions",
+  requireApiKey,
   standardLimiter,
   checkSpendingLimit,
   async (c) => {
