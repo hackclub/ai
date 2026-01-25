@@ -19,8 +19,7 @@ type ResponseFormat =
 type OCRDocument =
   | { type: "image_url"; image_url: string }
   | { type: "document_url"; document_url: string }
-  | { type: "file"; file_id: string }
-  | { type: "base64"; data: string; mime_type?: string };
+  | { type: "file"; file_id: string };
 
 type OCRRequest = {
   model?: string;
@@ -50,9 +49,6 @@ const validateDocument = (doc: unknown): doc is OCRDocument => {
   }
   if (d.type === "file" && typeof d.file_id === "string") {
     return d.file_id.length > 0;
-  }
-  if (d.type === "base64" && typeof d.data === "string") {
-    return d.data.length > 0 && d.data.length < 70 * 1024 * 1024;
   }
   return false;
 };
@@ -103,7 +99,7 @@ ocr.post(
     if (!validateDocument(body.document)) {
       throw new HTTPException(400, {
         message:
-          "Invalid document. Provide a valid document with type 'image_url', 'document_url', 'file', or 'base64'. URLs must use HTTPS.",
+          "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'file'. URLs must use HTTPS.",
       });
     }
 
