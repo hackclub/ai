@@ -4,12 +4,18 @@ import { env } from "../env";
 
 const up = new Hono();
 
-interface CacheEntry {
-  status: "up" | "down";
-  balanceRemaining?: number;
-  dailyKeyUsageRemaining?: number;
-  timestamp: number;
-}
+type CacheEntry =
+  | {
+      status: "down";
+      timestamp: number;
+    }
+  | {
+      status: "up";
+      balanceRemaining: number;
+      dailyKeyUsageRemaining: number;
+      replicateUnusedCredit: number;
+      timestamp: number;
+    };
 
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 30 * 1000; // 30 seconds
@@ -52,40 +58,50 @@ up.get("/", async (c) => {
         }),
       },
     );
-    const status: "up" | "down" = embeddingResponse.ok ? "up" : "down";
 
-    if (env.OPENROUTER_PROVISIONING_KEY) {
-      const url = "https://openrouter.ai/api/v1/credits";
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}` },
-      });
-      const { data } = (await response.json()) as {
-        data: { total_credits: number; total_usage: number };
-      };
-      const balanceRemaining = data.total_credits - data.total_usage;
+    const url = "https://openrouter.ai/api/v1/credits";
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${env.OPENROUTER_PROVISIONING_KEY}` },
+    });
+    const { data } = (await response.json()) as {
+      data: { total_credits: number; total_usage: number };
+    };
+    const balanceRemaining = data.total_credits - data.total_usage;
 
-      const keyResponse = await fetch("https://openrouter.ai/api/v1/key", {
-        method: "GET",
+    const keyResponse = await fetch("https://openrouter.ai/api/v1/key", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      },
+    });
+    const keyBody = (await keyResponse.json()) as {
+      data: { limit_remaining: number };
+    };
+    const dailyKeyUsageRemaining = keyBody.data.limit_remaining;
+
+    const replicateResponse = await fetch(
+      `https://replicate.com/api/users/${env.REPLICATE_USERNAME}/unused-credit`,
+      {
         headers: {
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          cookie: `sessionid=${env.REPLICATE_SESSION_ID}`,
         },
-      });
-      const keyBody = (await keyResponse.json()) as {
-        data?: { limit_remaining?: number };
-      };
-      const dailyKeyUsageRemaining = keyBody.data?.limit_remaining;
+      },
+    );
+    const replicateBody = (await replicateResponse.json()) as {
+      unused_credit: string;
+    };
+    const replicateUnusedCredit = parseFloat(replicateBody.unused_credit);
 
-      const cached = {
-        status,
-        balanceRemaining,
-        dailyKeyUsageRemaining,
-        timestamp: now,
-      };
-      cache.set("up", cached);
-      return c.json(cached, status === "up" ? 200 : 503);
-    }
+    const status: "up" | "down" =
+      replicateUnusedCredit > 0.6 && embeddingResponse.ok ? "up" : "down";
+    const cached = {
+      status,
+      balanceRemaining,
+      dailyKeyUsageRemaining,
+      replicateUnusedCredit,
+      timestamp: now,
+    };
 
-    const cached = { status, timestamp: now };
     cache.set("up", cached);
     return c.json(cached, status === "up" ? 200 : 503);
   } catch {
