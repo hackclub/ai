@@ -160,50 +160,40 @@ export const Dashboard = ({
               </a>
             </QuickstartCard>
 
-            <QuickstartCard
-              step={2}
-              title="Make your first request"
-              description="Use curl or your favorite HTTP client to make a request:"
-            >
-              <div class="bg-brand-bg border border-brand-border p-4 rounded-xl font-mono text-xs text-brand-text leading-relaxed overflow-x-auto select-text">
-                <div>curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
-                <div class="pl-4">
-                  -H "Authorization: Bearer YOUR_API_KEY" \
-                </div>
-                <div class="pl-4">-H "Content-Type: application/json" \</div>
-                <div class="pl-4">
-                  -d '
-                  {`{"model": "${allowedLanguageModels[0]}", "messages": [{"role": "user", "content": "Hi"}]}`}
-                  '
-                </div>
-              </div>
-            </QuickstartCard>
-
-            <QuickstartCard
-              step={3}
-              title="Explore available models"
-              description="Browse our collection of language, image and embedding models to find the right one for your project."
-            >
-              <a
-                href="/models"
-                class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+            <div className="hidden sm:block">
+              <QuickstartCard
+                step={2}
+                title="Make your first request"
+                description="Use curl or your favorite HTTP client to make a request:"
               >
-                Browse Models
-              </a>
-            </QuickstartCard>
+                <div class="bg-brand-bg border border-brand-border p-4 rounded-xl font-mono text-xs text-brand-text leading-relaxed overflow-x-auto select-text">
+                  <div>curl {env.BASE_URL}/proxy/v1/chat/completions \</div>
+                  <div class="pl-4">
+                    -H "Authorization: Bearer YOUR_API_KEY" \
+                  </div>
+                  <div class="pl-4">-H "Content-Type: application/json" \</div>
+                  <div class="pl-4">
+                    -d '
+                    {`{"model": "${allowedLanguageModels[0]}", "messages": [{"role": "user", "content": "Hi"}]}`}
+                    '
+                  </div>
+                </div>
+              </QuickstartCard>
+            </div>
 
-            <QuickstartCard
-              step={4}
-              title="Read the documentation"
-              description="Learn about all the available endpoints, parameters and best practices for using the API."
-            >
-              <a
-                href="/docs"
-                class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
-              >
-                View Docs
-              </a>
-            </QuickstartCard>
+            <div className="sm:hidden">
+              <ExploreModelsCard stepNum={2} />
+            </div>
+            <div className="sm:hidden">
+              <ReadDocsCard stepNum={3} />
+            </div>
+
+            <div className="hidden sm:block">
+              <ExploreModelsCard stepNum={3} />
+            </div>
+            <div className="hidden sm:block">
+              <ReadDocsCard stepNum={4} />
+            </div>
           </div>
         </div>
       </div>
@@ -277,3 +267,37 @@ const QuickstartCard = ({
     </div>
   );
 };
+
+const ExploreModelsCard = ({ stepNum }: { stepNum: number }) => {
+  return (
+    <QuickstartCard
+      step={stepNum}
+      title="Explore available models"
+      description="Browse our collection of language, image and embedding models to find the right one for your project."
+    >
+      <a
+        href="/models"
+        class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+      >
+        Browse Models
+      </a>
+    </QuickstartCard>
+  );
+}
+
+const ReadDocsCard = ({ stepNum }: { stepNum: number }) => {
+  return (
+    <QuickstartCard
+      step={stepNum}
+      title="Read the documentation"
+      description="Learn about all the available endpoints, parameters and best practices for using the API."
+    >
+      <a
+        href="/docs"
+        class="inline-block px-4 py-2 text-sm font-medium rounded-full bg-brand-primary text-white hover:bg-brand-primary-hover transition-all"
+      >
+        View Docs
+      </a>
+    </QuickstartCard>
+  );
+}
