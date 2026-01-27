@@ -65,22 +65,31 @@ const limiter = (limit: number) =>
 export const standardLimiter = limiter(450);
 export const moderationsLimiter = limiter(300);
 
+type Usage = {
+  prompt_tokens?: number;
+  input_tokens?: number;
+  completion_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cost?: number;
+  cost_details?: { upstream_inference_cost?: number };
+};
+
 export const resolveUsage = (data: unknown) => {
   const u =
     (
       data as {
-        usage?: Record<string, number>;
-        response?: { usage?: Record<string, number> };
+        usage?: Usage;
+        response?: { usage?: Usage };
       }
     )?.usage ||
-    (data as { response?: { usage?: Record<string, number> } })?.response
-      ?.usage ||
+    (data as { response?: { usage?: Usage } })?.response?.usage ||
     {};
   return {
     prompt: u.prompt_tokens || u.input_tokens || 0,
     completion: u.completion_tokens || u.output_tokens || 0,
     total: u.total_tokens || 0,
-    cost: u.cost || 0,
+    cost: u.cost || u.cost_details?.upstream_inference_cost || 0,
   };
 };
 

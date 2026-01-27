@@ -130,7 +130,6 @@ general.post(
         modalities: ["image", "text"],
         image_config: { aspect_ratio: SIZE_RATIOS[body.size || ""] || "1:1" },
         user: `user_${c.get("user").id}`,
-        usage: { include: true },
       }),
     });
 
