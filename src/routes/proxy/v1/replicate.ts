@@ -171,6 +171,45 @@ replicate.post(
   },
 );
 
+// GET model info (for SDK to resolve latest version)
+replicate.get(
+  "/replicate/models/:owner/:model",
+  requireApiKey,
+  standardLimiter,
+  async (c) => {
+    const user = c.get("user");
+    const enabled = await isFeatureEnabled(user, "enable_replicate");
+    if (!enabled) {
+      throw new HTTPException(403, {
+        message: "Replicate access is not enabled for your account",
+      });
+    }
+
+    const { owner, model } = c.req.param();
+    const fullModelId = `${owner}/${model}`;
+
+    if (!/^[a-z0-9_-]+$/.test(owner) || !/^[a-z0-9_-]+$/.test(model)) {
+      throw new HTTPException(400, { message: "Invalid model identifier" });
+    }
+
+    if (!allowedReplicateModels.includes(fullModelId)) {
+      throw new HTTPException(400, {
+        message: `Invalid model. Allowed models: ${allowedReplicateModels.join(", ")}`,
+      });
+    }
+
+    const res = await fetch(
+      `https://api.replicate.com/v1/models/${owner}/${model}`,
+      {
+        headers: { Authorization: `Bearer ${env.REPLICATE_API_KEY}` },
+      },
+    );
+
+    const data = await res.json();
+    return c.json(data, res.status as ContentfulStatusCode);
+  },
+);
+
 // GET prediction by ID (for polling)
 replicate.get(
   "/replicate/predictions/:id",
