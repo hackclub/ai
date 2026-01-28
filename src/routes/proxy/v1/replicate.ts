@@ -27,35 +27,26 @@ async function fetchModelFromVersion(
     return cached;
   }
 
-  const res = await fetch(
-    `https://api.replicate.com/v1/versions/${versionHash}`,
-    {
-      headers: { Authorization: `Bearer ${env.REPLICATE_API_KEY}` },
-    },
-  );
+  // Try each allowed model to find which one has this version
+  for (const modelId of allowedReplicateModels) {
+    const [owner, model] = modelId.split("/");
+    const res = await fetch(
+      `https://api.replicate.com/v1/models/${owner}/${model}/versions/${versionHash}`,
+      {
+        headers: { Authorization: `Bearer ${env.REPLICATE_API_KEY}` },
+      },
+    );
 
-  if (!res.ok) {
-    throw new HTTPException(400, {
-      message: `Could not fetch model for version ${versionHash}`,
-    });
+    if (res.ok) {
+      const modelInfo = { owner, model };
+      versionModelCache.set(versionHash, modelInfo);
+      return modelInfo;
+    }
   }
 
-  const versionData = (await res.json()) as {
-    model_id?: string;
-  };
-
-  if (!versionData.model_id) {
-    throw new HTTPException(400, {
-      message: "Could not determine model from version",
-    });
-  }
-
-  const [owner, model] = versionData.model_id.split("/");
-  const modelInfo = { owner, model };
-
-  versionModelCache.set(versionHash, modelInfo);
-
-  return modelInfo;
+  throw new HTTPException(400, {
+    message: `Could not fetch model for version ${versionHash}. The model may not be in the allowed list.`,
+  });
 }
 
 replicate.post(
@@ -176,6 +167,37 @@ replicate.post(
       Date.now() - start,
     );
 
+    return c.json(data, res.status as ContentfulStatusCode);
+  },
+);
+
+// GET prediction by ID (for polling)
+replicate.get(
+  "/replicate/predictions/:id",
+  requireApiKey,
+  standardLimiter,
+  async (c) => {
+    const user = c.get("user");
+    const enabled = await isFeatureEnabled(user, "enable_replicate");
+    if (!enabled) {
+      throw new HTTPException(403, {
+        message: "Replicate access is not enabled for your account",
+      });
+    }
+
+    const { id } = c.req.param();
+
+    if (!/^[a-z0-9]+$/.test(id)) {
+      throw new HTTPException(400, { message: "Invalid prediction ID" });
+    }
+
+    const res = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+      headers: {
+        Authorization: `Bearer ${env.REPLICATE_API_KEY}`,
+      },
+    });
+
+    const data = await res.json();
     return c.json(data, res.status as ContentfulStatusCode);
   },
 );
