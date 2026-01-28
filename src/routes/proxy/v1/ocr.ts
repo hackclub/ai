@@ -36,8 +36,6 @@ type OCRRequest = {
   bbox_annotation_format?: ResponseFormat;
 };
 
-const ALLOWED_OCR_MODELS = ["mistral-ocr-latest"];
-
 const validateDocument = (doc: unknown): doc is OCRDocument => {
   if (!doc || typeof doc !== "object") return false;
   const d = doc as Record<string, unknown>;
@@ -103,10 +101,6 @@ ocr.post(
       });
     }
 
-    const model = ALLOWED_OCR_MODELS.includes(body.model || "")
-      ? body.model!
-      : "mistral-ocr-latest";
-
     try {
       const res = await fetch(`${MISTRAL_API_URL}/v1/ocr`, {
         method: "POST",
@@ -114,20 +108,7 @@ ocr.post(
           "Content-Type": "application/json",
           Authorization: `Bearer ${env.MISTRAL_API_KEY}`,
         },
-        body: JSON.stringify({
-          model,
-          document: body.document,
-          id: body.id,
-          pages: body.pages,
-          include_image_base64: body.include_image_base64,
-          image_limit: body.image_limit,
-          image_min_size: body.image_min_size,
-          table_format: body.table_format,
-          extract_header: body.extract_header,
-          extract_footer: body.extract_footer,
-          document_annotation_format: body.document_annotation_format,
-          bbox_annotation_format: body.bbox_annotation_format,
-        }),
+        body: JSON.stringify(body),
       });
 
       let data: unknown;

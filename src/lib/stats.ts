@@ -36,7 +36,7 @@ export async function getGlobalStats(): Promise<Stats> {
   return stats || defaultStats;
 }
 
-export type ModelStats = Stats & { model: string };
+type ModelStats = Stats & { model: string };
 
 export async function getModelStats(): Promise<ModelStats[]> {
   return Sentry.startSpan({ name: "db.select.modelStats" }, () =>

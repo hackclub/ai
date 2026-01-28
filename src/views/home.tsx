@@ -28,7 +28,8 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
 
             <p class="text-brand-text/60 mb-10 max-w-xl mx-auto">
               Use Gemini, GPT-5.2, Kimi K2 and 30+ other models through an
-              OpenAI-compatible API. Build projects, learn and experiment - for free!
+              OpenAI-compatible API. Build projects, learn and experiment - for
+              free!
             </p>
 
             <a
