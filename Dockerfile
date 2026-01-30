@@ -20,7 +20,7 @@ RUN bun run jobs:generate-allowed-model-versions
 FROM base AS runtime
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
-COPY --from=replicate /app/src/config ./src/config    # Reference the stage
+COPY --from=replicate /app/src/config ./src/config
 COPY --from=build /app/public ./public
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/tsconfig.json ./tsconfig.json
