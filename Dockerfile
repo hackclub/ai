@@ -10,9 +10,17 @@ COPY package.json ./
 RUN bun install --frozen-lockfile
 COPY . .
 
+FROM base AS replicate
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/src ./src
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/package.json ./package.json
+RUN bun run jobs:generate-allowed-model-versions
+
 FROM base AS runtime
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
+COPY --from=replicate /app/src/config ./src/config    # Reference the stage
 COPY --from=build /app/public ./public
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/tsconfig.json ./tsconfig.json

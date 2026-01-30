@@ -111,7 +111,7 @@ ocr.post(
         body: JSON.stringify(body),
       });
 
-      let data: unknown;
+      let data: { model: string };
       const text = await res.text();
       try {
         data = JSON.parse(text);
@@ -120,6 +120,8 @@ ocr.post(
           message: "Invalid response from OCR service",
         });
       }
+
+      const model = data.model;
 
       await logRequest(
         c,
@@ -139,7 +141,7 @@ ocr.post(
 
       await logRequest(
         c,
-        { model, stream: false },
+        { model: "mistral-ocr", stream: false },
         { error: error instanceof Error ? error.message : "Unknown error" },
         { prompt: 0, completion: 0, total: 0, cost: 0 },
         Date.now() - start,

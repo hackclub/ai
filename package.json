@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "ty": "npm run typecheck",
     "lint": "biome check",
-    "knip": "knip"
+    "knip": "knip",
+    "jobs:generate-allowed-model-versions": "bun run scripts/generate-allowed-model-versions.ts"
   },
   "dependencies": {
     "@hono/arktype-validator": "^2.0.1",
