@@ -64,6 +64,10 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
       { id: "minimax/music-1.5", costPerRequest: 0.03 },
     ],
   },
+  {
+    name: "Specialized Image Models",
+    models: [{ id: "retro-diffusion/rd-plus", costPerRequest: 0.06 }],
+  },
 ];
 
 export const replicateModelCosts = new Map(
