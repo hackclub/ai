@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { etag } from "hono/etag";
 
 import { env } from "../../../env";
@@ -19,7 +18,7 @@ import replicate from "./replicate";
 
 const proxy = new Hono<{ Variables: AppVariables }>();
 
-proxy.use("*", bodyLimit({ maxSize: 40 * 1024 * 1024 }), blockAICodingAgents);
+proxy.use("*", blockAICodingAgents);
 proxy.use("*", async (c, next) => {
   c.set(
     "ip",
