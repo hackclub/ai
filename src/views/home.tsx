@@ -40,7 +40,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
             </a>
 
             <p class="mt-4 text-sm text-brand-text/50">
-              Open beta, DM @mahad on Slack for support.
+              DM @mahad on Slack for support.
             </p>
           </div>
         </div>
