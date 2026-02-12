@@ -8,6 +8,7 @@ type ModelPageProps = {
   model: OpenRouterModel;
   modelType: ModelType;
   user: User;
+  dailySpending?: number;
 };
 
 function formatPricing(pricePerToken?: string): string {
@@ -307,7 +308,12 @@ const BackArrow = () => (
   </svg>
 );
 
-export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
+export const ModelPage = ({
+  model,
+  modelType,
+  user,
+  dailySpending,
+}: ModelPageProps) => {
   const displayName = model.name || model.id;
   const provider = getProviderName(model.id);
   const description = model.description
@@ -341,7 +347,7 @@ export const ModelPage = ({ model, modelType, user }: ModelPageProps) => {
 
   return (
     <Layout title={`${displayName} - Hack Club AI`} includeAlpine user={user}>
-      <Header title="hackai" user={user} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         {/* Back link */}

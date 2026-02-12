@@ -9,9 +9,10 @@ import { Layout } from "./layout";
 type KeysProps = {
   user: User;
   apiKeys: DashboardApiKey[];
+  dailySpending?: number;
 };
 
-export const Keys = ({ user, apiKeys }: KeysProps) => {
+export const Keys = ({ user, apiKeys, dailySpending }: KeysProps) => {
   return (
     <Layout title="API Keys" includeHtmx includeAlpine user={user}>
       <div
@@ -49,7 +50,7 @@ export const Keys = ({ user, apiKeys }: KeysProps) => {
           }
         }`}
       >
-        <Header title="hackai" user={user} />
+        <Header title="hackai" user={user} dailySpending={dailySpending} />
 
         <div class="w-full max-w-6xl mx-auto px-4 py-8">
           <div class="mb-12">

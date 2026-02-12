@@ -11,12 +11,18 @@ type GlobalProps = {
   user: User;
   globalStats: Stats;
   modelStats: ModelStats[];
+  dailySpending?: number;
 };
 
-export const Global = ({ user, globalStats, modelStats }: GlobalProps) => {
+export const Global = ({
+  user,
+  globalStats,
+  modelStats,
+  dailySpending,
+}: GlobalProps) => {
   return (
     <Layout title="Global Statistics" user={user}>
-      <Header title="hackai stats" user={user} />
+      <Header title="hackai stats" user={user} dailySpending={dailySpending} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">

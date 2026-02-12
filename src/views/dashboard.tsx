@@ -11,6 +11,7 @@ type DashboardProps = {
   stats: Stats;
   enforceIdv: boolean;
   replicateEnabled: boolean;
+  dailySpending?: number;
 };
 
 export const Dashboard = ({
@@ -18,6 +19,7 @@ export const Dashboard = ({
   stats,
   enforceIdv,
   replicateEnabled,
+  dailySpending,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
 
@@ -28,6 +30,7 @@ export const Dashboard = ({
           title="hackai"
           user={user}
           replicateEnabled={replicateEnabled}
+          dailySpending={dailySpending}
         />
 
         {showIdvBanner && <IdvBanner />}

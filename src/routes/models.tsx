@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/bun";
 import { Hono } from "hono";
 import { fetchAllModels, type OpenRouterModel } from "../lib/models";
+import { getDailySpending } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables, ModelType } from "../types";
 import { Header } from "../views/components/Header";
@@ -31,14 +32,17 @@ function getModelType(model: OpenRouterModel): ModelType {
 models.get("/", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const { languageModels, imageModels, embeddingModels } =
-    await Sentry.startSpan({ name: "fetch.models" }, async () => {
-      try {
-        return await fetchAllModels();
-      } catch {
-        return { languageModels: [], imageModels: [], embeddingModels: [] };
-      }
-    });
+  const [{ languageModels, imageModels, embeddingModels }, dailySpending] =
+    await Promise.all([
+      Sentry.startSpan({ name: "fetch.models" }, async () => {
+        try {
+          return await fetchAllModels();
+        } catch {
+          return { languageModels: [], imageModels: [], embeddingModels: [] };
+        }
+      }),
+      getDailySpending(user.id),
+    ]);
 
   return c.html(
     <Models
@@ -46,6 +50,7 @@ models.get("/", requireAuth, async (c) => {
       languageModels={languageModels}
       imageModels={imageModels}
       embeddingModels={embeddingModels}
+      dailySpending={dailySpending}
     />,
   );
 });
@@ -60,14 +65,17 @@ models.get("/*", requireAuth, async (c) => {
     return c.redirect("/dashboard");
   }
 
-  const { languageModels, imageModels, embeddingModels } =
-    await Sentry.startSpan({ name: "fetch.models" }, async () => {
-      try {
-        return await fetchAllModels();
-      } catch {
-        return { languageModels: [], imageModels: [], embeddingModels: [] };
-      }
-    });
+  const [{ languageModels, imageModels, embeddingModels }, dailySpending] =
+    await Promise.all([
+      Sentry.startSpan({ name: "fetch.models" }, async () => {
+        try {
+          return await fetchAllModels();
+        } catch {
+          return { languageModels: [], imageModels: [], embeddingModels: [] };
+        }
+      }),
+      getDailySpending(user.id),
+    ]);
 
   // Find the model in any of the arrays
   const allModels = [...languageModels, ...imageModels, ...embeddingModels];
@@ -76,7 +84,7 @@ models.get("/*", requireAuth, async (c) => {
   if (!model) {
     return c.html(
       <Layout title="Model Not Found" includeAlpine>
-        <Header title="hackai" user={user} />
+        <Header title="hackai" user={user} dailySpending={dailySpending} />
         <div class="w-full max-w-6xl mx-auto px-4 py-8">
           <div class="bg-white border-2 border-brand-border rounded-2xl p-8 text-center">
             <h1 class="text-2xl font-bold text-brand-heading mb-4">
@@ -104,7 +112,14 @@ models.get("/*", requireAuth, async (c) => {
   // Always detect model type from architecture
   const modelType = getModelType(model);
 
-  return c.html(<ModelPage model={model} modelType={modelType} user={user} />);
+  return c.html(
+    <ModelPage
+      model={model}
+      modelType={modelType}
+      user={user}
+      dailySpending={dailySpending}
+    />,
+  );
 });
 
 export default models;

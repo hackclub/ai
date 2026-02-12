@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
-import { getUserStats } from "../lib/stats";
+import { getDailySpending, getUserStats } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Activity } from "../views/activity";
@@ -13,7 +13,7 @@ const activity = new Hono<{ Variables: AppVariables }>();
 activity.get("/activity", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const [stats, recentLogs] = await Promise.all([
+  const [stats, recentLogs, dailySpending] = await Promise.all([
     getUserStats(user.id),
     Sentry.startSpan({ name: "db.select.recentLogs" }, () =>
       db
@@ -30,9 +30,17 @@ activity.get("/activity", requireAuth, async (c) => {
         .orderBy(desc(requestLogs.timestamp))
         .limit(50),
     ),
+    getDailySpending(user.id),
   ]);
 
-  return c.html(<Activity user={user} stats={stats} recentLogs={recentLogs} />);
+  return c.html(
+    <Activity
+      user={user}
+      stats={stats}
+      recentLogs={recentLogs}
+      dailySpending={dailySpending}
+    />,
+  );
 });
 
 export default activity;

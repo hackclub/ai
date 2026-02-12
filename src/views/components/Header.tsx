@@ -6,9 +6,19 @@ type HeaderProps = {
   title: string;
   user: User;
   replicateEnabled?: boolean;
+  dailySpending?: number;
+  dailyLimit?: number;
 };
 
-export const Header = ({ title, user, replicateEnabled }: HeaderProps) => {
+export const Header = ({
+  title,
+  user,
+  replicateEnabled,
+  dailySpending,
+  dailyLimit,
+}: HeaderProps) => {
+  const limit = dailyLimit ?? parseFloat(user.spendingLimitUsd || "8");
+  const spent = dailySpending ?? 0;
   return (
     <header class="py-6 sm:mb-8 relative z-50">
       <div class="max-w-7xl mx-auto px-4 flex justify-between items-center gap-4">
@@ -63,6 +73,14 @@ export const Header = ({ title, user, replicateEnabled }: HeaderProps) => {
           >
             Global Stats
           </a>
+          {dailySpending !== undefined && (
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full">
+              <div class="w-2 h-2 rounded-full bg-green-500"></div>
+              <span class="text-xs font-medium text-brand-text">
+                ${spent.toFixed(2)}/${limit.toFixed(2)}
+              </span>
+            </div>
+          )}
           <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
             <span class="text-sm font-medium text-brand-heading">
               {user.name || "User"}
@@ -139,6 +157,17 @@ export const Header = ({ title, user, replicateEnabled }: HeaderProps) => {
         >
           Global Stats
         </a>
+
+        {dailySpending !== undefined && (
+          <div class="flex items-center gap-2 px-2 py-2">
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full">
+              <div class="w-2 h-2 rounded-full bg-green-500"></div>
+              <span class="text-xs font-medium text-brand-text">
+                ${spent.toFixed(2)}/${limit.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div class="h-px bg-brand-border my-1"></div>
 

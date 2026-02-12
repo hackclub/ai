@@ -6,12 +6,17 @@ import { Layout } from "./layout";
 type ReplicateModelsProps = {
   user: User;
   categories: ReplicateCategory[];
+  dailySpending?: number;
 };
 
-export const ReplicateModels = ({ user, categories }: ReplicateModelsProps) => {
+export const ReplicateModels = ({
+  user,
+  categories,
+  dailySpending,
+}: ReplicateModelsProps) => {
   return (
     <Layout title="Replicate Models" includeAlpine user={user}>
-      <Header title="hackai" user={user} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <div class="flex items-center gap-3 mb-2">
           <h1 class="text-4xl font-bold text-brand-heading">

@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/bun";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import type { Stats } from "../types";
@@ -49,4 +49,29 @@ export async function getModelStats(): Promise<ModelStats[]> {
       .groupBy(requestLogs.model)
       .orderBy(desc(sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)`)),
   );
+}
+
+export async function getDailySpending(userId: string): Promise<number> {
+  const now = new Date();
+  const startOfDay = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+
+  const [result] = await Sentry.startSpan(
+    { name: "db.select.dailySpending" },
+    () =>
+      db
+        .select({
+          totalCost: sql<string>`COALESCE(SUM(${requestLogs.cost}), 0)`,
+        })
+        .from(requestLogs)
+        .where(
+          and(
+            eq(requestLogs.userId, userId),
+            gte(requestLogs.timestamp, startOfDay),
+          ),
+        ),
+  );
+
+  return parseFloat(result?.totalCost || "0");
 }

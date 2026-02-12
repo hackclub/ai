@@ -9,12 +9,18 @@ type ActivityProps = {
   user: User;
   stats: Stats;
   recentLogs: DashboardRequestLog[];
+  dailySpending?: number;
 };
 
-export const Activity = ({ user, stats, recentLogs }: ActivityProps) => {
+export const Activity = ({
+  user,
+  stats,
+  recentLogs,
+  dailySpending,
+}: ActivityProps) => {
   return (
     <Layout title="Activity" user={user}>
-      <Header title="hackai" user={user} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">

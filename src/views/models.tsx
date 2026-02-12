@@ -9,6 +9,7 @@ type ModelsProps = {
   languageModels: OpenRouterModel[];
   imageModels: OpenRouterModel[];
   embeddingModels: OpenRouterModel[];
+  dailySpending?: number;
 };
 
 export const Models = ({
@@ -16,10 +17,11 @@ export const Models = ({
   languageModels,
   imageModels,
   embeddingModels,
+  dailySpending,
 }: ModelsProps) => {
   return (
     <Layout title="Models" includeAlpine user={user}>
-      <Header title="hackai" user={user} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h1 class="text-4xl font-bold mb-2 text-brand-heading">Models</h1>
         <p class="text-lg mb-4">Find the right model for your project</p>
