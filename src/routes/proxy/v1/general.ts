@@ -38,9 +38,42 @@ async function handleProxy(c: Ctx, endpoint: string) {
     });
 
     if (!body.stream && endpoint !== "embeddings") {
-      const data = await res.json();
-      await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
-      return c.json(data, res.status as ContentfulStatusCode);
+      // For non-streaming requests, we still need to keep Cloudflare alive
+      // (524 timeout ~100s). We write leading whitespace — valid before any
+      // JSON document per RFC 8259 — then flush the real payload once
+      // OpenRouter finishes. This is "invisible streaming": the client still
+      // receives a single, normal JSON response.
+      const status = res.status as ContentfulStatusCode;
+
+      return stream(c, async (s) => {
+        c.header("Content-Type", "application/json");
+        c.status(status);
+
+        // Heartbeat: write a space every 30s to prevent Cloudflare 524
+        const heartbeat = setInterval(async () => {
+          try {
+            await s.write(" ");
+          } catch {
+            clearInterval(heartbeat);
+          }
+        }, 30_000);
+
+        try {
+          const data = await res.json();
+          clearInterval(heartbeat);
+          await logRequest(
+            c,
+            body,
+            data,
+            resolveUsage(data),
+            Date.now() - start,
+          );
+          await s.write(JSON.stringify(data));
+        } catch (e) {
+          clearInterval(heartbeat);
+          throw e;
+        }
+      });
     }
 
     return stream(c, async (s) => {
