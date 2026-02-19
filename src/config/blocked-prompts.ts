@@ -28,7 +28,8 @@ export default [
   "By specifying line ranges, you can efficiently read specific portions of large files without loading the entire file into memory.",
   'The tool outputs line-numbered content (e.g. "1 | const x = 1") for easy reference when creating diffs or discussing code',
 
-  // Clawdbot
+  // Clawdbot/OpenClaw
   "You are a personal assistant running inside Clawdbot",
   "\nGet Updates (self-update) is ONLY allowed when the user explicitly asks for it.\nDo not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.\nActions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
+  "You are a personal assistant running inside OpenClaw.\n## Tooling\nTool availability (filtered by policy):\nTool names are case-sensitive. Call tools exactly as listed",
 ];
