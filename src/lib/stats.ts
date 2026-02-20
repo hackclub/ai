@@ -6,9 +6,9 @@ import type { Stats } from "../types";
 
 const statsSelect = {
   totalRequests: sql<number>`COUNT(*)::int`,
-  totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)::int`,
-  totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens}), 0)::int`,
-  totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens}), 0)::int`,
+  totalTokens: sql<number>`COALESCE(SUM(${requestLogs.totalTokens})::bigint, 0)`.mapWith(Number),
+  totalPromptTokens: sql<number>`COALESCE(SUM(${requestLogs.promptTokens})::bigint, 0)`.mapWith(Number),
+  totalCompletionTokens: sql<number>`COALESCE(SUM(${requestLogs.completionTokens})::bigint, 0)`.mapWith(Number),
 };
 
 const defaultStats: Stats = {

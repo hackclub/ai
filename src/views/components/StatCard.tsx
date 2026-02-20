@@ -26,7 +26,7 @@ export const StatCard = ({ value, label }: StatCardProps) => {
 
   return (
     <div class="border-2 border-brand-border bg-brand-surface p-6 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 group">
-      <div class="text-2xl sm:text-4xl font-bold mb-2 text-brand-heading group-hover:tracking-wide transition-all origin-left">
+      <div class="text-2xl sm:text-3xl font-bold mb-2 text-brand-heading group-hover:tracking-wide transition-all origin-left">
         <span class="sm:hidden">{shortValue}</span>
         <span class="hidden sm:inline">{fullValue}</span>
       </div>
