@@ -46,10 +46,7 @@ vi.doMock("@sentry/bun", () => ({
 
 vi.doMock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-  const readFileSync: typeof actual.readFileSync = (
-    pathLike,
-    ...args
-  ) => {
+  const readFileSync: typeof actual.readFileSync = (pathLike, ...args) => {
     const filePath =
       typeof pathLike === "string" ? pathLike : pathLike.toString();
     if (filePath.endsWith("allowed-replicate-model-versions.json")) {
