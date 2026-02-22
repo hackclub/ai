@@ -5,3 +5,4 @@ dist
 *.log
 scratch
 src/config/allowed-replicate-model-versions.json
+package-lock.json
