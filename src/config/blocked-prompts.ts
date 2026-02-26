@@ -1,4 +1,4 @@
-// Please don't try to bypass these. You can probably get past the autoblocks fairly easily but then your prompt would get flagged and you get banned and everyone is sad.
+// Please don't try to bypass these. You can probably get past the autoblocks fairly easily but then your prompt would get flagged and you get banned and everyone becomes sad.
 // Something something tragedy of the commons.
 
 export default [
@@ -31,5 +31,6 @@ export default [
   // Clawdbot/OpenClaw
   "You are a personal assistant running inside Clawdbot",
   "\nGet Updates (self-update) is ONLY allowed when the user explicitly asks for it.\nDo not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.\nActions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
-  "You are a personal assistant running inside OpenClaw.\n## Tooling\nTool availability (filtered by policy):\nTool names are case-sensitive. Call tools exactly as listed",
+  "You are a personal assistant running inside OpenClaw.",
+  "\n## Tooling\nTool availability (filtered by policy):\nTool names are case-sensitive. Call tools exactly as listed",
 ];
