@@ -99,8 +99,16 @@ export const apiHeaders = () => ({
   ...openRouterHeaders,
 });
 
-export const resolveModel = (model: string, pool: string[]) =>
-  pool.includes(model) ? model : pool[0];
+export const resolveModel = (model: string, pool: string[]) => {
+  if (pool.includes(model)) {
+    return model;
+  }
+  const matchedModel = pool.find((m) => m.split("/")[1] === model);
+  if (matchedModel) {
+    return matchedModel;
+  }
+  return pool[0];
+};
 
 export const logRequest = (
   c: Ctx,
