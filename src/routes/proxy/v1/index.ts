@@ -45,7 +45,6 @@ proxy.get("/stats", standardLimiter, async (c) =>
 );
 
 proxy.route("/", general);
-proxy.route("/", inception);
 proxy.route("/", moderations);
 proxy.route("/", ocr);
 proxy.route("/", replicate);
