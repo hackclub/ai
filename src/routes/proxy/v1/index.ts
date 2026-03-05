@@ -12,7 +12,6 @@ import { blockAICodingAgents, requireApiKey } from "../../../middleware/auth";
 import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
 import general from "./general";
-import inception from "./inception";
 import moderations from "./moderations";
 import ocr from "./ocr";
 import replicate from "./replicate";
