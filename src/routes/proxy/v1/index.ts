@@ -49,9 +49,4 @@ proxy.route("/", moderations);
 proxy.route("/", ocr);
 proxy.route("/", replicate);
 
-proxy.post("*", (c) => {
-  console.warn(`[404 POST] ${c.req.path} from ${c.get("ip")}`);
-  return c.json({ error: "Not found" }, 404);
-});
-
 export default proxy;

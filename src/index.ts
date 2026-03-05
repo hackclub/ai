@@ -88,6 +88,11 @@ app.route("/models", models);
 app.route("/replicate", replicate);
 app.route("/up", up);
 
+app.post("*", (c) => {
+  console.warn(`[404 POST] ${c.req.path} from ${c.get("ip")}`);
+  return c.json({ error: "Not found" }, 404);
+});
+
 showRoutes(app);
 
 console.log(`Server running on http://localhost:${env.PORT}`);
