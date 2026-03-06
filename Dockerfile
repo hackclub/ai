@@ -11,6 +11,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 
 FROM base AS replicate
+ARG REPLICATE_API_KEY
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 COPY --from=build /app/scripts ./scripts

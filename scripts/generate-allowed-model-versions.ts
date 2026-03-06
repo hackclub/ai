@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { allowedReplicateModels } from "../src/config/replicate-models";
-import { env } from "../src/env";
+
+const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
+if (!REPLICATE_API_KEY) {
+  console.error("REPLICATE_API_KEY is not set");
+  process.exit(1);
+}
 
 const OUTPUT_PATH = path.join(
   process.cwd(),
@@ -23,10 +28,9 @@ async function main() {
       const res = await fetch(
         `https://api.replicate.com/v1/models/${owner}/${name}/versions`,
         {
-          headers: { Authorization: `Bearer ${env.REPLICATE_API_KEY}` },
+          headers: { Authorization: `Bearer ${REPLICATE_API_KEY}` },
         },
       );
-      console.log("dadjasdn");
 
       if (!res.ok) {
         console.error(
