@@ -53,7 +53,8 @@ const getReplicateHeaders = (c: Context) => {
 };
 
 const validateModelAccess = (owner: string, name: string) => {
-  const fullId = `${owner}/${name}`;
+  const cleanName = name.split(":")[0];
+  const fullId = `${owner}/${cleanName}`;
   if (!allowedReplicateModels.includes(fullId)) {
     throw new HTTPException(403, {
       message: `Model ${fullId} is not in the allowed list.`,
