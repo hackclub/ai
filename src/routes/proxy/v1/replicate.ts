@@ -63,6 +63,16 @@ const validateModelAccess = (owner: string, name: string) => {
   return fullId;
 };
 
+const getVersionFromModelName = (name: string) => name.split(":")[1];
+
+const validateVersionAccess = (model: string, version: string) => {
+  if (allowedVersionsMap[version] !== model) {
+    throw new HTTPException(403, {
+      message: `Model ${model}:${version} is not in the allowed list.`,
+    });
+  }
+};
+
 replicate.post("/replicate/files", async (c: Context) => {
   const body = await c.req.parseBody();
   const formData = new FormData();
@@ -172,18 +182,47 @@ replicate.post(
   async (c: Context) => {
     const { owner, model } = c.req.param();
     const fullModelId = validateModelAccess(owner, model);
+    const version = getVersionFromModelName(model);
 
     const start = Date.now();
     const body = await c.req.json();
 
-    const res = await fetch(
-      `https://api.replicate.com/v1/models/${fullModelId}/predictions`,
-      {
+    let res: Response;
+
+    if (version) {
+      validateVersionAccess(fullModelId, version);
+
+      const bodyVersion = body.version as string | undefined;
+      const canonicalVersion = `${fullModelId}:${version}`;
+      if (
+        bodyVersion &&
+        bodyVersion !== version &&
+        bodyVersion !== canonicalVersion
+      ) {
+        throw new HTTPException(400, {
+          message: "Conflicting version specified in path and request body.",
+        });
+      }
+
+      const { model: _ignoredModel, version: _ignoredVersion, ...rest } = body;
+      res = await fetch("https://api.replicate.com/v1/predictions", {
         method: "POST",
         headers: getReplicateHeaders(c),
-        body: JSON.stringify(body),
-      },
-    );
+        body: JSON.stringify({
+          ...rest,
+          version: canonicalVersion,
+        }),
+      });
+    } else {
+      res = await fetch(
+        `https://api.replicate.com/v1/models/${fullModelId}/predictions`,
+        {
+          method: "POST",
+          headers: getReplicateHeaders(c),
+          body: JSON.stringify(body),
+        },
+      );
+    }
 
     const data = await res.json();
 
