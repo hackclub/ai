@@ -62,7 +62,7 @@ const limiter = (limit: number) =>
     keyGenerator: (c: Ctx) => c.get("user")?.id || c.get("ip"),
   });
 
-export const standardLimiter = limiter(450);
+export const standardLimiter = limiter(650);
 export const moderationsLimiter = limiter(300);
 
 type Usage = {
