@@ -22,7 +22,7 @@ export const users = pgTable(
     spendingLimitUsd: numeric("spending_limit_usd", {
       precision: 10,
       scale: 8,
-    }).default("10"),
+    }).default("4"),
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
     isBanned: boolean("is_banned").notNull().default(false),
