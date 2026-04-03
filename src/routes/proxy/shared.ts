@@ -62,8 +62,11 @@ const limiter = (limit: number) =>
     keyGenerator: (c: Ctx) => c.get("user")?.id || c.get("ip"),
   });
 
-export const standardLimiter = limiter(750);
+export const standardLimiter = limiter(3750);
 export const moderationsLimiter = limiter(300);
+
+export const SPENDING_WINDOW_MS = 30 * 60 * 1000;
+export const SPENDING_LIMIT = 0.5;
 
 type Usage = {
   prompt_tokens?: number;
