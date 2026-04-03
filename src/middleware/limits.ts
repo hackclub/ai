@@ -4,6 +4,7 @@ import type { Context, Next } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { requestLogs } from "../db/schema";
+import { SPENDING_LIMIT, SPENDING_WINDOW_MS } from "../routes/proxy/shared";
 import type { AppVariables } from "../types";
 
 export async function checkSpendingLimit(
@@ -14,14 +15,27 @@ export async function checkSpendingLimit(
     { name: "middleware.checkSpendingLimit" },
     async () => {
       const user = c.get("user");
-      const limit = parseFloat(user.spendingLimitUsd || "8");
+      const dailyLimit = parseFloat(user.spendingLimitUsd || "8");
 
       const now = new Date();
+      const windowStart = new Date(now.getTime() - SPENDING_WINDOW_MS);
       const startOfDay = new Date(
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
       );
 
-      const [usage] = await db
+      const [windowUsage] = await db
+        .select({
+          totalCost: sql<string>`COALESCE(SUM(${requestLogs.cost}), 0)`,
+        })
+        .from(requestLogs)
+        .where(
+          and(
+            eq(requestLogs.userId, user.id),
+            gte(requestLogs.timestamp, windowStart),
+          ),
+        );
+
+      const [dailyUsage] = await db
         .select({
           totalCost: sql<string>`COALESCE(SUM(${requestLogs.cost}), 0)`,
         })
@@ -33,11 +47,18 @@ export async function checkSpendingLimit(
           ),
         );
 
-      const spent = parseFloat(usage?.totalCost || "0");
+      const windowSpent = parseFloat(windowUsage?.totalCost || "0");
+      const dailySpent = parseFloat(dailyUsage?.totalCost || "0");
 
-      if (spent >= limit) {
+      if (windowSpent >= SPENDING_LIMIT) {
         throw new HTTPException(429, {
-          message: `Daily spending limit of $${limit} reached. Need a higher limit? hey@mahadk.com`,
+          message: `30-minute spending limit of $${SPENDING_LIMIT} reached. Need a higher limit? hey@mahadk.com`,
+        });
+      }
+
+      if (dailySpent >= dailyLimit) {
+        throw new HTTPException(429, {
+          message: `Daily spending limit of $${dailyLimit} reached. Need a higher limit? hey@mahadk.com`,
         });
       }
 
