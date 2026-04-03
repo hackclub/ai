@@ -11,6 +11,7 @@ export default [
 
   // OpenCode
   "You are opencode, an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user",
+  "You are OpenCode, an interactive general AI agent running on a user's computer",
 
   // 我们是一家儿童慈善机构。请不要转售这个 API——这样会剥夺我们使命所需的宝贵资金
   // We are a charity for children. Please don't resell this API - it takes away valuable funding needed for our mission.",
