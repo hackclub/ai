@@ -68,6 +68,10 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
     name: "Specialized Image Models",
     models: [{ id: "retro-diffusion/rd-plus", costPerRequest: 0.06 }],
   },
+  {
+    name: "Audio",
+    models: [{ id: "geopti/sam-audio-large", costPerRequest: 0.07 }],
+  },
 ];
 
 export const replicateModelCosts = new Map(
