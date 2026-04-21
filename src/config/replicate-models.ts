@@ -13,6 +13,8 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
     name: "Text to Speech",
     models: [
       { id: "minimax/speech-02-turbo", costPerRequest: 0.0045 },
+      { id: "minimax/speech-2.8-turbo", costPerRequest: 0.0045 },
+      { id: "minimax/speech-2.8-hd", costPerRequest: 0.0075 },
       { id: "resemble-ai/chatterbox-pro", costPerRequest: 0.07 },
       { id: "zsxkib/dia", costPerRequest: 0.069 },
       { id: "lucataco/xtts-v2", costPerRequest: 0.053 },
