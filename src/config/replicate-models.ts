@@ -19,6 +19,8 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
       { id: "zsxkib/dia", costPerRequest: 0.069 },
       { id: "lucataco/xtts-v2", costPerRequest: 0.053 },
       { id: "qwen/qwen3-tts", costPerRequest: 0.06 },
+      { id: "inworld/tts-1.5-mini", costPerRequest: 0.00225 },
+      { id: "inworld/tts-1.5-max", costPerRequest: 0.0045 },
     ],
   },
   {
