@@ -78,6 +78,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     return stream(c, async (s) => {
       c.header("Content-Type", "text/event-stream");
+      c.status(res.status as ContentfulStatusCode);
       const reader = res.body?.getReader(),
         decoder = new TextDecoder(),
         chunks: string[] = [];
