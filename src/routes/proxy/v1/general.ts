@@ -56,7 +56,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
           } catch {
             clearInterval(heartbeat);
           }
-        }, 30_000);
+        }, 10_000);
 
         try {
           const data = await res.json();
