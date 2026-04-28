@@ -85,6 +85,13 @@
       "when": 1768899519360,
       "tag": "0011_fair_leo",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777398241654,
+      "tag": "0012_black_hellion",
+      "breakpoints": true
     }
   ]
 }

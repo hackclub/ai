@@ -45,6 +45,7 @@ export const apiKeys = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     key: text("key").notNull().unique(),
     name: text("name").notNull(),
+    isUnlimited: boolean("is_unlimited").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     revokedAt: timestamp("revoked_at"),
   },

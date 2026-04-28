@@ -13,6 +13,11 @@ export async function checkSpendingLimit(
   return Sentry.startSpan(
     { name: "middleware.checkSpendingLimit" },
     async () => {
+      const apiKey = c.get("apiKey");
+      if (apiKey?.isUnlimited) {
+        return next();
+      }
+
       const user = c.get("user");
       const limit = parseFloat(user.spendingLimitUsd || "8");
 
