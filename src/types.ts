@@ -23,6 +23,7 @@ export type AppVariables = {
   user: User;
   apiKey: ApiKey;
   ip: string;
+  openrouterKey: string;
 };
 
 export type ModelType = "language" | "image" | "embedding";

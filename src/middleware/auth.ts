@@ -9,6 +9,7 @@ import blockedUserAgentsConfig from "../config/blocked-user-agents";
 import { db } from "../db";
 import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
+import { ensureOpenrouterKey } from "../lib/openrouter-keys";
 import type { AppVariables } from "../types";
 
 const BLOCKED_APPS = blockedAppsConfig.map((a) => a.toLowerCase());
@@ -158,6 +159,9 @@ export async function requireApiKey(
           "Identity verification required. Please verify at https://identity.hackclub.com",
       });
     }
+
+    const openrouterKey = await ensureOpenrouterKey(apiKey.user);
+    c.set("openrouterKey", openrouterKey);
 
     await next();
   });

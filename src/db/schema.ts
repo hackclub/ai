@@ -23,6 +23,12 @@ export const users = pgTable(
       precision: 10,
       scale: 8,
     }).default("4"),
+    openrouterKey: text("openrouter_key"),
+    openrouterKeyHash: text("openrouter_key_hash"),
+    openrouterKeyLimit: numeric("openrouter_key_limit", {
+      precision: 10,
+      scale: 8,
+    }),
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
     isBanned: boolean("is_banned").notNull().default(false),

@@ -5,7 +5,6 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { allowedImageModels, env } from "../../../env";
 import { requireApiKey } from "../../../middleware/auth";
-import { checkSpendingLimit } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import {
   apiHeaders,
@@ -33,7 +32,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
       method: "POST",
-      headers: apiHeaders(),
+      headers: apiHeaders(c),
       body: JSON.stringify(body),
     });
 
@@ -129,19 +128,14 @@ async function handleProxy(c: Ctx, endpoint: string) {
 }
 
 for (const ep of ["chat/completions", "responses", "embeddings"])
-  general.post(
-    `/${ep}`,
-    requireApiKey,
-    standardLimiter,
-    checkSpendingLimit,
-    (c) => handleProxy(c, ep),
+  general.post(`/${ep}`, requireApiKey, standardLimiter, (c) =>
+    handleProxy(c, ep),
   );
 
 general.post(
   "/images/generations",
   requireApiKey,
   standardLimiter,
-  checkSpendingLimit,
   async (c) => {
     const start = Date.now();
     const body = (await c.req.json()) as {
@@ -157,7 +151,7 @@ general.post(
 
     const res = await fetch(`${env.OPENAI_API_URL}/v1/chat/completions`, {
       method: "POST",
-      headers: apiHeaders(),
+      headers: apiHeaders(c),
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: body.prompt }],

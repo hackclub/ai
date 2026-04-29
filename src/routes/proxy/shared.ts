@@ -8,7 +8,6 @@ import {
   allowedEmbeddingModels,
   allowedImageModels,
   allowedLanguageModels,
-  env,
 } from "../../env";
 import { openRouterHeaders } from "../../lib/models";
 import { captureEvent } from "../../lib/posthog";
@@ -93,9 +92,9 @@ export const resolveUsage = (data: unknown) => {
   };
 };
 
-export const apiHeaders = () => ({
+export const apiHeaders = (c: Ctx) => ({
   "Content-Type": "application/json",
-  Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+  Authorization: `Bearer ${c.get("openrouterKey")}`,
   ...openRouterHeaders,
 });
 
