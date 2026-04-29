@@ -47,7 +47,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
 
         {/* Features Section */}
         <div class="px-6 py-20 max-w-6xl mx-auto">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {/* Card 1: Code snippet style */}
             <div class="relative bg-gradient-to-br from-emerald-500/10 to-transparent border border-emerald-500/20 rounded-2xl p-8 overflow-hidden group hover:border-emerald-500/40 transition-all">
               <div class="absolute top-4 right-4 flex gap-1.5">
@@ -92,6 +92,21 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
               <p class="text-brand-text/70 leading-relaxed">
                 Gemini 3 Pro, GPT-5.2, Kimi K2, GLM-4.7 and many more.
               </p>
+            </div>
+
+            {/* Card 4: Search */}
+            <div class="relative bg-gradient-to-br from-sky-500/10 to-transparent border border-sky-500/20 rounded-2xl p-8 overflow-hidden group hover:border-sky-500/40 transition-all">
+              <div class="absolute -bottom-6 -right-6 w-28 h-28 rounded-full border border-sky-500/20 group-hover:scale-110 transition-transform" />
+              <div class="relative">
+                <div class="text-5xl font-black text-sky-400/80 mb-2">exa</div>
+                <h3 class="text-xl font-bold text-brand-heading mb-3">
+                  Web Search
+                </h3>
+                <p class="text-brand-text/70 leading-relaxed">
+                  Search, answer questions and fetch live web content through
+                  Exa.
+                </p>
+              </div>
             </div>
           </div>
         </div>

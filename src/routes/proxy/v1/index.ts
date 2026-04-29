@@ -11,6 +11,7 @@ import { getUserStats } from "../../../lib/stats";
 import { blockAICodingAgents, requireApiKey } from "../../../middleware/auth";
 import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
+import exa from "./exa";
 import general from "./general";
 import moderations from "./moderations";
 import ocr from "./ocr";
@@ -48,5 +49,6 @@ proxy.route("/", general);
 proxy.route("/", moderations);
 proxy.route("/", ocr);
 proxy.route("/", replicate);
+proxy.route("/", exa);
 
 export default proxy;

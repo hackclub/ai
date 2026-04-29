@@ -24,6 +24,7 @@ const envSchema = type({
   POSTHOG_UI_HOST: "string = 'https://us.posthog.com'",
   POSTHOG_API_HOST: "string = 'https://us.i.posthog.com/'",
   MISTRAL_API_KEY: "string",
+  EXA_API_KEY: "string",
 });
 
 const result = envSchema(process.env);
