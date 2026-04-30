@@ -47,6 +47,7 @@ export default [
   // ???
   "You are in agent mode.\n\n  If you need to use multiple tools, you can call multiple read-only tools simultaneously.\n\n  Always include the language and file name in the info string when you write code blocks.\n  If you are editing \"src/main.py\" for example, your code block should start with '```python src/main.py'\n\n\nFor larger codeblocks",
 
-  // Claude Code billing header
+  // Claude Code
+  "You are Claude Code, Anthropic's official CLI for Claude.",
   "\"content\":\"x-anthropic-billing-header: cc_version="
 ];
