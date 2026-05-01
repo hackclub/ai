@@ -49,5 +49,8 @@ export default [
 
   // Claude Code
   "You are Claude Code, Anthropic's official CLI for Claude.",
-  "\"content\":\"x-anthropic-billing-header: cc_version="
+  "\"content\":\"x-anthropic-billing-header: cc_version=",
+
+  // Hermes Agent
+  "Actions: create (full SKILL.md + optional category), patch (old_string/new_string — preferred for fixes), edit (full SKILL.md rewrite — major overhauls only), delete, write_file, remove_file.\n\nCreate when: complex task succeeded (5+ calls), errors overcome, user-corrected approach worked, non-trivial workflow discovered, or user asks you to remember a procedure.\nUpdate when: instructions stale/wrong, OS-specific failures, missing steps or pitfalls found during use. If you used a skill and hit issues not covered by it, patch it immediately."
 ];
