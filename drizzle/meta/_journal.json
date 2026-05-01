@@ -99,6 +99,13 @@
       "when": 1777455090820,
       "tag": "0013_thankful_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1777623500982,
+      "tag": "0014_jittery_master_chief",
+      "breakpoints": true
     }
   ]
 }

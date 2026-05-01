@@ -97,6 +97,20 @@ export const Check = ({ class: className, ...props }: IconProps) => (
   </svg>
 );
 
+export const X = ({ class: className, ...props }: IconProps) => (
+  <svg
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    stroke-width="2"
+    class={className}
+    aria-hidden="true"
+    {...props}
+  >
+    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
 // export const Clipboard = ({
 //   class: className,
 //   title,

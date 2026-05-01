@@ -1,6 +1,7 @@
 import type { Child } from "hono/jsx";
 import { allowedLanguageModels, env } from "../env";
 import type { Stats, User } from "../types";
+import { AgentBanner } from "./components/AgentBanner";
 import { Header } from "./components/Header";
 import { IdvBanner } from "./components/IdvBanner";
 import { StatCard } from "./components/StatCard";
@@ -22,9 +23,10 @@ export const Dashboard = ({
   dailySpending,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
+  const showAgentBanner = !user.agentBannerDismissedAt;
 
   return (
-    <Layout title="Dashboard" includeAlpine user={user}>
+    <Layout title="Dashboard" includeAlpine includeHtmx user={user}>
       <div>
         <Header
           title="hackai"
@@ -34,6 +36,7 @@ export const Dashboard = ({
         />
 
         {showIdvBanner && <IdvBanner />}
+        {showAgentBanner && <AgentBanner />}
 
         <div
           class={`w-full max-w-6xl mx-auto px-4 py-8 ${showIdvBanner ? "grayscale opacity-20 pointer-events-none select-none" : ""}`}

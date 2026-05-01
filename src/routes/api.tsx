@@ -5,7 +5,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
-import { apiKeys } from "../db/schema";
+import { apiKeys, users } from "../db/schema";
 import { captureEvent } from "../lib/posthog";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
@@ -112,6 +112,22 @@ api.get("/keys/partial", async (c) => {
   );
 
   return c.html(<ApiKeysList apiKeys={keys} />);
+});
+
+api.post("/dismiss-agent-banner", async (c) => {
+  const user = c.get("user");
+
+  await Sentry.startSpan(
+    { name: "db.update.dismissAgentBanner" },
+    async () => {
+      await db
+        .update(users)
+        .set({ agentBannerDismissedAt: new Date() })
+        .where(eq(users.id, user.id));
+    },
+  );
+
+  return c.body(null);
 });
 
 export default api;

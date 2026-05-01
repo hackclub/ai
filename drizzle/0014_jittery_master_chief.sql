@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "agent_banner_dismissed_at" timestamp;
