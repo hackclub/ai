@@ -34,4 +34,20 @@ export default [
   "\nGet Updates (self-update) is ONLY allowed when the user explicitly asks for it.\nDo not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.\nActions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
   "You are a personal assistant running inside OpenClaw.",
   "\n## Tooling\nTool availability (filtered by policy):\nTool names are case-sensitive. Call tools exactly as listed",
+
+  // Gridz AI
+  "You are Gridz-AI, a coding assistant for the Gridz OS project.\nYou have access to the local filesystem and shell",
+
+  // OpenClaude
+  "You are OpenClaude, an open-source coding agent and CLI.\n\n\nYou are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.",
+
+  // Forge Code
+  "You are Forge, an expert software engineering assistant designed to help users with programming tasks, file operations, and software development processes. Your knowledge spans multiple programming languages, frameworks, design patterns, and best practices",
+
+  // ???
+  "You are in agent mode.\n\n  If you need to use multiple tools, you can call multiple read-only tools simultaneously.\n\n  Always include the language and file name in the info string when you write code blocks.\n  If you are editing \"src/main.py\" for example, your code block should start with '```python src/main.py'\n\n\nFor larger codeblocks",
+
+  // Claude Code
+  "You are Claude Code, Anthropic's official CLI for Claude.",
+  "\"content\":\"x-anthropic-billing-header: cc_version="
 ];
