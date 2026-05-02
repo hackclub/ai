@@ -39,6 +39,7 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
         costPerRequest: 0.0063,
       },
       { id: "abiruyt/text-extract-ocr", costPerRequest: 0.0019 },
+      { id: "datalab-to/ocr", costPerRequest: 0.002 },
     ],
   },
   {
