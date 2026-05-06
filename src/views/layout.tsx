@@ -92,7 +92,7 @@ export const Layout = ({
                       brand: {
                         bg: "rgb(var(--brand-bg) / <alpha-value>)",
                         surface: "rgb(var(--brand-surface) / <alpha-value>)",
-                        primary: "#ec3750", // Hack Club Red
+                        primary: "#ec3750", 
                         "primary-hover": "#d62640",
                         heading: "rgb(var(--brand-heading) / <alpha-value>)",
                         text: "rgb(var(--brand-text) / <alpha-value>)",
@@ -119,11 +119,11 @@ export const Layout = ({
                 --brand-border: 48 48 53;
               }
               html[data-theme="light"] {
-                --brand-bg: 248 250 252; /* soft white */
+                --brand-bg: 243 241 232; 
                 --brand-surface: 255 255 255;
-                --brand-heading: 15 23 42; /* slate-900-ish */
-                --brand-text: 51 65 85; /* slate-700-ish */
-                --brand-border: 226 232 240; /* slate-200-ish */
+                --brand-heading: 15 23 42; 
+                --brand-text: 51 65 85; 
+                --brand-border: 226 232 240; 
               }
 
               html[data-theme="light"] ::selection {
