@@ -24,8 +24,33 @@ import {
 // this on log; the point is just to make a single oversized burst impossible
 // when the user is already near their daily cap.
 const IMAGE_GENERATION_RESERVATION = 0.25;
+const UPSTREAM_HEADER_TIMEOUT_MS = 5_000;
 
 const general = new Hono<{ Variables: AppVariables }>();
+
+async function fetchWithHeaderTimeout(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    UPSTREAM_HEADER_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new HTTPException(504, {
+        message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms`,
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function handleProxy(c: Ctx, endpoint: string) {
   const start = Date.now();
@@ -39,11 +64,14 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     await reserveCharge(c, await estimateUpstreamCost(body));
 
-    const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
-      method: "POST",
-      headers: apiHeaders(c),
-      body: JSON.stringify(body),
-    });
+    const res = await fetchWithHeaderTimeout(
+      `${env.OPENAI_API_URL}/v1/${endpoint}`,
+      {
+        method: "POST",
+        headers: apiHeaders(c),
+        body: JSON.stringify(body),
+      },
+    );
 
     if (!body.stream && endpoint !== "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
@@ -131,6 +159,8 @@ async function handleProxy(c: Ctx, endpoint: string) {
       { prompt: 0, completion: 0, total: 0, cost: 0 },
       duration,
     );
+
+    if (error instanceof HTTPException) throw error;
 
     throw new HTTPException(500, { message: "Internal server error" });
   }
