@@ -171,12 +171,12 @@ export const RecentRequestsRows = ({
         return (
           <tr class="border-b border-brand-border/50 hover:bg-brand-bg/30 transition-colors">
             <td class="py-2 px-4 text-sm text-brand-text font-medium whitespace-nowrap">
-              <abbr class="no-underline" title={formatFullTime(row.timestamp)}>
+              <abbr title={formatFullTime(row.timestamp)}>
                 {formatRelativeTime(row.timestamp)}
               </abbr>{" "}
               <span class="text-brand-text/40">•</span>{" "}
               <abbr
-                class="no-underline cursor-help"
+                class="cursor-help"
                 title={info}
                 style={`color: ${infoColor}`}
               >
@@ -203,7 +203,7 @@ export const RecentRequestsRows = ({
             </td>
             <td class="py-2 px-4 text-sm font-medium whitespace-nowrap">
               <abbr
-                class={`no-underline ${errorMessage ? "text-red-500" : "text-green-400"}`}
+                class={errorMessage ? "text-red-500" : "text-green-400"}
                 title={errorMessage || "Request completed"}
               >
                 {errorMessage ? "Error" : "OK"}
