@@ -5,8 +5,19 @@ type ApiKey = typeof apiKeys.$inferSelect;
 type RequestLog = typeof requestLogs.$inferSelect;
 export type DashboardRequestLog = Pick<
   RequestLog,
-  "id" | "model" | "totalTokens" | "timestamp" | "duration" | "ip"
->;
+  | "id"
+  | "model"
+  | "promptTokens"
+  | "completionTokens"
+  | "totalTokens"
+  | "timestamp"
+  | "duration"
+  | "ip"
+  | "response"
+> & {
+  apiKeyName: string;
+  modelName: string;
+};
 export type DashboardApiKey = Pick<ApiKey, "id" | "name" | "createdAt"> & {
   keyPreview: string;
 };
