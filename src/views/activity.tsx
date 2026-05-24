@@ -186,7 +186,7 @@ export const RecentRequestsRows = ({
             <td class="py-2 px-4 text-sm font-medium max-w-64 truncate">
               <a
                 href={`/models/${row.model}`}
-                class="text-brand-primary hover:text-brand-primary-hover transition-colors"
+                class="text-brand-text underline hover:text-brand-primary-hover transition-colors"
               >
                 {displayModelName(row.modelName)}
               </a>
