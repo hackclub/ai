@@ -1,32 +1,15 @@
 export function formatPrice(price: string | number): string {
-  const str = typeof price === "number" ? price.toString() : price;
+  const str = String(price).trim();
   const num = parseFloat(str);
   if (!str || Number.isNaN(num)) return "N/A";
   if (num === 0) return "Free";
 
-  const dotIndex = str.indexOf(".");
-  let whole: string;
-  let fraction: string;
-
-  if (dotIndex === -1) {
-    whole = str;
-    fraction = "";
-  } else {
-    whole = str.substring(0, dotIndex);
-    fraction = str.substring(dotIndex + 1);
-  }
-
-  whole = whole.replace(/^0+/, "") || "0";
-
-  if (fraction.length > 6) {
-    fraction = fraction.substring(0, 6);
-  }
-
-  fraction = fraction.padEnd(2, "0");
-  fraction = fraction.replace(/0+$/, "");
-  if (fraction.length < 2) {
-    fraction = fraction.padEnd(2, "0");
-  }
+  const [rawWhole = "0", rawFraction = ""] = str.split(".");
+  const whole = rawWhole.replace(/^0+/, "") || "0";
+  const fraction = rawFraction
+    .slice(0, 6)         // cap at 6 decimals (truncate, not round)
+    .replace(/0+$/, "")  // drop trailing zeros
+    .padEnd(2, "0");     // ...but keep at least 2
 
   return `$${whole}.${fraction}`;
 }
