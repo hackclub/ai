@@ -9,6 +9,10 @@ type ModelPageProps = {
   modelType: ModelType;
   user: User;
   dailySpending?: number;
+  apiStatus?: {
+    status: string;
+    balanceRemaining: number;
+  };
 };
 
 function formatPricing(pricePerToken?: string): string {
@@ -313,6 +317,7 @@ export const ModelPage = ({
   modelType,
   user,
   dailySpending,
+  apiStatus,
 }: ModelPageProps) => {
   const displayName = model.name || model.id;
   const provider = getProviderName(model.id);
@@ -347,7 +352,7 @@ export const ModelPage = ({
 
   return (
     <Layout title={`${displayName} - Hack Club AI`} includeAlpine user={user}>
-      <Header title="hackai" user={user} dailySpending={dailySpending} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} apiStatus={apiStatus} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         {/* Back link */}
