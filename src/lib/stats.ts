@@ -85,3 +85,30 @@ export async function getDailySpending(userId: string): Promise<number> {
 
   return parseFloat(result?.totalCost || "0");
 }
+
+export type ApiStatus = {
+  status: string;
+  balanceRemaining: number;
+};
+
+export async function getApiStatus(): Promise<ApiStatus | null> {
+  try {
+    return await Sentry.startSpan(
+      { name: "fetch.apiStatus" },
+      async () => {
+        const response = await fetch("https://ai.hackclub.com/up");
+
+        if (!response.ok) {
+          throw new Error(
+            `Status endpoint returned ${response.status}`,
+          );
+        }
+
+        return (await response.json()) as ApiStatus;
+      },
+    );
+  } catch (error) {
+    Sentry.captureException(error);
+    return null;
+  }
+}
