@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { apiKeys, requestLogs } from "../db/schema";
 import { fetchAllModels } from "../lib/models";
-import { getDailySpending, getUserStats } from "../lib/stats";
+import { getDailySpending, getUserStats, getApiStatus } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import {
@@ -86,10 +86,11 @@ const getRecentLogs = async (
 activity.get("/activity", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const [stats, recent, dailySpending] = await Promise.all([
+  const [stats, recent, dailySpending, apiStatus] = await Promise.all([
     getUserStats(user.id),
     getRecentLogs(user.id),
     getDailySpending(user.id),
+    getApiStatus(),
   ]);
 
   return c.html(
@@ -99,6 +100,7 @@ activity.get("/activity", requireAuth, async (c) => {
       recentLogs={recent.logs}
       hasMoreRecentLogs={recent.hasMore}
       dailySpending={dailySpending}
+      apiStatus={apiStatus}
     />,
   );
 });
