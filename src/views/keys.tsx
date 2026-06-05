@@ -10,9 +10,13 @@ type KeysProps = {
   user: User;
   apiKeys: DashboardApiKey[];
   dailySpending?: number;
+  apiStatus?: {
+    status: string;
+    balanceRemaining: number;
+  };
 };
 
-export const Keys = ({ user, apiKeys, dailySpending }: KeysProps) => {
+export const Keys = ({ user, apiKeys, dailySpending, apiStatus }: KeysProps) => {
   return (
     <Layout title="API Keys" includeHtmx includeAlpine user={user}>
       <div
@@ -50,7 +54,7 @@ export const Keys = ({ user, apiKeys, dailySpending }: KeysProps) => {
           }
         }`}
       >
-        <Header title="hackai" user={user} dailySpending={dailySpending} />
+        <Header title="hackai" user={user} dailySpending={dailySpending} apiStatus={apiStatus} />
 
         <div class="w-full max-w-6xl mx-auto px-4 py-8">
           <div class="mb-12">
