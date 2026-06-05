@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/bun";
 import { Hono } from "hono";
 import { fetchAllModels, type OpenRouterModel } from "../lib/models";
-import { getDailySpending } from "../lib/stats";
+import { getDailySpending, getApiStatus } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables, ModelType } from "../types";
 import { Header } from "../views/components/Header";
@@ -32,7 +32,7 @@ function getModelType(model: OpenRouterModel): ModelType {
 models.get("/", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const [{ languageModels, imageModels, embeddingModels }, dailySpending] =
+  const [{ languageModels, imageModels, embeddingModels }, dailySpending, apiStatus] =
     await Promise.all([
       Sentry.startSpan({ name: "fetch.models" }, async () => {
         try {
@@ -42,6 +42,7 @@ models.get("/", requireAuth, async (c) => {
         }
       }),
       getDailySpending(user.id),
+      getApiStatus(),
     ]);
 
   return c.html(
@@ -51,6 +52,7 @@ models.get("/", requireAuth, async (c) => {
       imageModels={imageModels}
       embeddingModels={embeddingModels}
       dailySpending={dailySpending}
+      apiStatus={apiStatus}
     />,
   );
 });
@@ -65,7 +67,7 @@ models.get("/*", requireAuth, async (c) => {
     return c.redirect("/dashboard");
   }
 
-  const [{ languageModels, imageModels, embeddingModels }, dailySpending] =
+  const [{ languageModels, imageModels, embeddingModels }, dailySpending, apiStatus] =
     await Promise.all([
       Sentry.startSpan({ name: "fetch.models" }, async () => {
         try {
@@ -75,6 +77,7 @@ models.get("/*", requireAuth, async (c) => {
         }
       }),
       getDailySpending(user.id),
+      getApiStatus(),
     ]);
 
   // Find the model in any of the arrays
@@ -84,7 +87,7 @@ models.get("/*", requireAuth, async (c) => {
   if (!model) {
     return c.html(
       <Layout title="Model Not Found" includeAlpine>
-        <Header title="hackai" user={user} dailySpending={dailySpending} />
+        <Header title="hackai" user={user} dailySpending={dailySpending} apiStatus={apiStatus} />
         <div class="w-full max-w-6xl mx-auto px-4 py-8">
           <div class="bg-white border-2 border-brand-border rounded-2xl p-8 text-center">
             <h1 class="text-2xl font-bold text-brand-heading mb-4">
@@ -118,6 +121,7 @@ models.get("/*", requireAuth, async (c) => {
       modelType={modelType}
       user={user}
       dailySpending={dailySpending}
+      apiStatus={apiStatus}
     />,
   );
 });
