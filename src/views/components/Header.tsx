@@ -81,6 +81,16 @@ export const Header = ({
               </span>
             </div>
           )}
+          
+          {apiStatus && (
+          <a href="https://ai.hackclub.com/up" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full hover:border-brand-primary transition-colors">
+            <div class={`w-2 h-2 rounded-full ${statusDotClass}`}></div>
+            <span class="text-xs font-medium text-brand-text">
+              Status: {statusText}
+            </span>
+          </a>
+          )}
+          
           <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
             <span class="text-sm font-medium text-brand-heading">
               {user.name || "User"}
@@ -169,6 +179,17 @@ export const Header = ({
           </div>
         )}
 
+        {apiStatus && (
+          <div class="px-2">
+            <a href="https://ai.hackclub.com/up" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full hover:border-brand-primary transition-colors">
+              <div class={`w-2 h-2 rounded-full ${statusDotClass}`}></div>
+              <span class="text-xs font-medium text-brand-text">
+                Status: {statusText}
+              </span>
+            </a>
+          </div>
+        )}
+        
         <div class="h-px bg-brand-border my-1"></div>
 
         <div class="flex items-center gap-3 px-2">
