@@ -26,6 +26,21 @@ import {
 const IMAGE_GENERATION_RESERVATION = 0.25;
 const UPSTREAM_HEADER_TIMEOUT_MS = 5_000;
 
+// Image-modality requests (text-to-image, image editing) routed through
+// /chat/completions regularly exceed the 5s upstream header budget, since
+// image models can take 10-30s to begin streaming a response. The header
+// timeout guard from PR #110 is still valuable for text and embeddings, so
+// we only skip it when the request is destined for an image-capable model
+// or explicitly asks for image output.
+function isImageModalityRequest(body: {
+  model?: string;
+  [k: string]: unknown;
+}): boolean {
+  if (body.model && allowedImageModels.includes(body.model)) return true;
+  const modalities = body.modalities;
+  return Array.isArray(modalities) && modalities.includes("image");
+}
+
 const general = new Hono<{ Variables: AppVariables }>();
 
 async function fetchWithHeaderTimeout(
@@ -64,14 +79,15 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     await reserveCharge(c, await estimateUpstreamCost(body));
 
-    const res = await fetchWithHeaderTimeout(
-      `${env.OPENAI_API_URL}/v1/${endpoint}`,
-      {
-        method: "POST",
-        headers: apiHeaders(c),
-        body: JSON.stringify(body),
-      },
-    );
+    const upstreamUrl = `${env.OPENAI_API_URL}/v1/${endpoint}`;
+    const requestInit: RequestInit = {
+      method: "POST",
+      headers: apiHeaders(c),
+      body: JSON.stringify(body),
+    };
+    const res = isImageModalityRequest(body)
+      ? await fetch(upstreamUrl, requestInit)
+      : await fetchWithHeaderTimeout(upstreamUrl, requestInit);
 
     if (!body.stream && endpoint !== "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
