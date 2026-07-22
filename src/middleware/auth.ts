@@ -94,10 +94,8 @@ export async function requireAuth(
       return c.redirect("/");
     }
 
-    if (result.user.isBanned) {
-      throw new HTTPException(403, {
-        message: "You are banned from using this service.",
-      });
+    if (result.user.reviewStatus === "banned") {
+      return c.redirect("/banned");
     }
 
     c.set("user", result.user);
@@ -119,7 +117,7 @@ export async function requireApiKey(
   return Sentry.startSpan({ name: "middleware.requireApiKey" }, async () => {
     const authHeader = c.req.header("Authorization");
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 
@@ -147,7 +145,7 @@ export async function requireApiKey(
     c.set("apiKey", apiKey.apiKey);
     c.set("user", apiKey.user);
 
-    if (apiKey.user.isBanned) {
+    if (apiKey.user.reviewStatus === "banned") {
       throw new HTTPException(403, {
         message: "You are banned from using this service.",
       });

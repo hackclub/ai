@@ -12,17 +12,28 @@ function formatNumberShort(num: number): string {
 }
 
 type StatCardProps = {
-  value: string | number;
+  value?: string | number | null;
   label: string;
 };
 
 export const StatCard = ({ value, label }: StatCardProps) => {
-  const numValue =
-    typeof value === "string" ? parseInt(value.replace(/,/g, ""), 10) : value;
-  const fullValue = typeof value === "string" ? value : value.toLocaleString();
-  const shortValue = Number.isNaN(numValue)
-    ? value
-    : formatNumberShort(numValue);
+  const hasValue = value !== undefined && value !== null;
+  const numValue = hasValue
+    ? typeof value === "string"
+      ? parseInt(value.replace(/,/g, ""), 10)
+      : (value as number)
+    : NaN;
+  const fullValue = hasValue
+    ? typeof value === "string"
+      ? value
+      : typeof value === "number"
+        ? value.toLocaleString()
+        : String(value)
+    : "-";
+  const shortValue =
+    hasValue && !Number.isNaN(Number(numValue))
+      ? formatNumberShort(Number(numValue))
+      : fullValue;
 
   return (
     <div class="border-2 border-brand-border bg-brand-surface p-6 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 group">

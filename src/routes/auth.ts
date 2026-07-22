@@ -115,7 +115,51 @@ auth.use(
   }),
 );
 
-auth.get("/login", (c) => {
+auth.get("/login", async (c) => {
+  if (env.NODE_ENV === "development") {
+    const testSlackId = `dev_${crypto.randomUUID().slice(0, 8)}`;
+    const testEmail = `dev_${crypto.randomUUID().slice(0, 8)}@test.com`;
+    const testName = "Dev User";
+
+    let [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.slackId, testSlackId))
+      .limit(1);
+
+    if (!user) {
+      [user] = await db
+        .insert(users)
+        .values({
+          slackId: testSlackId,
+          email: testEmail,
+          name: testName,
+          isIdvVerified: false,
+        })
+        .returning();
+    }
+
+    const sessionToken = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await db.insert(sessions).values({
+      userId: user.id,
+      token: sessionToken,
+      expiresAt,
+    });
+
+    setCookie(c, "session_token", sessionToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "Lax",
+      maxAge: 60 * 60 * 24 * 30,
+      path: "/",
+    });
+
+    return c.redirect("/dashboard");
+  }
+
   const clientId = env.HACK_CLUB_CLIENT_ID;
   const redirectUri = `${env.BASE_URL}/auth/callback`;
   const state = crypto.randomUUID();
@@ -198,7 +242,7 @@ auth.get("/callback", async (c) => {
     if (hasBlockedAddressCountry(identity)) {
       try {
         await sendBlockedAddressSlackMessage(identity);
-      } catch (error) {
+      } catch {
         throw new HTTPException(400, {
           message:
             "Please contact support and send this error code: willow-savannah-tunnel-windermere",

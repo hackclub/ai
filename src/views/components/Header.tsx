@@ -4,25 +4,27 @@ import { Hamburger } from "./Icons";
 
 type HeaderProps = {
   title: string;
-  user: User;
+  user?: User | null;
   replicateEnabled?: boolean;
   dailySpending?: number;
   dailyLimit?: number;
+  isAdmin?: boolean;
 };
 
 export const Header = ({
   title,
-  user,
+  user = null,
   replicateEnabled,
   dailySpending,
   dailyLimit,
+  isAdmin = false,
 }: HeaderProps) => {
-  const limit = dailyLimit ?? parseFloat(user.spendingLimitUsd || "8");
+  const limit = dailyLimit ?? parseFloat(user?.spendingLimitUsd ?? "8");
   const spent = dailySpending ?? 0;
   return (
     <header class="py-6 sm:mb-8 relative z-50">
       <div class="max-w-7xl mx-auto px-4 flex justify-between items-center gap-4">
-        <a href="/dashboard">
+        <a href={isAdmin ? "/admin" : "/dashboard"}>
           <div class="flex items-center gap-3 flex-shrink-0">
             <div class="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white font-bold text-xl transform -rotate-3">
               h
@@ -35,44 +37,75 @@ export const Header = ({
 
         {/* Desktop Navigation */}
         <div class="hidden md:flex items-center gap-6">
-          <a
-            href="/keys"
-            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-          >
-            Keys
-          </a>
-          <a
-            href="/models"
-            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-          >
-            Models
-          </a>
-          <a
-            href="/activity"
-            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-          >
-            Activity
-          </a>
-          <a
-            href="/docs"
-            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-          >
-            Docs
-          </a>
-          {replicateEnabled && (
-            <a
-              href="/replicate"
-              class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-            >
-              Replicate
-            </a>
+          {isAdmin ? (
+            <>
+              <a
+                href="/admin"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Dashboard
+              </a>
+              <a
+                href="/admin/violations"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Violations
+              </a>
+              <a
+                href="/admin/users"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Users
+              </a>
+            </>
+          ) : (
+            <>
+              <a
+                href="/keys"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Keys
+              </a>
+              <a
+                href="/models"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Models
+              </a>
+              <a
+                href="/activity"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Activity
+              </a>
+              <a
+                href="/dashboard/violations"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Violations
+              </a>
+              <a
+                href="/docs"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Docs
+              </a>
+              {replicateEnabled && (
+                <a
+                  href="/replicate"
+                  class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+                >
+                  Replicate
+                </a>
+              )}
+              <a
+                href="/global"
+                class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
+              >
+                Global Stats
+              </a>
+            </>
           )}
-          <a
-            href="/global"
-            class="text-sm font-medium text-brand-text hover:text-brand-primary transition-colors"
-          >
-            Global Stats
-          </a>
           {dailySpending !== undefined && (
             <div class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full">
               <div class="w-2 h-2 rounded-full bg-green-500"></div>
@@ -83,12 +116,12 @@ export const Header = ({
           )}
           <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
             <span class="text-sm font-medium text-brand-heading">
-              {user.name || "User"}
+              {isAdmin ? "Admin" : user?.name || "User"}
             </span>
-            {user.avatar && (
+            {user?.avatar && (
               <img
-                src={user.avatar || undefined}
-                alt={user.name || "User"}
+                src={user.avatar}
+                alt={user?.name || "User"}
                 class="w-10 h-10 rounded-full border-2 border-brand-border"
               />
             )}
@@ -119,68 +152,99 @@ export const Header = ({
         id="mobile-menu"
         class="hidden md:hidden absolute top-full left-0 right-0 bg-brand-surface border-b-2 border-brand-border shadow-xl p-4 flex flex-col gap-4"
       >
-        <a
-          href="/keys"
-          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-        >
-          Keys
-        </a>
-        <a
-          href="/models"
-          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-        >
-          Models
-        </a>
-        <a
-          href="/activity"
-          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-        >
-          Activity
-        </a>
-        <a
-          href="/docs"
-          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-        >
-          Docs
-        </a>
-        {replicateEnabled && (
-          <a
-            href="/replicate"
-            class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-          >
-            Replicate
-          </a>
-        )}
-        <a
-          href="/global"
-          class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
-        >
-          Global Stats
-        </a>
+        {isAdmin ? (
+          <>
+            <a
+              href="/admin"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Dashboard
+            </a>
+            <a
+              href="/admin/violations"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Violations
+            </a>
+            <a
+              href="/admin/users"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Users
+            </a>
+          </>
+        ) : (
+          <>
+            <a
+              href="/keys"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Keys
+            </a>
+            <a
+              href="/models"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Models
+            </a>
+            <a
+              href="/activity"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Activity
+            </a>
+            <a
+              href="/dashboard/violations"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Violations
+            </a>
+            <a
+              href="/docs"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Docs
+            </a>
+            {replicateEnabled && (
+              <a
+                href="/replicate"
+                class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+              >
+                Replicate
+              </a>
+            )}
+            <a
+              href="/global"
+              class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"
+            >
+              Global Stats
+            </a>
 
-        {dailySpending !== undefined && (
-          <div class="flex items-center gap-2 px-2 py-2">
-            <div class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full">
-              <div class="w-2 h-2 rounded-full bg-green-500"></div>
-              <span class="text-xs font-medium text-brand-text">
-                ${spent.toFixed(2)}/${limit.toFixed(2)}
-              </span>
-            </div>
-          </div>
+            {dailySpending !== undefined && (
+              <div class="flex items-center gap-2 px-2 py-2">
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-brand-surface border border-brand-border rounded-full">
+                  <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span class="text-xs font-medium text-brand-text">
+                    ${spent.toFixed(2)}/${limit.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <div class="h-px bg-brand-border my-1"></div>
 
         <div class="flex items-center gap-3 px-2">
-          {user.avatar && (
+          {user?.avatar && (
             <img
-              src={user.avatar || undefined}
-              alt={user.name || "User"}
+              src={user.avatar}
+              alt={user?.name || "User"}
               class="w-8 h-8 rounded-full border-2 border-brand-border"
             />
           )}
           <span class="text-base font-medium text-brand-heading">
-            {user.name || "User"}
+            {isAdmin ? "Admin" : user?.name || "User"}
           </span>
         </div>
 

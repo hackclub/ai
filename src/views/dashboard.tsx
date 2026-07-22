@@ -3,6 +3,7 @@ import { allowedLanguageModels, env } from "../env";
 import type { Stats, User } from "../types";
 import { AgentBanner } from "./components/AgentBanner";
 import { Header } from "./components/Header";
+import { AlertTriangle } from "./components/Icons";
 import { IdvBanner } from "./components/IdvBanner";
 import { StatCard } from "./components/StatCard";
 import { Layout } from "./layout";
@@ -131,6 +132,12 @@ export const Dashboard = ({
                   />
                 </svg>
               }
+            />
+            <QuickLinkCard
+              href="/dashboard/violations"
+              title="Violations"
+              description="View your content violations and review status."
+              icon={<AlertTriangle class="w-8 h-8" aria-hidden />}
             />
             {replicateEnabled && (
               <QuickLinkCard

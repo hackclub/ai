@@ -56,7 +56,6 @@ export async function getModelStats(): Promise<ModelStats[]> {
       })
       .from(requestLogs)
       .groupBy(requestLogs.model)
-      .having(sql`COALESCE(SUM(${requestLogs.totalTokens}), 0) > 0`)
       .orderBy(desc(sql<number>`COALESCE(SUM(${requestLogs.totalTokens}), 0)`)),
   );
 }

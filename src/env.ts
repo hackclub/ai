@@ -26,6 +26,11 @@ const envSchema = type({
   POSTHOG_API_HOST: "string = 'https://us.i.posthog.com/'",
   MISTRAL_API_KEY: "string",
   EXA_API_KEY: "string",
+  REVIEW_SAMPLE_RATE: "string.numeric.parse = '1'",
+  WEEKLY_VIOLATION_THRESHOLD: "string.numeric.parse = '2'",
+  MONTHLY_VIOLATION_THRESHOLD: "string.numeric.parse = '5'",
+  STRICT_REVIEW_THRESHOLD: "string.numeric.parse = '2'",
+  "INTERNAL_API_KEY?": "string",
 });
 
 const result = envSchema(process.env);
@@ -52,3 +57,10 @@ export const allowedImageModels = parseModelList(env.ALLOWED_IMAGE_MODELS);
 export const allowedEmbeddingModels = parseModelList(
   env.ALLOWED_EMBEDDING_MODELS,
 );
+
+export const reviewConfig = {
+  sampleRate: env.REVIEW_SAMPLE_RATE,
+  weeklyThreshold: env.WEEKLY_VIOLATION_THRESHOLD,
+  monthlyThreshold: env.MONTHLY_VIOLATION_THRESHOLD,
+  strictThreshold: env.STRICT_REVIEW_THRESHOLD,
+};

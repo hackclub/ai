@@ -4,3 +4,5 @@ dist
 .DS_Store
 *.log
 scratch
+package-lock.json
+AGENTS.md

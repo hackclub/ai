@@ -15,6 +15,7 @@ import { trimTrailingSlash } from "hono/trailing-slash";
 import { env } from "./env";
 import { runMigrations } from "./migrate";
 import activity from "./routes/activity";
+import admin from "./routes/admin";
 import api from "./routes/api";
 import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
@@ -85,6 +86,7 @@ app.route("/global", global);
 app.route("/internal", internal);
 app.route("/keys", keys);
 app.route("/models", models);
+app.route("/admin", admin);
 app.route("/replicate", replicate);
 app.route("/up", up);
 

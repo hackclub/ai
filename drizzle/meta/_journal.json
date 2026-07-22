@@ -113,6 +113,20 @@
       "when": 1778009508013,
       "tag": "0015_regular_winter_soldier",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784720627569,
+      "tag": "0016_even_fallen_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784720665881,
+      "tag": "0017_nice_shard",
+      "breakpoints": true
     }
   ]
 }

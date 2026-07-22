@@ -7,6 +7,12 @@ import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { apiKeys, users } from "../db/schema";
 import { captureEvent } from "../lib/posthog";
+import {
+  getUserFlagSettings,
+  getUserViolationStats,
+  getUserViolations,
+  setUserFlagSettings,
+} from "../lib/review";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { ApiKeysList } from "../views/keys";
@@ -126,5 +132,28 @@ api.post("/dismiss-agent-banner", async (c) => {
 
   return c.body(null);
 });
+
+api.get("/violations", async (c) => {
+  const user = c.get("user");
+  const rawLimit = c.req.query("limit");
+  const limit = Math.min(200, Math.max(1, Number.parseInt(rawLimit ?? "50", 10) || 50));
+  const [stats, violations, flagSettings] = await Promise.all([
+    getUserViolationStats(user.id),
+    getUserViolations(user.id, limit),
+    getUserFlagSettings(user.id),
+  ]);
+  return c.json({ stats, violations, flagSettings });
+});
+
+api.put(
+  "/violations/flag-settings",
+  arktypeValidator("json", type({ optInForcedReview: "boolean" })),
+  async (c) => {
+    const user = c.get("user");
+    const { optInForcedReview } = c.req.valid("json");
+    await setUserFlagSettings(user.id, optInForcedReview);
+    return c.json({ success: true });
+  },
+);
 
 export default api;

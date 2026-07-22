@@ -59,7 +59,7 @@ export const openRouterHeaders = {
 function createModelsFetcher(
   key: string,
   endpoint: string,
-  allowedModels: string[],
+  _allowedModels: string[],
 ): () => Promise<OpenRouterModelsResponse> {
   return async () => {
     const state = cacheState[key];
@@ -91,8 +91,8 @@ function createModelsFetcher(
         }
 
         // const orderMap = new Map(allowedModels.map((id, index) => [id, index]));
-        data.data = data.data;
-        // .filter((model) => orderMap.has(model.id))
+        // data.data = data.data
+        //   .filter((model) => orderMap.has(model.id))
         // .sort(
         //   (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0),
         // );

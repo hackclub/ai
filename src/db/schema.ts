@@ -4,11 +4,19 @@ import {
   integer,
   jsonb,
   numeric,
+  pgEnum,
   pgTable,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+export const reviewStatusEnum = pgEnum("review_status", [
+  "normal",
+  "flagged",
+  "strict",
+  "banned",
+]);
 
 export const users = pgTable(
   "users",
@@ -31,8 +39,12 @@ export const users = pgTable(
     }),
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
-    isBanned: boolean("is_banned").notNull().default(false),
+    isAdmin: boolean("is_admin").notNull().default(false),
     agentBannerDismissedAt: timestamp("agent_banner_dismissed_at"),
+    reviewStatus: reviewStatusEnum("review_status").notNull().default("normal"),
+    violationCountWeek: integer("violation_count_week").notNull().default(0),
+    violationCountMonth: integer("violation_count_month").notNull().default(0),
+    lastViolationAt: timestamp("last_violation_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -40,6 +52,8 @@ export const users = pgTable(
     index("users_slack_id_idx").on(table.slackId),
     index("users_email_idx").on(table.email),
     index("users_idv_verified_idx").on(table.isIdvVerified),
+    index("users_review_status_idx").on(table.reviewStatus),
+    index("users_is_admin_idx").on(table.isAdmin),
   ],
 );
 
@@ -108,6 +122,64 @@ export const requestLogs = pgTable(
   ],
 );
 
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("sessions_user_id_idx").on(table.userId),
+    index("sessions_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+export const contentViolations = pgTable(
+  "content_violations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    violationEventId: uuid("violation_event_id").notNull().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    requestLogId: uuid("request_log_id").references(() => requestLogs.id, {
+      onDelete: "set null",
+    }),
+    type: text("type").notNull(), // "input" or "output"
+    category: text("category").notNull(), // "illicit", "violence", etc.
+    content: text("content"), // actual flagged content
+    contentHash: text("content_hash"), // hash of flagged content
+    dismissed: boolean("dismissed").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("violations_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+    index("violations_request_log_idx").on(table.requestLogId),
+    index("violations_event_id_idx").on(table.violationEventId),
+  ],
+);
+
+export const userFlagSettings = pgTable(
+  "user_flag_settings",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    optInForcedReview: boolean("opt_in_forced_review").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("flag_settings_user_idx").on(table.userId)],
+);
+
 export const pendingCharges = pgTable(
   "pending_charges",
   {
@@ -129,19 +201,4 @@ export const pendingCharges = pgTable(
   ],
 );
 
-export const sessions = pgTable(
-  "sessions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    token: text("token").notNull().unique(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    index("sessions_user_id_idx").on(table.userId),
-    index("sessions_expires_at_idx").on(table.expiresAt),
-  ],
-);
+export type Violation = typeof contentViolations.$inferSelect;
