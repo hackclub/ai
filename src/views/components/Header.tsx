@@ -17,7 +17,7 @@ export const Header = ({
   dailySpending,
   dailyLimit,
 }: HeaderProps) => {
-  const limit = dailyLimit ?? parseFloat(user.spendingLimitUsd || "8");
+  const limit = dailyLimit ?? parseFloat(user.spendingLimitUsd || "3");
   const spent = dailySpending ?? 0;
   return (
     <header class="py-6 sm:mb-8 relative z-50">

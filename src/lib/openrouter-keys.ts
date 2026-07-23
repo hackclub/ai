@@ -57,7 +57,7 @@ async function updateOpenrouterKeyLimit(hash: string, limit: number) {
  */
 export async function ensureOpenrouterKey(user: User): Promise<string> {
   return Sentry.startSpan({ name: "openrouter.ensureKey" }, async () => {
-    const desiredLimit = parseFloat(user.spendingLimitUsd || "4");
+    const desiredLimit = parseFloat(user.spendingLimitUsd || "3");
 
     if (!user.openrouterKey || !user.openrouterKeyHash) {
       const created = await createOpenrouterKey(user, desiredLimit);
