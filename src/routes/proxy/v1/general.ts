@@ -25,7 +25,13 @@ import {
 // when the user is already near their daily cap.
 const IMAGE_GENERATION_RESERVATION = 0.25;
 const UPSTREAM_HEADER_TIMEOUT_MS = 15_000;
-const UPSTREAM_HEADER_TIMEOUT_RETRIES = 1;
+const UPSTREAM_RETRY_ATTEMPTS = 2;
+
+// HTTP status codes from upstream that are worth retrying (transient failures).
+const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+
+// Maximum delay between retries in milliseconds.
+const MAX_RETRY_DELAY_MS = 5_000;
 
 // Image-modality requests (text-to-image, image editing) routed through
 // /chat/completions regularly exceed any reasonable header budget, since
@@ -45,13 +51,57 @@ function isImageModalityRequest(body: {
 
 const general = new Hono<{ Variables: AppVariables }>();
 
-async function fetchWithHeaderTimeout(
+/**
+ * Parse the Retry-After header value into milliseconds.
+ * Supports both delta-seconds and HTTP-date formats.
+ * Returns null if the header is missing or unparseable.
+ */
+function parseRetryAfter(response: Response): number | null {
+  const header = response.headers.get("retry-after");
+  if (!header) return null;
+
+  // Delta-seconds: a plain integer
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_DELAY_MS);
+  }
+
+  // HTTP-date: try parsing as a date
+  const date = new Date(header);
+  if (!Number.isNaN(date.getTime())) {
+    const delay = date.getTime() - Date.now();
+    if (delay > 0) return Math.min(delay, MAX_RETRY_DELAY_MS);
+  }
+
+  return null;
+}
+
+/**
+ * Sleep for a given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch with a header timeout and automatic retries for transient failures.
+ *
+ * Retries on:
+ * - Header timeout (our local 15s guard) on non-streaming requests
+ * - Upstream 429 (rate limit), 502, 503, 504 (transient server errors)
+ *
+ * Does NOT retry:
+ * - Streaming requests (body bytes may already be committed)
+ * - 4xx errors other than 429 (client errors are not transient)
+ * - Network errors other than our own timeout abort
+ */
+async function fetchWithRetries(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
-  let lastError: unknown;
+  const isStreaming = init.body && typeof init.body !== "string";
 
-  for (let attempt = 0; attempt <= UPSTREAM_HEADER_TIMEOUT_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= UPSTREAM_RETRY_ATTEMPTS; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
@@ -61,26 +111,47 @@ async function fetchWithHeaderTimeout(
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
       clearTimeout(timeout);
+
+      // Check if this is a retryable upstream error
+      if (
+        RETRYABLE_STATUS_CODES.has(res.status) &&
+        attempt < UPSTREAM_RETRY_ATTEMPTS
+      ) {
+        // Don't retry streaming requests
+        if (isStreaming) return res;
+
+        // Respect Retry-After header if present (common on 429s)
+        const retryAfter = parseRetryAfter(res) ?? 1000 * (attempt + 1);
+        await sleep(retryAfter);
+        continue;
+      }
+
       return res;
     } catch (error) {
       clearTimeout(timeout);
 
+      // Only retry on our own timeout abort, and only on non-streaming requests
       if (controller.signal.aborted) {
-        lastError = new HTTPException(504, {
-          message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms (attempt ${attempt + 1}/${UPSTREAM_HEADER_TIMEOUT_RETRIES + 1})`,
-        });
+        if (attempt < UPSTREAM_RETRY_ATTEMPTS && !isStreaming) {
+          // Exponential backoff: 1s, 2s
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
 
-        // Don't retry streaming requests — the body is already committed
-        // and callers can't easily replay them.
-        if (init.body && typeof init.body !== "string") break;
-        continue;
+        throw new HTTPException(504, {
+          message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms after ${UPSTREAM_RETRY_ATTEMPTS + 1} attempts`,
+        });
       }
 
+      // Re-throw all other errors (network errors, etc.)
       throw error;
     }
   }
 
-  throw lastError;
+  // Should not reach here, but TypeScript needs it
+  throw new HTTPException(504, {
+    message: "Upstream request failed after all retry attempts",
+  });
 }
 
 async function handleProxy(c: Ctx, endpoint: string) {
@@ -106,7 +177,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
     // timeout entirely for those requests.
     const res = isImageModalityRequest(body)
       ? await fetch(upstreamUrl, requestInit)
-      : await fetchWithHeaderTimeout(upstreamUrl, requestInit);
+      : await fetchWithRetries(upstreamUrl, requestInit);
 
     if (!body.stream && endpoint !== "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
