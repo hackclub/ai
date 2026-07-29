@@ -24,7 +24,24 @@ import {
 // this on log; the point is just to make a single oversized burst impossible
 // when the user is already near their daily cap.
 const IMAGE_GENERATION_RESERVATION = 0.25;
-const UPSTREAM_HEADER_TIMEOUT_MS = 5_000;
+const UPSTREAM_HEADER_TIMEOUT_MS = 15_000;
+const UPSTREAM_HEADER_TIMEOUT_RETRIES = 1;
+
+// Image-modality requests (text-to-image, image editing) routed through
+// /chat/completions regularly exceed any reasonable header budget, since
+// image models can take 10-30s to begin streaming a response. The header
+// timeout guard is still valuable for text and embeddings, so we skip it
+// when the request targets an image-capable model or explicitly asks for
+// image output.
+function isImageModalityRequest(body: {
+  model?: string;
+  modalities?: unknown;
+  [k: string]: unknown;
+}): boolean {
+  if (body.model && allowedImageModels.includes(body.model)) return true;
+  const modalities = body.modalities;
+  return Array.isArray(modalities) && modalities.includes("image");
+}
 
 const general = new Hono<{ Variables: AppVariables }>();
 
@@ -32,24 +49,38 @@ async function fetchWithHeaderTimeout(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    UPSTREAM_HEADER_TIMEOUT_MS,
-  );
+  let lastError: unknown;
 
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new HTTPException(504, {
-        message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms`,
-      });
+  for (let attempt = 0; attempt <= UPSTREAM_HEADER_TIMEOUT_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      UPSTREAM_HEADER_TIMEOUT_MS,
+    );
+
+    try {
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timeout);
+      return res;
+    } catch (error) {
+      clearTimeout(timeout);
+
+      if (controller.signal.aborted) {
+        lastError = new HTTPException(504, {
+          message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms (attempt ${attempt + 1}/${UPSTREAM_HEADER_TIMEOUT_RETRIES + 1})`,
+        });
+
+        // Don't retry streaming requests — the body is already committed
+        // and callers can't easily replay them.
+        if (init.body && typeof init.body !== "string") break;
+        continue;
+      }
+
+      throw error;
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError;
 }
 
 async function handleProxy(c: Ctx, endpoint: string) {
@@ -64,14 +95,18 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     await reserveCharge(c, await estimateUpstreamCost(body));
 
-    const res = await fetchWithHeaderTimeout(
-      `${env.OPENAI_API_URL}/v1/${endpoint}`,
-      {
-        method: "POST",
-        headers: apiHeaders(c),
-        body: JSON.stringify(body),
-      },
-    );
+    const upstreamUrl = `${env.OPENAI_API_URL}/v1/${endpoint}`;
+    const requestInit: RequestInit = {
+      method: "POST",
+      headers: apiHeaders(c),
+      body: JSON.stringify(body),
+    };
+
+    // Image models take 10-30s+ to produce headers; skip the header
+    // timeout entirely for those requests.
+    const res = isImageModalityRequest(body)
+      ? await fetch(upstreamUrl, requestInit)
+      : await fetchWithHeaderTimeout(upstreamUrl, requestInit);
 
     if (!body.stream && endpoint !== "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
