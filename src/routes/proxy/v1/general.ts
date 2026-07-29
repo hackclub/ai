@@ -62,7 +62,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
     body.user = `user_${c.get("user").id}`;
     body.usage = { include: true };
 
-    await reserveCharge(c, await estimateUpstreamCost(body));
+    await reserveCharge(c, await estimateUpstreamCost(body, endpoint));
 
     const res = await fetchWithHeaderTimeout(
       `${env.OPENAI_API_URL}/v1/${endpoint}`,
@@ -73,7 +73,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
       },
     );
 
-    if (!body.stream && endpoint !== "embeddings") {
+    if (!body.stream || endpoint === "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
       // (524 timeout ~100s). We write leading whitespace — valid before any
       // JSON document per RFC 8259 — then flush the real payload once

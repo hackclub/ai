@@ -9,7 +9,11 @@ import {
   allowedImageModels,
   allowedLanguageModels,
 } from "../../env";
-import { fetchLanguageModels, openRouterHeaders } from "../../lib/models";
+import {
+  fetchEmbeddingModels,
+  fetchLanguageModels,
+  openRouterHeaders,
+} from "../../lib/models";
 import { captureEvent } from "../../lib/posthog";
 import { releasePendingCharge } from "../../middleware/limits";
 import type { AppVariables } from "../../types";
@@ -53,14 +57,19 @@ export type ProxyReq = {
 // fine to over-reserve (the real cost replaces the estimate on log), but
 // under-reserving lets users blow past their cap on a single big request or
 // a burst of concurrent requests.
-export async function estimateUpstreamCost(body: ProxyReq): Promise<number> {
+export async function estimateUpstreamCost(
+  body: ProxyReq,
+  endpoint?: string,
+): Promise<number> {
   try {
-    const models = await fetchLanguageModels();
+    const isEmbedding = endpoint === "embeddings";
+    const models = isEmbedding
+      ? await fetchEmbeddingModels()
+      : await fetchLanguageModels();
     const model = models.data.find((m) => m.id === body.model);
     if (!model?.pricing) return 0.05;
 
     const promptPrice = parseFloat(model.pricing.prompt || "0");
-    const completionPrice = parseFloat(model.pricing.completion || "0");
 
     // Rough input-token estimate from the serialized payload. 3 chars/token
     // is intentionally conservative (most tokenizers are ~4 chars/token).
@@ -68,6 +77,13 @@ export async function estimateUpstreamCost(body: ProxyReq): Promise<number> {
       body.messages ?? body.input ?? body.prompt ?? body,
     );
     const inputTokens = Math.ceil(payload.length / 3);
+
+    // Embeddings only have input tokens — no completion/output side.
+    if (isEmbedding) {
+      return inputTokens * promptPrice;
+    }
+
+    const completionPrice = parseFloat(model.pricing.completion || "0");
 
     const requestedMax =
       body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
