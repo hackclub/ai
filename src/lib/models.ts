@@ -90,7 +90,6 @@ function createModelsFetcher(
           return data;
         }
 
-
         state.cache = { data, timestamp: now };
         state.fetchPromise = null;
 
