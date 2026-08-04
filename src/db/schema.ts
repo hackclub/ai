@@ -22,7 +22,7 @@ export const users = pgTable(
     spendingLimitUsd: numeric("spending_limit_usd", {
       precision: 10,
       scale: 8,
-    }).default("4"),
+    }).default("3"),
     openrouterKey: text("openrouter_key"),
     openrouterKeyHash: text("openrouter_key_hash"),
     openrouterKeyLimit: numeric("openrouter_key_limit", {

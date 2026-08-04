@@ -65,7 +65,7 @@ export async function checkSpendingLimit(c: Ctx, next: Next) {
       if (apiKey?.isUnlimited) return next();
 
       const user = c.get("user");
-      const limit = parseFloat(user.spendingLimitUsd || "4");
+      const limit = parseFloat(user.spendingLimitUsd || "3");
 
       const spent = await computeSpent(user.id);
       if (spent >= limit) {
@@ -92,7 +92,7 @@ export async function reserveCharge(c: Ctx, estimatedCost: number) {
   if (apiKey?.isUnlimited) return;
 
   const user = c.get("user");
-  const limit = parseFloat(user.spendingLimitUsd || "4");
+  const limit = parseFloat(user.spendingLimitUsd || "3");
   const estimate = Math.max(0, estimatedCost);
 
   const [row] = await db
