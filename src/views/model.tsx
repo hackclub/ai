@@ -174,7 +174,7 @@ console.log(\`Embedding dimensions: \${embedding.length}\`);`
 
 const data = await response.json();
 const imageUrl = data.choices[0].message.images[0].image_url.url;
-// imageUrl is a base64 data URL`
+// imageUrl is a base64 data URL
         : `import { OpenRouter } from '@openrouter/sdk';
 
 const client = new OpenRouter({
