@@ -26,6 +26,10 @@ export type OpenRouterModel = {
     internal_reasoning?: string;
     input_cache_read?: string;
     input_cache_write?: string;
+    audio?: string;
+    input_audio_cache?: string;
+    image_output?: string;
+    audio_output?: string;
   };
   top_provider?: {
     context_length?: number;

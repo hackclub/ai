@@ -47,6 +47,220 @@ export type ProxyReq = {
   max_output_tokens?: number;
 };
 
+// RFC 2397 data URLs may carry mediatype parameters before ";base64"
+// (e.g. data:image/svg+xml;charset=utf-8;base64,...) and the scheme and
+// encoding are case-insensitive. The header ends at the first comma, so
+// matching anything between "data:" and ";base64," is linear and safe.
+const DATA_URL_BASE64_REGEX = /^data:[^,]*;base64,/i;
+
+// Media inputs are billed as tokens at the model's per-token rates. These
+// conversion rates are the Google-published Gemini tokenization rates.
+const VIDEO_TOKENS_PER_SECOND = 263;
+const AUDIO_TOKENS_PER_SECOND = 32;
+// Conservative flat per-image estimate; Gemini tiling charges 258 tokens
+// minimum and a few thousand for large tiled images.
+const TOKENS_PER_IMAGE = 1_024;
+// Conservative bitrates used to derive duration from blob size; both are
+// deliberately low so duration (and therefore tokens) is over-estimated.
+const VIDEO_BYTES_PER_SECOND = 65_536; // ~0.5 Mbps
+const AUDIO_BYTES_PER_SECOND = 12_288; // ~96 kbps
+// Cap per media part so a pathological blob can't reserve the whole cap.
+const MAX_MEDIA_SECONDS = 600;
+// Media referenced by http(s) URL has unknown size; assume a fixed amount.
+const URL_MEDIA_SECONDS = 60;
+
+type MediaKind = "video" | "audio" | "image";
+
+type MediaStats = {
+  images: number;
+  videoSeconds: number;
+  audioSeconds: number;
+};
+
+// Extract the media kind and base64 payload length from a data URL using
+// lengths only — the blob is never decoded or copied. Returns null for
+// anything that isn't a base64 data URL.
+const parseDataUrl = (
+  value: string,
+): { kind: MediaKind; b64Chars: number } | null => {
+  if (!DATA_URL_BASE64_REGEX.test(value)) return null;
+  const comma = value.indexOf(",");
+  const mime = value.slice(5, value.indexOf(";")).toLowerCase();
+  const kind: MediaKind = mime.startsWith("video/")
+    ? "video"
+    : mime.startsWith("audio/")
+      ? "audio"
+      : "image";
+  return { kind, b64Chars: value.length - comma - 1 };
+};
+
+// base64 length -> raw bytes; accumulate as seconds (video/audio) or a
+// flat image count, capping the duration of each individual part.
+const addBlob = (
+  kind: MediaKind,
+  b64Chars: number,
+  stats: MediaStats,
+): void => {
+  const rawBytes = Math.floor((b64Chars * 3) / 4);
+  if (kind === "video") {
+    stats.videoSeconds += Math.min(
+      rawBytes / VIDEO_BYTES_PER_SECOND,
+      MAX_MEDIA_SECONDS,
+    );
+  } else if (kind === "audio") {
+    stats.audioSeconds += Math.min(
+      rawBytes / AUDIO_BYTES_PER_SECOND,
+      MAX_MEDIA_SECONDS,
+    );
+  } else {
+    stats.images += 1;
+  }
+};
+
+// Media given as a data URL (blob length) or an http(s) URL (unknown
+// size -> fixed assumption).
+const addUrlOrBlob = (
+  value: string,
+  defaultKind: MediaKind,
+  stats: MediaStats,
+): void => {
+  const info = parseDataUrl(value);
+  if (info) {
+    addBlob(info.kind, info.b64Chars, stats);
+    return;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    if (defaultKind === "video") stats.videoSeconds += URL_MEDIA_SECONDS;
+    else if (defaultKind === "audio") stats.audioSeconds += URL_MEDIA_SECONDS;
+    else stats.images += 1;
+  }
+};
+
+// input_audio / input_video parts: the data field is usually raw base64
+// (no data-URL prefix), but data URLs and http(s) references are accepted.
+const addAudioVideoPart = (
+  value: unknown,
+  kind: MediaKind,
+  stats: MediaStats,
+): void => {
+  let data: unknown = value;
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    data = (value as Record<string, unknown>).data;
+  }
+  if (typeof data !== "string") return;
+  const info = parseDataUrl(data);
+  if (info) {
+    addBlob(info.kind, info.b64Chars, stats);
+  } else if (/^https?:\/\//i.test(data)) {
+    if (kind === "video") stats.videoSeconds += URL_MEDIA_SECONDS;
+    else stats.audioSeconds += URL_MEDIA_SECONDS;
+  } else {
+    addBlob(kind, data.length, stats);
+  }
+};
+
+// input_file parts (Responses API / Google file parts): classify via the
+// data-URL MIME when available; unknown sizes fall back to the per-image
+// assumption.
+const collectFileStats = (value: unknown, stats: MediaStats): void => {
+  if (typeof value === "string") {
+    addUrlOrBlob(value, "image", stats);
+    return;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  const file = value as Record<string, unknown>;
+  for (const field of ["file_data", "url", "file_uri"]) {
+    const inner = file[field];
+    if (typeof inner === "string") {
+      addUrlOrBlob(inner, "image", stats);
+      return;
+    }
+    if (inner !== null && typeof inner === "object" && !Array.isArray(inner)) {
+      collectFileStats(inner, stats);
+      return;
+    }
+  }
+};
+
+// Collect per-media-part token stats over the estimation target without
+// copying blobs (reads string lengths only) and without mutating the body.
+const collectMediaStats = (value: unknown, stats: MediaStats): void => {
+  if (typeof value === "string") {
+    const info = parseDataUrl(value);
+    if (info) addBlob(info.kind, info.b64Chars, stats);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectMediaStats(item, stats);
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    if (key === "b64_json" && typeof v === "string") {
+      // OpenAI image input/output convention: raw base64 image data.
+      stats.images += 1;
+    } else if (key === "input_audio" || key === "input_video") {
+      addAudioVideoPart(v, key === "input_audio" ? "audio" : "video", stats);
+    } else if (key === "image_url" || key === "video_url") {
+      const url =
+        typeof v === "string"
+          ? v
+          : v !== null && typeof v === "object" && !Array.isArray(v)
+            ? (v as Record<string, unknown>).url
+            : undefined;
+      if (typeof url === "string") {
+        addUrlOrBlob(url, key === "image_url" ? "image" : "video", stats);
+      }
+    } else if (key === "input_file") {
+      collectFileStats(v, stats);
+    } else {
+      collectMediaStats(v, stats);
+    }
+  }
+};
+
+// Replace base64 media blobs (data URLs, b64_json fields, input_audio
+// payloads) with a short placeholder so they aren't counted as tokens in
+// the cost estimate. Transforms the value via a recursive walk over
+// shallow-copied containers, so the original body is never mutated.
+const sanitizeForEstimation = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    return DATA_URL_BASE64_REGEX.test(value) ? "[media]" : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForEstimation(item));
+  }
+  if (value !== null && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    // Null-prototype copy: an own "__proto__" key (kept by JSON.parse)
+    // becomes a plain property instead of hitting the prototype setter.
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of Object.keys(obj)) {
+      const v = obj[key];
+      if (key === "b64_json" && typeof v === "string") {
+        result[key] = "[media]";
+      } else if (
+        key === "input_audio" &&
+        v !== null &&
+        typeof v === "object" &&
+        !Array.isArray(v)
+      ) {
+        const audio = sanitizeForEstimation(v) as Record<string, unknown>;
+        if (typeof audio.data === "string") audio.data = "[media]";
+        result[key] = audio;
+      } else {
+        result[key] = sanitizeForEstimation(v);
+      }
+    }
+    return result;
+  }
+  return value;
+};
+
 // Conservative upper-bound estimate of what a chat / responses / embeddings
 // call will cost, used to reserve capacity against the user's daily limit
 // BEFORE the upstream request is dispatched. We err on the high side: it's
@@ -64,10 +278,36 @@ export async function estimateUpstreamCost(body: ProxyReq): Promise<number> {
 
     // Rough input-token estimate from the serialized payload. 3 chars/token
     // is intentionally conservative (most tokenizers are ~4 chars/token).
-    const payload = JSON.stringify(
-      body.messages ?? body.input ?? body.prompt ?? body,
-    );
+    // Base64 media blobs are replaced with "[media]" first so a large
+    // image/video/audio attachment doesn't inflate the token count; media
+    // is priced separately below via collectMediaStats.
+    const target = body.messages ?? body.input ?? body.prompt ?? body;
+    const raw = JSON.stringify(target);
+    // Fast path: skip both the sanitization walk and the media walk for
+    // text-only payloads. A false positive only costs an extra walk, never
+    // an incorrect estimate. Case-insensitive so uppercase "DATA:" URLs
+    // aren't missed.
+    const hasMedia =
+      /data:|b64_json|input_audio|input_video|input_file|image_url|video_url/i.test(
+        raw,
+      );
+    const stats: MediaStats = { images: 0, videoSeconds: 0, audioSeconds: 0 };
+    const payload = hasMedia
+      ? JSON.stringify(sanitizeForEstimation(target))
+      : raw;
+    if (hasMedia) collectMediaStats(target, stats);
     const inputTokens = Math.ceil(payload.length / 3);
+
+    // OpenRouter's pricing.image / pricing.audio are per-TOKEN rates (not
+    // per-image / per-second); fall back to the prompt rate when absent.
+    const imageRate = parseFloat(model.pricing.image ?? "");
+    const audioRate = parseFloat(model.pricing.audio ?? "");
+    const imagePrice = Number.isNaN(imageRate) ? promptPrice : imageRate;
+    const audioPrice = Number.isNaN(audioRate) ? promptPrice : audioRate;
+
+    const imageTokens = stats.images * TOKENS_PER_IMAGE;
+    const audioTokens = stats.audioSeconds * AUDIO_TOKENS_PER_SECOND;
+    const videoTokens = stats.videoSeconds * VIDEO_TOKENS_PER_SECOND;
 
     const requestedMax =
       body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
@@ -77,7 +317,13 @@ export async function estimateUpstreamCost(body: ProxyReq): Promise<number> {
     // the model's full completion window.
     const outputTokens = requestedMax ?? modelMax;
 
-    return inputTokens * promptPrice + outputTokens * completionPrice;
+    return (
+      inputTokens * promptPrice +
+      imageTokens * imagePrice +
+      audioTokens * audioPrice +
+      videoTokens * promptPrice +
+      outputTokens * completionPrice
+    );
   } catch {
     return 0.05;
   }
