@@ -21,6 +21,8 @@ export const replicateCategories: ReplicateCategoryConfig[] = [
       { id: "qwen/qwen3-tts", costPerRequest: 0.06 },
       { id: "inworld/tts-1.5-mini", costPerRequest: 0.0175 },
       { id: "inworld/tts-1.5-max", costPerRequest: 0.035 },
+      { id: "inworld/realtime-tts-1.5-mini", costPerRequest: 0.015 },
+      { id: "inworld/realtime-tts-1.5-max", costPerRequest: 0.035 },
     ],
   },
   {
