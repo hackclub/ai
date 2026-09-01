@@ -159,7 +159,7 @@ export const apiHeaders = (c: Ctx) => ({
 
 // export const resolveModel = (model: string, pool: string[]) =>
 //   pool.includes(model) ? model : pool[0];
-export const resolveModel = (model: string, pool: string[]) => model;
+export const resolveModel = (model: string, _pool: string[]) => model;
 
 export const logRequest = async (
   c: Ctx,

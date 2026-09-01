@@ -15,8 +15,8 @@ import { trimTrailingSlash } from "hono/trailing-slash";
 import { env } from "./env";
 import {
   createErrorHandler,
-  type ErrorHandlerOptions,
   createNotFoundHandler,
+  type ErrorHandlerOptions,
 } from "./lib/errors";
 import { runMigrations } from "./migrate";
 import activity from "./routes/activity";
