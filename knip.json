@@ -1,3 +1,5 @@
 {
-  "ignore": ["scripts/**"]
+  "ignore": ["scripts/**"],
+  "entry": ["src/test/setup.ts", "src/**/*.test.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx}"]
 }

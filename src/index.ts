@@ -1,11 +1,11 @@
 import "./instrument"; // Sentry
 import * as Sentry from "@sentry/bun";
 import { dns } from "bun";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { showRoutes } from "hono/dev";
-import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import type { RequestIdVariables } from "hono/request-id";
 import { requestId } from "hono/request-id";
@@ -13,11 +13,17 @@ import { secureHeaders } from "hono/secure-headers";
 import { trimTrailingSlash } from "hono/trailing-slash";
 
 import { env } from "./env";
+import {
+  createErrorHandler,
+  type ErrorHandlerOptions,
+  createNotFoundHandler,
+} from "./lib/errors";
 import { runMigrations } from "./migrate";
 import activity from "./routes/activity";
 import api from "./routes/api";
 import auth from "./routes/auth";
 import dashboard from "./routes/dashboard";
+import discovery from "./routes/discovery";
 import docs from "./routes/docs";
 import ghss from "./routes/ghss";
 import global from "./routes/global";
@@ -28,6 +34,7 @@ import proxy from "./routes/proxy";
 import replicate from "./routes/replicate";
 import up from "./routes/up";
 import type { AppVariables } from "./types";
+import { NotFound } from "./views/not-found";
 
 await runMigrations();
 dns.prefetch(env.OPENAI_API_URL, 443);
@@ -65,15 +72,17 @@ if (env.NODE_ENV === "development") {
 
 app.use("/*", serveStatic({ root: "./public" }));
 
-app.onError((err, c) => {
-  if (err instanceof HTTPException) {
-    return err.getResponse();
-  }
-  console.error("Unhandled error:", err);
-  Sentry.captureException(err);
-  return c.json({ error: "Internal server error" }, 500);
-});
+const errorHandlerOptions: ErrorHandlerOptions = {
+  baseUrl: env.BASE_URL,
+  renderNotFoundPage: (c: Context, path: string) =>
+    c.html(NotFound({ path }), 404),
+  onUnhandled: (err: Error) => Sentry.captureException(err),
+};
 
+app.onError(createErrorHandler(errorHandlerOptions));
+app.notFound(createNotFoundHandler(errorHandlerOptions));
+
+app.route("/", discovery);
 app.route("/", dashboard);
 app.route("/", activity);
 app.route("/auth", auth);
@@ -87,11 +96,6 @@ app.route("/keys", keys);
 app.route("/models", models);
 app.route("/replicate", replicate);
 app.route("/up", up);
-
-app.post("*", (c) => {
-  console.warn(`[404 POST] ${c.req.path} from ${c.get("ip")}`);
-  return c.json({ error: "Not found" }, 404);
-});
 
 showRoutes(app);
 

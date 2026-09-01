@@ -17,11 +17,10 @@ const BLOCKED_USER_AGENTS = blockedUserAgentsConfig.map((a) => a.toLowerCase());
 const BLOCKED_MESSAGE =
   "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
+// The app-wide error handler renders every HTTPException as the structured
+// JSON envelope, so there is no need to attach a bespoke response here.
 const createBlockedException = () =>
-  new HTTPException(403, {
-    message: BLOCKED_MESSAGE,
-    res: Response.json({ error: BLOCKED_MESSAGE }, { status: 403 }),
-  });
+  new HTTPException(403, { message: BLOCKED_MESSAGE });
 
 export async function blockAICodingAgents(c: Context, next: Next) {
   const referer = c.req.header("Referer") || c.req.header("HTTP-Referer");

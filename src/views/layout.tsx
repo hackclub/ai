@@ -1,11 +1,12 @@
 import { html } from "hono/html";
 import type { Child } from "hono/jsx";
 import { env } from "../env";
+import { buildStructuredData, SITE_DESCRIPTION } from "../lib/site";
 import type { User } from "../types";
 
 // JSON-encode a value for safe inlining inside a <script> tag. Escapes `<`,
 // `>`, and U+2028/U+2029 to prevent breaking out of the script context.
-const jsonForScript = (value: unknown): string =>
+export const jsonForScript = (value: unknown): string =>
   JSON.stringify(value)
     .replace(/</g, "\\u003c")
     .replace(/>/g, "\\u003e")
@@ -38,6 +39,29 @@ export const Layout = ({
             content="width=device-width, initial-scale=1.0"
           />
           <title>{title}</title>
+          <meta name="description" content={SITE_DESCRIPTION} />
+          {/* Machine-readable pointers so agents can find the API surface
+              from any page, not just the homepage. */}
+          <link
+            rel="service-desc"
+            type="application/json"
+            href="/openapi.json"
+          />
+          <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+          <link
+            rel="alternate"
+            type="text/markdown"
+            href="/llms.txt"
+            title="llms.txt"
+          />
+          <script
+            type="application/ld+json"
+            // JSON-LD must be emitted raw; jsonForScript escapes the
+            // characters that could break out of the script element.
+            dangerouslySetInnerHTML={{
+              __html: jsonForScript(buildStructuredData(env.BASE_URL)),
+            }}
+          />
           <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
           <link rel="icon" type="image/png" href="/favicon.png" />
           <link rel="icon" href="/favicon.ico" />
