@@ -3,6 +3,7 @@ export function formatPrice(price: string | number): string {
   const num = parseFloat(str);
   if (!str || Number.isNaN(num)) return "N/A";
   if (num === 0) return "Free";
+  if (num < 0) return "Variable cost";
 
   const [rawWhole = "0", rawFraction = ""] = str.split(".");
   const whole = rawWhole.replace(/^0+/, "") || "0";
