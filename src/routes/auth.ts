@@ -198,7 +198,7 @@ auth.get("/callback", async (c) => {
     if (hasBlockedAddressCountry(identity)) {
       try {
         await sendBlockedAddressSlackMessage(identity);
-      } catch (error) {
+      } catch {
         throw new HTTPException(400, {
           message:
             "Please contact support and send this error code: willow-savannah-tunnel-windermere",

@@ -1,9 +1,4 @@
-import {
-  allowedEmbeddingModels,
-  allowedImageModels,
-  allowedLanguageModels,
-  env,
-} from "../env";
+import { env } from "../env";
 
 export type OpenRouterModel = {
   id: string;
@@ -59,7 +54,6 @@ export const openRouterHeaders = {
 function createModelsFetcher(
   key: string,
   endpoint: string,
-  allowedModels: string[],
 ): () => Promise<OpenRouterModelsResponse> {
   return async () => {
     const state = cacheState[key];
@@ -107,19 +101,13 @@ function createModelsFetcher(
 export const fetchLanguageModels = createModelsFetcher(
   "language",
   "/v1/models",
-  allowedLanguageModels,
 );
 
-export const fetchImageModels = createModelsFetcher(
-  "image",
-  "/v1/models",
-  allowedImageModels,
-);
+export const fetchImageModels = createModelsFetcher("image", "/v1/models");
 
 export const fetchEmbeddingModels = createModelsFetcher(
   "embedding",
   "/v1/embeddings/models",
-  allowedEmbeddingModels,
 );
 
 type AllModelsResponse = {

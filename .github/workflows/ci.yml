@@ -30,6 +30,9 @@ jobs:
       - name: Run typecheck
         run: bun run typecheck
 
+      - name: Run tests
+        run: bun test
+
       - name: Run knip
         run: bun run knip
         env:

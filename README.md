@@ -14,6 +14,8 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 - spending limits
 - replicate support (optional, behind a feature flag)
 - posthog analytics + feature flags
+- agent-readable discovery: `/openapi.json`, `/llms.txt`, `/sitemap.xml`, `/robots.txt`, JSON-LD on every page
+- structured JSON errors (OpenAI-compatible, plus `error.hint` and `error.docs`)
 
 is it the best code? probably not. but hey, it works!
 
@@ -67,6 +69,60 @@ POSTHOG_API_HOST=https://us.i.posthog.com/
 # sentry.io support (optional)
 SENTRY_DSN=
 ```
+
+## machine-readable endpoints
+
+everything below is public and unauthenticated. they're built at request time
+from `env.BASE_URL` and the configured model lists, so they stay in sync with
+whatever this deployment actually allows.
+
+| path | what it is |
+| --- | --- |
+| `/openapi.json` (also `/.well-known/openapi.json`) | OpenAPI 3.1 description of the proxy API. built in `src/lib/openapi.ts`. |
+| `/llms.txt` | [llmstxt.org](https://llmstxt.org) index of the site, for agents. |
+| `/sitemap.xml` | indexable URLs. bump `SITE_LAST_MODIFIED` in `src/lib/site.ts` when public content changes. |
+| `/robots.txt` | crawler policy + sitemap pointer. |
+
+the homepage (and every other page) carries JSON-LD describing Hack Club and
+this service - see `buildStructuredData` in `src/lib/site.ts`.
+
+adding a proxy endpoint? add it to `src/lib/openapi.ts` too, and add a case to
+`src/lib/openapi.test.ts`.
+
+## errors
+
+every error goes through `src/lib/errors.ts`, which renders one shape:
+
+```json
+{
+  "error": {
+    "message": "Authentication required",
+    "type": "authentication_error",
+    "code": "unauthorized",
+    "status": 401,
+    "hint": "Send `Authorization: Bearer sk-hc-v1-...`. Create a key at https://ai.hackclub.com/keys.",
+    "docs": "https://docs.ai.hackclub.com/guide/authentication"
+  },
+  "request_id": "..."
+}
+```
+
+`error.message`/`type`/`code` are the OpenAI error shape, so OpenAI-compatible
+SDKs surface something useful. `hint` and `docs` are ours.
+
+404s are content-negotiated: API paths and non-GET requests get that JSON,
+browsers get a branded HTML page, and everything else (curl, crawlers, agents)
+gets a short markdown body pointing at `/llms.txt` and `/openapi.json`.
+
+## tests
+
+```
+bun test
+```
+
+`bunfig.toml` preloads `src/test/setup.ts`, which fills in placeholder env vars
+so tests that import a route don't trip `src/env.ts`'s validation. no database
+is needed.
 
 ## tech stack
 
