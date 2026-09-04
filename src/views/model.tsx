@@ -15,6 +15,7 @@ function formatPricing(pricePerToken?: string): string {
   if (!pricePerToken) return "N/A";
   const price = parseFloat(pricePerToken) * 1_000_000;
   if (price === 0) return "Free";
+  if (price < 0) return "Variable cost";
   if (price < 0.01) return `$${price.toFixed(4)}`;
   if (price < 1) return `$${price.toFixed(2)}`;
   return `$${price.toFixed(2)}`;
