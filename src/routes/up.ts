@@ -22,7 +22,7 @@ const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 30 * 1000; // 30 seconds
 
 const limiter = rateLimiter({
-  limit: 140,
+  limit: 500,
   windowMs: 60 * 60 * 1000, // 1 hour
   keyGenerator: (c) => c.req.header("CF-Connecting-IP") || "unknown",
 });

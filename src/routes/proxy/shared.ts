@@ -120,8 +120,8 @@ const limiter = (limit: number) =>
     keyGenerator: (c: Ctx) => c.get("user")?.id || c.get("ip"),
   });
 
-export const standardLimiter = limiter(750);
-export const moderationsLimiter = limiter(300);
+export const standardLimiter = limiter(7500);
+export const moderationsLimiter = limiter(5000);
 
 type Usage = {
   prompt_tokens?: number;
