@@ -19,7 +19,7 @@ const startOfUtcDay = () => {
   );
 };
 
-const computeSpent = async (userId: string) => {
+export const computeSpent = async (userId: string) => {
   const startOfDay = startOfUtcDay();
   const pendingCutoff = new Date(Date.now() - PENDING_CHARGE_TTL_MS);
 

@@ -9,6 +9,7 @@ import {
 } from "../../../lib/models";
 import { getUserStats } from "../../../lib/stats";
 import { blockAICodingAgents, requireApiKey } from "../../../middleware/auth";
+import { computeSpent } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
 import exa from "./exa";
@@ -44,6 +45,25 @@ proxy.get("/embeddings/models", etag(), async (c) =>
 proxy.get("/stats", standardLimiter, async (c) =>
   c.json(await getUserStats(c.get("user").id)),
 );
+
+proxy.get("/key", standardLimiter, async (c) => {
+  const user = c.get("user");
+  const apiKey = c.get("apiKey");
+
+  const isUnlimited = apiKey?.isUnlimited ?? false;
+  const limit = parseFloat(user.spendingLimitUsd || "4");
+  const usage = await computeSpent(user.id);
+
+  return c.json({
+    data: {
+      label: apiKey?.name ?? "",
+      is_unlimited: isUnlimited,
+      limit: isUnlimited ? null : limit,
+      usage,
+      limit_remaining: isUnlimited ? null : Math.max(0, limit - usage),
+    },
+  });
+});
 
 proxy.route("/", general);
 proxy.route("/", moderations);
