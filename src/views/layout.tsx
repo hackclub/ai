@@ -73,6 +73,19 @@ export const Layout = ({
           )}
           {html`
             <script>
+              (function () {
+                try {
+                  var saved = localStorage.getItem("theme");
+                  var theme =
+                    saved ||
+                    (window.matchMedia &&
+                    window.matchMedia("(prefers-color-scheme: light)").matches
+                      ? "light"
+                      : "dark");
+                  document.documentElement.dataset.theme = theme;
+                } catch (e) {}
+              })();
+
               tailwind.config = {
                 theme: {
                   extend: {
@@ -86,13 +99,13 @@ export const Layout = ({
                     },
                     colors: {
                       brand: {
-                        bg: "#18181b", // Zinc 900
-                        surface: "#27272a", // Zinc 800
-                        primary: "#ec3750", // Hack Club Red
+                        bg: "rgb(var(--brand-bg) / <alpha-value>)",
+                        surface: "rgb(var(--brand-surface) / <alpha-value>)",
+                        primary: "#ec3750", 
                         "primary-hover": "#d62640",
-                        heading: "#fafafa", // Zinc 50
-                        text: "#d4d4d8", // Zinc 300
-                        border: "#303035", // Zinc 750 (between 700 and 800)
+                        heading: "rgb(var(--brand-heading) / <alpha-value>)",
+                        text: "rgb(var(--brand-text) / <alpha-value>)",
+                        border: "rgb(var(--brand-border) / <alpha-value>)",
                       },
                     },
                     borderRadius: {
@@ -107,6 +120,36 @@ export const Layout = ({
           `}
           {html`
             <style>
+              :root {
+                --brand-bg: 24 24 27;
+                --brand-surface: 39 39 42;
+                --brand-heading: 250 250 250;
+                --brand-text: 212 212 216;
+                --brand-border: 48 48 53;
+              }
+              html[data-theme="light"] {
+                --brand-bg: 243 241 232; 
+                --brand-surface: 255 255 255;
+                --brand-heading: 15 23 42; 
+                --brand-text: 51 65 85; 
+                --brand-border: 226 232 240; 
+              }
+
+              html[data-theme="light"] ::selection {
+                background: rgba(236, 55, 80, 0.2);
+              }
+
+              .theme-icon--sun,
+              .theme-icon--moon {
+                display: none;
+              }
+              html[data-theme="light"] .theme-icon--sun {
+                display: block;
+              }
+              html[data-theme="dark"] .theme-icon--moon {
+                display: block;
+              }
+
               @view-transition {
                 navigation: auto;
               }
@@ -118,6 +161,36 @@ export const Layout = ({
                 display: none !important;
               }
             </style>
+          `}
+          {html`
+            <script>
+              (function () {
+                function getTheme() {
+                  return document.documentElement.dataset.theme === "light"
+                    ? "light"
+                    : "dark";
+                }
+                function setTheme(theme) {
+                  document.documentElement.dataset.theme =
+                    theme === "light" ? "light" : "dark";
+                  try {
+                    localStorage.setItem("theme", getTheme());
+                  } catch (e) {}
+                }
+
+                window.__setTheme = setTheme;
+
+                document.addEventListener("DOMContentLoaded", function () {
+                  document
+                    .querySelectorAll("[data-theme-toggle]")
+                    .forEach(function (button) {
+                      button.addEventListener("click", function () {
+                        setTheme(getTheme() === "light" ? "dark" : "light");
+                      });
+                    });
+                });
+              })();
+            </script>
           `}
           <script
             dangerouslySetInnerHTML={{

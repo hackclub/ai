@@ -1,6 +1,6 @@
 import { html } from "hono/html";
 import type { User } from "../../types";
-import { Hamburger } from "./Icons";
+import { Hamburger, Moon, Sun } from "./Icons";
 
 type HeaderProps = {
   title: string;
@@ -81,6 +81,16 @@ export const Header = ({
               </span>
             </div>
           )}
+          <button
+            type="button"
+            data-theme-toggle
+            class="p-2 rounded-full bg-brand-surface border border-brand-border text-brand-text hover:text-brand-primary transition-colors"
+            aria-label="Toggle light/dark mode"
+            title="Toggle theme"
+          >
+            <Sun class="w-5 h-5 theme-icon--sun" title="Light mode" />
+            <Moon class="w-5 h-5 theme-icon--moon" title="Dark mode" />
+          </button>
           <div class="flex items-center gap-3 pl-6 border-l-2 border-brand-border">
             <span class="text-sm font-medium text-brand-heading">
               {user.name || "User"}
@@ -119,6 +129,20 @@ export const Header = ({
         id="mobile-menu"
         class="hidden md:hidden absolute top-full left-0 right-0 bg-brand-surface border-b-2 border-brand-border shadow-xl p-4 flex flex-col gap-4"
       >
+        <div class="flex items-center justify-between px-2">
+          <span class="text-sm font-semibold text-brand-heading">Theme</span>
+          <button
+            type="button"
+            data-theme-toggle
+            class="p-2 rounded-full bg-brand-surface border border-brand-border text-brand-text hover:text-brand-primary transition-colors"
+            aria-label="Toggle light/dark mode"
+            title="Toggle theme"
+          >
+            <Sun class="w-5 h-5 theme-icon--sun" title="Light mode" />
+            <Moon class="w-5 h-5 theme-icon--moon" title="Dark mode" />
+          </button>
+        </div>
+
         <a
           href="/keys"
           class="text-base font-medium text-brand-text hover:text-brand-primary transition-colors px-2"

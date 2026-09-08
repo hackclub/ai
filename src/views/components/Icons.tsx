@@ -115,6 +115,44 @@ export const X = ({ class: className, ...props }: IconProps) => (
   </svg>
 );
 
+export const Sun = ({ class: className, title, ...props }: IconProps) => (
+  <svg
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    stroke-width="2"
+    class={className}
+    aria-hidden="true"
+    {...props}
+  >
+    <title>{title}</title>
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0-1.414-1.414M7.05 7.05 5.636 5.636M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"
+    />
+  </svg>
+);
+
+export const Moon = ({ class: className, title, ...props }: IconProps) => (
+  <svg
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    stroke-width="2"
+    class={className}
+    aria-hidden="true"
+    {...props}
+  >
+    <title>{title}</title>
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"
+    />
+  </svg>
+);
+
 // export const Clipboard = ({
 //   class: className,
 //   title,
