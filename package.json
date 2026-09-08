@@ -23,7 +23,7 @@
     "arktype": "^2.1.26",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
-    "hono-rate-limiter": "^0.4.2",
+    "hono-rate-limiter": "^0.5.3",
     "postgres": "^3.4.7",
     "posthog-node": "^5.24.2"
   },
