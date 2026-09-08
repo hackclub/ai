@@ -6,7 +6,7 @@ import { db } from "../db";
 import { sessions } from "../db/schema";
 import { allowedLanguageModels, env } from "../env";
 import { isFeatureEnabled } from "../lib/posthog";
-import { getDailySpending, getUserStats } from "../lib/stats";
+import { getDailySpending, getUserStats, getApiStatus } from "../lib/stats";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
 import { Dashboard } from "../views/dashboard";
@@ -44,10 +44,11 @@ dashboard.get("/", async (c) => {
 dashboard.get("/dashboard", requireAuth, async (c) => {
   const user = c.get("user");
 
-  const [stats, replicateEnabled, dailySpending] = await Promise.all([
+  const [stats, replicateEnabled, dailySpending, apiStatus ] = await Promise.all([
     getUserStats(user.id),
     isFeatureEnabled(user, "enable_replicate"),
     getDailySpending(user.id),
+    getApiStatus()
   ]);
 
   return c.html(
@@ -57,6 +58,7 @@ dashboard.get("/dashboard", requireAuth, async (c) => {
       enforceIdv={env.ENFORCE_IDV || false}
       replicateEnabled={replicateEnabled}
       dailySpending={dailySpending}
+      apiStatus={apiStatus}
     />,
   );
 });

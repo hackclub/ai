@@ -11,6 +11,10 @@ type ActivityProps = {
   recentLogs: DashboardRequestLog[];
   hasMoreRecentLogs: boolean;
   dailySpending?: number;
+  apiStatus?: {
+    status: string;
+    balanceRemaining: number;
+  };
 };
 
 export const Activity = ({
@@ -19,10 +23,11 @@ export const Activity = ({
   recentLogs,
   hasMoreRecentLogs,
   dailySpending,
+  apiStatus,
 }: ActivityProps) => {
   return (
     <Layout title="Activity" includeHtmx user={user}>
-      <Header title="hackai" user={user} dailySpending={dailySpending} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} apiStatus={apiStatus} />
 
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <h2 class="text-2xl font-bold mb-6 text-brand-heading">

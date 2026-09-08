@@ -13,6 +13,10 @@ type DashboardProps = {
   enforceIdv: boolean;
   replicateEnabled: boolean;
   dailySpending?: number;
+  apiStatus?: {
+    status: string;
+    balanceRemaining: number;
+  };
 };
 
 export const Dashboard = ({
@@ -21,6 +25,7 @@ export const Dashboard = ({
   enforceIdv,
   replicateEnabled,
   dailySpending,
+  apiStatus,
 }: DashboardProps) => {
   const showIdvBanner = enforceIdv && !user.skipIdv && !user.isIdvVerified;
   const showAgentBanner = !user.agentBannerDismissedAt;
@@ -33,6 +38,7 @@ export const Dashboard = ({
           user={user}
           replicateEnabled={replicateEnabled}
           dailySpending={dailySpending}
+          apiStatus={apiStatus}
         />
 
         {showIdvBanner && <IdvBanner />}

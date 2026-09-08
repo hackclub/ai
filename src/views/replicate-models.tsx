@@ -7,16 +7,21 @@ type ReplicateModelsProps = {
   user: User;
   categories: ReplicateCategory[];
   dailySpending?: number;
+  apiStatus?: {
+    status: string;
+    balanceRemaining: number;
+  };
 };
 
 export const ReplicateModels = ({
   user,
   categories,
   dailySpending,
+  apiStatus,
 }: ReplicateModelsProps) => {
   return (
     <Layout title="Replicate Models" includeAlpine user={user}>
-      <Header title="hackai" user={user} dailySpending={dailySpending} />
+      <Header title="hackai" user={user} dailySpending={dailySpending} apiStatus={apiStatus} />
       <div class="w-full max-w-6xl mx-auto px-4 py-8">
         <div class="flex items-center gap-3 mb-2">
           <h1 class="text-4xl font-bold text-brand-heading">
