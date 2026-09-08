@@ -21,7 +21,7 @@
     "@hono/arktype-validator": "^2.0.1",
     "@sentry/bun": "^10.26.0",
     "arktype": "^2.1.26",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.10.6",
     "hono-rate-limiter": "^0.4.2",
     "postgres": "^3.4.7",
