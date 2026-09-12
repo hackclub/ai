@@ -80,8 +80,19 @@ up.get("/", async (c) => {
     const dailyKeyUsageRemaining = keyBody.data.limit_remaining;
     const replicateUnusedCredit = parseFloat(replicateBody.unused_credit);
 
+    const endpointsUp =
+      embeddingResponse.ok &&
+      creditsResponse.ok &&
+      keyResponse.ok &&
+      replicateResponse.ok;
+
     const status: "up" | "down" =
-      replicateUnusedCredit > 0.6 && embeddingResponse.ok ? "up" : "down";
+      endpointsUp &&
+      balanceRemaining > 0 &&
+      dailyKeyUsageRemaining > 0 &&
+      replicateUnusedCredit > 0
+        ? "up"
+        : "down";
     const cached = {
       status,
       balanceRemaining,
