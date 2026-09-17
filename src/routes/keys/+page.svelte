@@ -63,8 +63,8 @@
     {:else}
       <div class="py-12 text-center">
         <h3 class="font-medium">No active keys</h3>
-        <p class="text-muted-foreground mt-1 text-pretty text-base sm:text-sm">Create a key when you are ready to connect an application.</p>
-        <Button class="mt-6 h-12 justify-center px-4" onclick={() => createKeyDialog?.show()}>
+        <p class="text-muted-foreground mt-1 text-pretty text-base sm:text-sm">It's time to build something new, chief!</p>
+        <Button class="mt-6 justify-center" size="lg" onclick={() => createKeyDialog?.show()}>
           <AddIcon data-icon="inline-start" class="size-5 shrink-0" />
           Create your first key
         </Button>
