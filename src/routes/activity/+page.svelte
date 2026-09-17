@@ -43,7 +43,7 @@
   <section class="mt-10" aria-labelledby="requests-heading">
     <h2 id="requests-heading" class="mb-4 text-sm font-medium">Recent requests</h2>
     {#if rows.length === 0}
-      <EmptyState title="No requests yet" description="Requests made with one of your API keys will show up here." />
+      <EmptyState title="No requests... yet" description="Requests made with one of your API keys will show up here." />
     {:else}
       <div class="overflow-x-auto rounded-lg border">
         <table class="w-full border-collapse text-left">

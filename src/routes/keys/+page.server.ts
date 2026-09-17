@@ -1,12 +1,18 @@
 import type { PageServerLoad } from "./$types";
 
+import { quickstartCurl } from "#lib/server/examples.ts";
 import { requireUser } from "#lib/server/page.ts";
 import { listApiKeys } from "../../gateway/keys-api";
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireUser(locals);
-  const keys = await listApiKeys(locals.backend.sql, user.id);
+  const env = locals.backend.env;
+  const [keys, exampleTemplate] = await Promise.all([
+    listApiKeys(locals.backend.sql, user.id),
+    quickstartCurl(env.baseUrl, env.allowedLanguageModels[0]),
+  ]);
   return {
+    exampleTemplate,
     keys: keys.map((key) => ({
       id: key.id,
       name: key.name,

@@ -7,11 +7,12 @@
   import { Input } from "#lib/components/ui/input/index.ts";
   import CodeBlock from "#lib/components/code-block.svelte";
 
+  import type { HighlightedCode } from "#lib/server/highlight.ts";
+
   let {
-    baseUrl,
-    featuredModel,
+    exampleTemplate,
     oncreate,
-  }: { baseUrl: string; featuredModel: string; oncreate: () => void | Promise<void> } = $props();
+  }: { exampleTemplate: HighlightedCode; oncreate: () => void | Promise<void> } = $props();
 
   let open = $state(false);
   let keyName = $state("");
@@ -88,12 +89,12 @@
     setTimeout(() => (copied = false), 1800);
   }
 
-  const example = $derived(
-    `curl ${baseUrl}/proxy/v1/chat/completions \\
-  -H "Authorization: Bearer ${createdSecret ?? "YOUR_API_KEY"}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "${featuredModel}", "messages": [{"role": "user", "content": "Hi"}]}'`,
-  );
+  const escapeHtml = (value: string) =>
+    value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+  const example = $derived({
+    code: exampleTemplate.code.replace("YOUR_API_KEY", createdSecret ?? "YOUR_API_KEY"),
+    html: exampleTemplate.html.replace("YOUR_API_KEY", escapeHtml(createdSecret ?? "YOUR_API_KEY")),
+  });
 </script>
 
 <Dialog.Root bind:open>
@@ -113,9 +114,9 @@
 
       <code class="bg-muted border-border min-w-0 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm whitespace-nowrap">{createdSecret}</code>
 
-      <div class="mt-2">
+      <div class="mt-2 min-w-0">
         <p class="text-muted-foreground mb-2 text-xs font-medium">Example request</p>
-        <CodeBlock code={example} />
+        <CodeBlock code={example.code} html={example.html} />
       </div>
 
       <Dialog.Footer>

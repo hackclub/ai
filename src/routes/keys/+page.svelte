@@ -30,7 +30,7 @@
     {/snippet}
   </PageHeader>
 
-  <CreateKeyDialog bind:this={createKeyDialog} baseUrl={data.baseUrl} featuredModel={data.featuredModel} oncreate={invalidateAll} />
+  <CreateKeyDialog bind:this={createKeyDialog} exampleTemplate={data.exampleTemplate} oncreate={invalidateAll} />
   <RevokeKeyDialog bind:this={revokeKeyDialog} onrevoke={invalidateAll} />
 
   <section class="mt-10" aria-labelledby="keys-heading">

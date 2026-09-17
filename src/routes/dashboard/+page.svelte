@@ -33,12 +33,6 @@
       : []),
   ]);
 
-  const curlExample = $derived(
-    `curl ${data.baseUrl}/proxy/v1/chat/completions \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "${data.featuredModel}", "messages": [{"role": "user", "content": "Hi"}]}'`,
-  );
 
   const firstName = $derived(user.name?.split(/\s+/)[0] ?? null);
 </script>
@@ -125,7 +119,7 @@
           </li>
         {/snippet}
         {#snippet keyBody()}<Button href="/keys" size="sm" variant="outline">Create an API key</Button>{/snippet}
-        {#snippet curlBody()}<CodeBlock code={curlExample} />{/snippet}
+        {#snippet curlBody()}<CodeBlock code={data.curlExample.code} html={data.curlExample.html} />{/snippet}
         {#snippet modelsBody()}<Button href="/models" size="sm" variant="outline">Browse models</Button>{/snippet}
         {#snippet docsBody()}<Button href="https://docs.ai.hackclub.com" target="_blank" rel="noopener" size="sm" variant="outline">Read the docs<ExternalIcon data-icon="inline-end" class="size-4" /></Button>{/snippet}
 

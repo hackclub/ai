@@ -11,9 +11,9 @@
 <svelte:head><title>Global stats</title></svelte:head>
 
 <div class="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-  <PageHeader title="Global stats" description="Usage across every Hack Club AI user." />
+  <PageHeader title="Global stats" />
 
-  <section class="mt-10" aria-labelledby="usage-heading">
+  <section class="mt-6" aria-labelledby="usage-heading">
     <h2 id="usage-heading" class="mb-4 text-sm font-medium">All users</h2>
     <StatsGrid stats={data.globalStats} />
   </section>

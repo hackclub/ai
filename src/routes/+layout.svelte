@@ -59,15 +59,19 @@ ${
 
 <ModeWatcher />
 
+{#snippet devBanner()}
+  {#if data.devMode}
+    <div class="bg-amber-500/15 text-amber-950 dark:text-amber-200 border-b border-amber-500/30 px-4 py-1.5 text-center text-xs font-medium">
+      You're in dev mode, go wild!
+    </div>
+  {/if}
+{/snippet}
+
 {#if showShell && data.user}
   <Sidebar.Provider>
     <AppSidebar user={data.user} replicateEnabled={data.replicateEnabled} />
     <main class="isolate flex min-w-0 flex-1 flex-col">
-      {#if data.devMode}
-        <div class="bg-amber-500/15 text-amber-950 dark:text-amber-200 border-b border-amber-500/30 px-4 py-1.5 text-center text-xs font-medium">
-          🛠️ You're in dev mode, go wild!
-        </div>
-      {/if}
+      {@render devBanner()}
       <header class="flex h-14 items-center gap-3 border-b px-4 sm:px-6">
         <Sidebar.Trigger />
         <span class="text-sm font-medium">{sectionTitle}</span>
@@ -82,10 +86,6 @@ ${
     </main>
   </Sidebar.Provider>
 {:else}
-  {#if data.devMode}
-    <div class="bg-amber-500/15 text-amber-950 dark:text-amber-200 border-b border-amber-500/30 px-4 py-1.5 text-center text-xs font-medium">
-      🛠️ You're in dev mode, go wild!
-    </div>
-  {/if}
+  {@render devBanner()}
   {@render children()}
 {/if}
