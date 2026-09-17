@@ -13,6 +13,7 @@ import type { AppVariables } from "../../../types";
 import { standardLimiter } from "../shared";
 import exa from "./exa";
 import general from "./general";
+import jev from "./jev";
 import moderations from "./moderations";
 import ocr from "./ocr";
 import replicate from "./replicate";
@@ -50,5 +51,6 @@ proxy.route("/", moderations);
 proxy.route("/", ocr);
 proxy.route("/", replicate);
 proxy.route("/", exa);
+proxy.route("/", jev);
 
 export default proxy;

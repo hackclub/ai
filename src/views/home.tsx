@@ -47,7 +47,7 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
 
         {/* Features Section */}
         <div class="px-6 py-20 max-w-6xl mx-auto">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Card 1: Code snippet style */}
             <div class="relative bg-gradient-to-br from-emerald-500/10 to-transparent border border-emerald-500/20 rounded-2xl p-8 overflow-hidden group hover:border-emerald-500/40 transition-all">
               <div class="absolute top-4 right-4 flex gap-1.5">
@@ -105,6 +105,28 @@ export const Home = ({ models = [] }: { models?: string[] }) => {
                 <p class="text-brand-text/70 leading-relaxed">
                   Search, answer questions and fetch live web content through
                   Exa.
+                </p>
+              </div>
+            </div>
+
+            {/* Card 5: Jev structured decisions */}
+            <div class="relative bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 rounded-2xl p-8 overflow-hidden group hover:border-amber-500/40 transition-all">
+              <div class="absolute top-4 right-4 font-mono text-[10px] text-amber-400/50 text-right leading-tight select-none">
+                <div>noul: 0.92</div>
+                <div>choice: "billing"</div>
+                <div>score: 1.6</div>
+              </div>
+              <div class="relative">
+                <div class="text-5xl font-black text-amber-400/80 mb-2">
+                  jev
+                </div>
+                <h3 class="text-xl font-bold text-brand-heading mb-3">
+                  Typed Decisions
+                </h3>
+                <p class="text-brand-text/70 leading-relaxed">
+                  Ask yes/no, multiple-choice and scored questions about any
+                  text and get structured answers back in milliseconds, via
+                  TypeSafe's Jev.
                 </p>
               </div>
             </div>
