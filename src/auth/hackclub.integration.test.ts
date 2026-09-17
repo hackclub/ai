@@ -80,6 +80,7 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     const user = await sessionUser(sql, token);
     expect(user?.slackId).toBe(slackId);
     expect(user?.name).toBe("Test User");
+    expect(user?.avatar).toBe(`https://cachet.hackclub.com/users/${slackId}/r`);
     expect(user?.isIdvVerified).toBeTrue();
 
     const [policy] = await sql<{ amount_usd: string }[]>`

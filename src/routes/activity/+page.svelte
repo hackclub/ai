@@ -38,12 +38,7 @@
 <svelte:head><title>Activity</title></svelte:head>
 
 <div class="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-  <PageHeader title="Activity" description="Your recent requests through the proxy, newest first." />
-
-  <section class="mt-10" aria-labelledby="usage-heading">
-    <h2 id="usage-heading" class="mb-4 text-sm font-medium">Usage</h2>
-    <StatsGrid stats={data.stats} />
-  </section>
+  <PageHeader title="Activity" />
 
   <section class="mt-10" aria-labelledby="requests-heading">
     <h2 id="requests-heading" class="mb-4 text-sm font-medium">Recent requests</h2>

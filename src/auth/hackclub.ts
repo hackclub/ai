@@ -41,6 +41,9 @@ const AUTH_BASE = "https://auth.hackclub.com";
 const SCOPES = "email name slack_id verification_status address";
 const STATE_COOKIE = "oauth_state";
 
+export const avatarUrlForSlackId = (slackId: string) =>
+  `https://cachet.hackclub.com/users/${encodeURIComponent(slackId)}/r`;
+
 // Fraud is concentrated from these places; sign-in is reported, not blocked.
 const FLAGGED_COUNTRIES = new Set(["CN", "CHINA", "HK", "HONG KONG", "IN", "INDIA"]);
 
@@ -64,11 +67,13 @@ export async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
     throw new HttpError(400, "User does not have a linked Slack account");
   }
   const name = `${identity.first_name} ${identity.last_name}`.trim() || null;
+  const avatar = avatarUrlForSlackId(identity.slack_id);
   const [existing] = await sql<{ id: string }[]>`
     UPDATE users
     SET
       email = ${identity.primary_email},
       name = ${name},
+      avatar = ${avatar},
       is_idv_verified = ${identity.ysws_eligible},
       updated_at = now()
     WHERE slack_id = ${identity.slack_id}
@@ -80,6 +85,7 @@ export async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
     slackId: identity.slack_id,
     email: identity.primary_email,
     name,
+    avatar,
   });
   await sql`
     UPDATE users SET is_idv_verified = ${identity.ysws_eligible}

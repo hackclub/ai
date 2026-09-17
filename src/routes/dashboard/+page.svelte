@@ -48,7 +48,6 @@
 <div class="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
   <PageHeader
     title={firstName ? `Hey, ${firstName}` : "Dashboard"}
-    description="Your usage at a glance, plus everything you need to make a first request."
   />
 
   {#if showIdvBanner}
@@ -84,8 +83,8 @@
   {/if}
 
   <div class={showIdvBanner ? "pointer-events-none select-none opacity-30 grayscale" : ""}>
-    <section class="mt-10" aria-labelledby="usage-heading">
-      <h2 id="usage-heading" class="mb-4 text-sm font-medium">Usage</h2>
+    <section class="mt-4" aria-labelledby="usage-heading">
+      <h2 id="usage-heading" class="sr-only">Usage</h2>
       <StatsGrid stats={data.stats} />
     </section>
 

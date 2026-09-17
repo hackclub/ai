@@ -26,29 +26,8 @@
 </script>
 
 <Sidebar.Root>
-  <Sidebar.Header>
-    <Sidebar.Menu>
-      <Sidebar.MenuItem>
-        <Sidebar.MenuButton size="lg">
-          {#snippet child({ props })}
-            <a href="/dashboard" {...props}>
-              <div class="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg text-base font-bold">
-                h
-              </div>
-              <div class="grid flex-1 text-start text-sm leading-tight">
-                <span class="truncate font-semibold">Hack Club AI</span>
-                <span class="text-muted-foreground truncate text-xs">Free AI for Hack Clubbers</span>
-              </div>
-            </a>
-          {/snippet}
-        </Sidebar.MenuButton>
-      </Sidebar.MenuItem>
-    </Sidebar.Menu>
-  </Sidebar.Header>
-
   <Sidebar.Content>
     <Sidebar.Group>
-      <Sidebar.GroupLabel>Application</Sidebar.GroupLabel>
       <Sidebar.GroupContent>
         <Sidebar.Menu>
           {#each items as item (item.url)}

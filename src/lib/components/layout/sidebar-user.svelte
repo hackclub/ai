@@ -52,23 +52,6 @@
         align="end"
         sideOffset={4}
       >
-        <DropdownMenu.Label class="p-0 font-normal">
-          <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-            {@render identity()}
-          </div>
-        </DropdownMenu.Label>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Group>
-          <DropdownMenu.Item>
-            {#snippet child({ props })}
-              <a href="https://account.hackclub.com" target="_blank" rel="noopener" {...props}>
-                <AccountIcon />
-                Hack Club account
-              </a>
-            {/snippet}
-          </DropdownMenu.Item>
-        </DropdownMenu.Group>
-        <DropdownMenu.Separator />
         <form method="POST" action="/auth/logout" class="[&>button]:w-full">
           <DropdownMenu.Item>
             {#snippet child({ props })}

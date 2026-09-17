@@ -17,7 +17,7 @@ if (env.nodeEnv === "production") {
 }
 
 const sql = postgres(env.databaseUrl, { max: 2 });
-const slackId = "U-LOCAL-DEV";
+const slackId = "U059VC0UDEU";
 
 let [user] = await sql<{ id: string }[]>`
   SELECT id FROM users WHERE slack_id = ${slackId}
