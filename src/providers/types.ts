@@ -1,0 +1,37 @@
+import type { Usd } from "../billing/money";
+
+export type NormalizedUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: Usd;
+};
+
+export type ProviderCompletion =
+  | {
+      state: "complete";
+      providerRequestId: string | null;
+      usage: NormalizedUsage;
+      responseBody: string;
+      bodyCapture: "complete";
+    }
+  | {
+      state: "uncertain";
+      providerRequestId: string | null;
+      reason: string;
+      responseBody: string;
+      bodyCapture: "complete" | "partial";
+    }
+  | {
+      state: "cancelled";
+      providerRequestId: string | null;
+      reason: string;
+      responseBody: string;
+      bodyCapture: "partial";
+    };
+
+export type MeteredProviderResponse = {
+  response: Response;
+  requestBody: string;
+  completion: Promise<ProviderCompletion>;
+};

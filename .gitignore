@@ -25,6 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -40,3 +41,10 @@ yarn-error.log*
 **/*.log
 package-lock.json
 **/*.bun
+
+# sveltekit
+/.svelte-kit
+/build
+
+# Delta agent worktrees and clones
+/.delta
