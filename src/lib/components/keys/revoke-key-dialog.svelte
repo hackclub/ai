@@ -50,7 +50,7 @@
       <Button variant="outline" size="sm" onclick={() => (open = false)}>Cancel</Button>
       <Button variant="destructive" size="sm" onclick={revokeKey} disabled={busy}>
         <DeleteIcon data-icon="inline-start" class="size-4 shrink-0" />
-        {busy ? "Revoking…" : "Revoke key"}
+        Revoke key
       </Button>
     </Dialog.Footer>
   </Dialog.Content>
