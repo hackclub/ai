@@ -3,14 +3,12 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { HttpError } from "../http-error";
-import { runMeteredRequest } from "../metered-request";
 import {
   authorizeProviderRequest,
-  billingErrorToHttp,
-  clientIp,
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
+  runProviderRoute,
 } from "./shared";
 
 export type ExaRouteDependencies = MeteredRouteDependencies & {
@@ -57,41 +55,26 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
     }
     const requestBody = JSON.stringify(body);
     const label = `exa/${endpoint}`;
-    const requestId = crypto.randomUUID();
 
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, {
-        requestId,
-        accountId: principal.billingAccountId,
-        provider: "exa",
-        endpoint: label,
-        model: label,
-        estimatedCostUsd: reservation,
-        analytics: {
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          requestHeaders: request.headers,
-          attributes: { ip: clientIp(request.headers) },
-        },
-        execute: () =>
-          executeJsonProvider({
-            fetch: deps.fetch,
-            url: `${baseUrl}/${endpoint}`,
-            init: {
-              method: "POST",
-              headers: { "content-type": "application/json", "x-api-key": deps.exaApiKey ?? "" },
-              body: requestBody,
-              signal: request.signal,
-            },
-            extractCost: exaCost,
-            extractProviderRequestId: exaRequestId,
-          }),
-      });
-    } catch (error) {
-      throw billingErrorToHttp(error) ?? error;
-    }
-    metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+    const { metered } = await runProviderRoute(deps, request, principal, {
+      provider: "exa",
+      endpoint: label,
+      model: label,
+      estimatedCostUsd: reservation,
+      execute: () =>
+        executeJsonProvider({
+          fetch: deps.fetch,
+          url: `${baseUrl}/${endpoint}`,
+          init: {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-api-key": deps.exaApiKey ?? "" },
+            body: requestBody,
+            signal: request.signal,
+          },
+          extractCost: exaCost,
+          extractProviderRequestId: exaRequestId,
+        }),
+    });
     return metered.response;
   };
 

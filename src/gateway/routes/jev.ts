@@ -3,16 +3,14 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
-import type { MeteredRequestInput } from "../metered-request";
 import { HttpError } from "../http-error";
-import { runMeteredRequest } from "../metered-request";
 import {
   authorizeProviderRequest,
-  billingErrorToHttp,
-  clientIp,
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
+  type ProviderRouteInput,
+  runProviderRoute,
 } from "./shared";
 
 export type JevRouteDependencies = MeteredRouteDependencies & {
@@ -105,23 +103,14 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     }
     body.model = model;
     const requestBody = JSON.stringify(body);
-    const requestId = crypto.randomUUID();
 
     // Analytics read `model` at settlement, so the label can be upgraded to
     // the versioned id the response reports (e.g. jev/jev-1.13.0) before then.
-    const input: MeteredRequestInput = {
-      requestId,
-      accountId: principal.billingAccountId,
+    const input: ProviderRouteInput = {
       provider: "typesafe",
       endpoint: "jev/systemone",
       model: jevModelLabel(body.model),
       estimatedCostUsd: reservation,
-      analytics: {
-        userId: principal.userId,
-        apiKeyId: principal.apiKeyId,
-        requestHeaders: request.headers,
-        attributes: { ip: clientIp(request.headers) },
-      },
       execute: async () => {
         const metered = await executeJsonProvider({
           fetch: deps.fetch,
@@ -142,13 +131,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
       },
     };
 
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, input);
-    } catch (error) {
-      throw billingErrorToHttp(error) ?? error;
-    }
-    metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+    const { metered } = await runProviderRoute(deps, request, principal, input);
     return metered.response;
   };
 

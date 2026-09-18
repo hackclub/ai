@@ -3,14 +3,12 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import type { OpenRouterAdapter } from "../../providers/openrouter/adapter";
 import { HttpError } from "../http-error";
-import { runMeteredRequest } from "../metered-request";
 import {
   authorizeProviderRequest,
-  billingErrorToHttp,
-  clientIp,
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
+  runProviderRoute,
 } from "./shared";
 
 export type ImagesRouteDependencies = MeteredRouteDependencies & {
@@ -100,36 +98,21 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
     const input = parseImageGenerationRequest(parseJsonObject(rawBody), deps.allowedImageModels);
     const chatBody = buildImageChatRequest(input, principal.userId);
-    const requestId = crypto.randomUUID();
 
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, {
-        requestId,
-        accountId: principal.billingAccountId,
-        provider: "openrouter",
-        endpoint: "images/generations",
-        model: input.model,
-        estimatedCostUsd: reservation,
-        analytics: {
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          requestHeaders: request.headers,
-          attributes: { ip: clientIp(request.headers) },
-        },
-        execute: () =>
-          deps.adapter.execute({
-            endpoint: "chat/completions",
-            body: chatBody,
-            apiKey: deps.openRouterApiKey,
-            headers: deps.attributionHeaders,
-            signal: request.signal,
-          }),
-      });
-    } catch (error) {
-      throw billingErrorToHttp(error) ?? error;
-    }
-    metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+    const { metered } = await runProviderRoute(deps, request, principal, {
+      provider: "openrouter",
+      endpoint: "images/generations",
+      model: input.model,
+      estimatedCostUsd: reservation,
+      execute: () =>
+        deps.adapter.execute({
+          endpoint: "chat/completions",
+          body: chatBody,
+          apiKey: deps.openRouterApiKey,
+          headers: deps.attributionHeaders,
+          signal: request.signal,
+        }),
+    });
 
     // Reading the body settles billing through the adapter's capture.
     const text = await metered.response.text();

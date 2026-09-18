@@ -3,14 +3,12 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { HttpError } from "../http-error";
-import { runMeteredRequest } from "../metered-request";
 import {
   authorizeProviderRequest,
-  billingErrorToHttp,
-  clientIp,
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
+  runProviderRoute,
 } from "./shared";
 
 export type OcrRouteDependencies = MeteredRouteDependencies & {
@@ -97,47 +95,32 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
     const model = typeof body.model === "string" ? body.model : "mistral-ocr-latest";
     const pagePrice = requestsAnnotations(body) ? perAnnotatedPage : perPage;
     const requestBody = JSON.stringify(body);
-    const requestId = crypto.randomUUID();
 
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, {
-        requestId,
-        accountId: principal.billingAccountId,
-        provider: "mistral",
-        endpoint: "ocr",
-        model,
-        estimatedCostUsd: reservation,
-        analytics: {
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          requestHeaders: request.headers,
-          attributes: { ip: clientIp(request.headers) },
-        },
-        execute: () =>
-          executeJsonProvider({
-            fetch: deps.fetch,
-            url: `${baseUrl}/v1/ocr`,
-            init: {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                authorization: `Bearer ${deps.mistralApiKey}`,
-              },
-              body: requestBody,
-              signal: request.signal,
+    const { metered } = await runProviderRoute(deps, request, principal, {
+      provider: "mistral",
+      endpoint: "ocr",
+      model,
+      estimatedCostUsd: reservation,
+      execute: () =>
+        executeJsonProvider({
+          fetch: deps.fetch,
+          url: `${baseUrl}/v1/ocr`,
+          init: {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${deps.mistralApiKey}`,
             },
-            extractCost: (response) => {
-              const pages = ocrPageCount(response);
-              return pages === null ? null : pagePrice.multiply(BigInt(pages));
-            },
-            redactResponseBody: redactOcrResponse,
-          }),
-      });
-    } catch (error) {
-      throw billingErrorToHttp(error) ?? error;
-    }
-    metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+            body: requestBody,
+            signal: request.signal,
+          },
+          extractCost: (response) => {
+            const pages = ocrPageCount(response);
+            return pages === null ? null : pagePrice.multiply(BigInt(pages));
+          },
+          redactResponseBody: redactOcrResponse,
+        }),
+    });
     return metered.response;
   });
 };
