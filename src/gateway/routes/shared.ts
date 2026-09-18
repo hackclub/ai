@@ -5,7 +5,12 @@ import { type AuthenticatedPrincipal, authenticateApiKey, touchApiKey } from "..
 import { InsufficientFundsError, LimitExceededError } from "../../billing/errors";
 import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
-import type { BillingLifecycle } from "../metered-request";
+import {
+  type BillingLifecycle,
+  type MeteredRequest,
+  type MeteredRequestInput,
+  runMeteredRequest,
+} from "../metered-request";
 import { RateLimiter } from "../rate-limit";
 
 export type MeteredRouteDependencies = {
@@ -83,3 +88,46 @@ export const billingErrorToHttp = (error: unknown) => {
   if (error instanceof LimitExceededError) return new HttpError(429, error.message);
   return null;
 };
+
+/** The parts of a metered request each route supplies; the envelope fills in the rest. */
+export type ProviderRouteInput = Omit<MeteredRequestInput, "requestId" | "accountId" | "analytics"> & {
+  /** Extra analytics attributes merged after `ip`. */
+  attributes?: Record<string, string>;
+};
+
+/**
+ * The lifecycle every metered provider route shares: one request id, the
+ * analytics block, the billing-error → 429 mapping, and the settlement-error
+ * callback. `input` is completed IN PLACE and handed to `runMeteredRequest`
+ * as the same object, because the Jev route mutates `input.model` after the
+ * upstream response arrives and analytics read it at settlement.
+ */
+export async function runProviderRoute(
+  deps: Pick<MeteredRouteDependencies, "billing" | "onSettlementError">,
+  request: Request,
+  principal: AuthenticatedPrincipal,
+  input: ProviderRouteInput,
+): Promise<{ metered: MeteredRequest; requestId: string }> {
+  const requestId = crypto.randomUUID();
+  const attributes = input.attributes;
+  delete input.attributes;
+  const full = Object.assign(input as unknown as MeteredRequestInput, {
+    requestId,
+    accountId: principal.billingAccountId,
+    analytics: {
+      userId: principal.userId,
+      apiKeyId: principal.apiKeyId,
+      requestHeaders: request.headers,
+      attributes: { ip: clientIp(request.headers), ...(attributes ?? {}) },
+    },
+  });
+  let metered: MeteredRequest;
+  try {
+    metered = await runMeteredRequest(deps.billing, full);
+  } catch (error) {
+    throw billingErrorToHttp(error) ?? error;
+  }
+  metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+  // Plan 018 adds an `x-request-id` response header here; leave this comment.
+  return { metered, requestId };
+}
