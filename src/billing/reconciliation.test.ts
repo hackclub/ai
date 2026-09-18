@@ -88,13 +88,14 @@ describe("fetchOpenRouterGeneration", () => {
 
 describe("reconcilePendingReservations", () => {
   const minute = 60_000;
-  const now = () => new Date(1_000_000 * minute);
+  const maxAge = 24 * 60 * minute;
   const pending = (requestId: string, providerRequestId: string | null, ageMs: number) => ({
     request_id: requestId,
     provider: "openrouter",
     provider_request_id: providerRequestId,
     reconciliation_reason: "client disconnected",
-    updated_at: new Date(now().getTime() - ageMs),
+    expired: ageMs >= maxAge,
+    age_ms: ageMs,
   });
 
   test("finalizes with the provider's recorded cost and a reconciled analytics event", async () => {
@@ -103,7 +104,6 @@ describe("reconcilePendingReservations", () => {
       sql: fakeSql([pending("r1", "gen-1", minute)]),
       billing,
       openRouter: openRouter(() => generationResponse(0.002)),
-      now,
     });
     expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
     expect(finalized[0]?.actualCostUsd.toString()).toBe("0.002000000000");
@@ -129,7 +129,6 @@ describe("reconcilePendingReservations", () => {
       ]),
       billing,
       openRouter: openRouter(() => new Response("", { status: 404 })),
-      now,
     });
     expect(result).toEqual({ finalized: 0, released: 2, skipped: 2, failed: 0 });
     expect(finalized).toEqual([]);
@@ -145,22 +144,33 @@ describe("reconcilePendingReservations", () => {
       openRouter: openRouter(() =>
         calls++ === 0 ? new Response("", { status: 500 }) : generationResponse(0.001, "gen-2"),
       ),
-      now,
     });
     expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 1 });
     expect(finalized[0]?.requestId).toBe("r2");
+  });
+
+  test("trusts the database's expiry verdict rather than recomputing it", async () => {
+    const { billing, released } = fakeBilling();
+    const result = await reconcilePendingReservations({
+      sql: fakeSql([{ ...pending("db-says-expired", null, minute), expired: true }]),
+      billing,
+      openRouter: openRouter(() => new Response("", { status: 404 })),
+    });
+    expect(result).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
+    expect(released).toEqual(["db-says-expired"]);
   });
 });
 
 describe("reconcilePendingReservations for Replicate", () => {
   const minute = 60_000;
-  const now = () => new Date(1_000_000 * minute);
+  const maxAge = 24 * 60 * minute;
   const pending = (requestId: string, providerRequestId: string | null, ageMs: number) => ({
     request_id: requestId,
     provider: "replicate",
     provider_request_id: providerRequestId,
     reconciliation_reason: "did not finish within the settlement window",
-    updated_at: new Date(now().getTime() - ageMs),
+    expired: ageMs >= maxAge,
+    age_ms: ageMs,
   });
   const pricing = {
     get: async () => ({
@@ -197,7 +207,6 @@ describe("reconcilePendingReservations for Replicate", () => {
           metrics: { predict_time: 2 },
         });
       }),
-      now,
     });
     expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
     expect(finalized[0]?.actualCostUsd.toString()).toBe("0.002000000000");
@@ -212,7 +221,6 @@ describe("reconcilePendingReservations for Replicate", () => {
       billing,
       openRouter: openRouterUnused,
       replicate: replicate(() => Response.json({ id: "pred2", status: "processing" })),
-      now,
     });
     expect(result).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
     expect(finalized).toEqual([]);
@@ -226,7 +234,6 @@ describe("reconcilePendingReservations for Replicate", () => {
       billing,
       openRouter: openRouterUnused,
       replicate: replicate(() => new Response("", { status: 404 })),
-      now,
     });
     expect(withAccess).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
     expect(released).toEqual(["gone"]);
@@ -235,7 +242,6 @@ describe("reconcilePendingReservations for Replicate", () => {
       sql: fakeSql([pending("young", "pred4", minute)]),
       billing,
       openRouter: openRouterUnused,
-      now,
     });
     expect(withoutAccess).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
   });

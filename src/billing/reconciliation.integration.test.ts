@@ -143,4 +143,36 @@ describe("reconciliation with PostgreSQL", () => {
     `;
     expect(row?.state).toBe("released");
   });
+
+  integrationTest("releases a pending reservation only once the database says it is old", async () => {
+    if (!sql || !engine) throw new Error("Missing database");
+    const requestId = crypto.randomUUID();
+    await engine.reserve({
+      requestId,
+      accountId,
+      provider: "openrouter",
+      estimatedCostUsd: Usd.parse("0.01"),
+    });
+    // No provider id: the only way out is release after maxAgeMs.
+    await engine.markPendingReconciliation(requestId, "no usage block");
+    const openRouter = { apiKey: "key", baseUrl: "https://upstream.test/api" };
+
+    const young = await reconcilePendingReservations({ sql, billing: engine, openRouter });
+    const [beforeRow] = await sql<{ state: string }[]>`
+      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
+    `;
+    expect(beforeRow?.state).toBe("pending_reconciliation");
+    expect(young.failed).toBe(0);
+
+    await sql`
+      UPDATE billing_reservations SET updated_at = now() - INTERVAL '25 hours'
+      WHERE request_id = ${requestId}::uuid
+    `;
+    const old = await reconcilePendingReservations({ sql, billing: engine, openRouter });
+    expect(old.released).toBeGreaterThanOrEqual(1);
+    const [afterRow] = await sql<{ state: string }[]>`
+      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
+    `;
+    expect(afterRow?.state).toBe("released");
+  });
 });
