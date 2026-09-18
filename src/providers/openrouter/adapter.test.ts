@@ -197,6 +197,42 @@ describe("OpenRouterAdapter", () => {
     expect(completion.responseBody.length).toBeLessThanOrEqual(64);
   });
 
+  test("truncation is sticky: a later chunk that would fit is not appended after an overflow", async () => {
+    const wireBody =
+      ": " + "x".repeat(98) + "\n\n" +
+      'data: {"id":"gen-big","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0.001}}\n\n' +
+      "data: [DONE]\n\n";
+    // part1 fits under the cap; part2 alone would overflow it (setting
+    // truncated); part3 alone would fit under the cap, but must still be
+    // skipped because truncation is sticky, not re-evaluated per chunk.
+    const part1 = wireBody.slice(0, 40);
+    const part2 = wireBody.slice(40, 90);
+    const part3 = wireBody.slice(90);
+    const adapter = new OpenRouterAdapter({
+      maxCapturedBytes: 64,
+      fetch: (async () =>
+        new Response(chunkedBody([part1, part2, part3]), {
+          headers: { "content-type": "text/event-stream" },
+        })),
+    });
+
+    const result = await adapter.execute({
+      endpoint: "chat/completions",
+      body: { model: "test/model", stream: true },
+      apiKey: "secret",
+    });
+
+    expect(await result.response.text()).toBe(wireBody);
+    const completion = await result.completion;
+    expect(completion.state).toBe("complete");
+    if (completion.state !== "complete") throw new Error("Expected usage");
+    expect(completion.bodyCapture).toBe("truncated");
+    // Exact equality proves no hole: the stored body is precisely the
+    // chunk(s) captured before the overflow, nothing from part2 or part3.
+    expect(completion.responseBody).toBe(part1);
+    expect(completion.responseBody.length).toBe(part1.length);
+  });
+
   test("does not truncate a non-streaming JSON body over the cap", async () => {
     const wireBody = JSON.stringify({
       id: "gen-json-big",

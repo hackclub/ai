@@ -171,7 +171,7 @@ const meterResponse = (
           // streams are capped here.
           if (
             !observer.eventStream ||
-            capturedBytes + copy.byteLength <= maxCapturedBytes
+            (!truncated && capturedBytes + copy.byteLength <= maxCapturedBytes)
           ) {
             chunks.push(copy);
             capturedBytes += copy.byteLength;
