@@ -2,7 +2,12 @@ import { type ClickHouseClient, ClickHouseError } from "@clickhouse/client";
 import { describe, expect, test } from "bun:test";
 import type postgres from "postgres";
 
-import { drainRequestEvents, isClickHouseRejection, toClickHouseEvent } from "./request-events";
+import {
+  drainRequestEvents,
+  isClickHouseRejection,
+  type RequestEventPayload,
+  toClickHouseEvent,
+} from "./request-events";
 
 describe("toClickHouseEvent", () => {
   test("maps a finalization payload and defaults malformed fields", () => {
@@ -32,52 +37,74 @@ describe("toClickHouseEvent", () => {
   });
 });
 
-describe("drainRequestEvents attempt accounting", () => {
-  type Update = { attemptsDelta: unknown; error: unknown };
+describe("drainRequestEvents", () => {
+  type Statement = { text: string; values: unknown[] };
 
-  /** A fake `sql` whose transaction hands back one row and records the release update. */
-  const fakeSql = (updates: Update[]) => {
-    const tx = Object.assign(
-      async (strings: TemplateStringsArray) => {
-        if (strings.join("?").includes("SELECT id::text")) {
-          return [{ id: "1", payload: { event_id: "11111111-1111-1111-1111-111111111111" } }];
-        }
-        return [];
-      },
-      {},
-    );
-    const sql = Object.assign(
-      async (_strings: TemplateStringsArray, ...values: unknown[]) => {
-        updates.push({ attemptsDelta: values[0], error: values[1] });
-        return [];
-      },
-      { begin: (run: (tx: unknown) => Promise<unknown>) => run(tx) },
-    );
-    return sql as unknown as postgres.Sql;
-  };
+  /** A fake `sql` that answers the claim with one row and records every statement. */
+  const fakeSql = (
+    statements: Statement[],
+    claimed: { id: string; payload: RequestEventPayload }[] = [
+      { id: "1", payload: { event_id: "11111111-1111-1111-1111-111111111111" } },
+    ],
+  ) =>
+    (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const text = strings.join("?");
+      statements.push({ text, values });
+      if (text.includes("SET claimed_at = now()")) return claimed;
+      return [];
+    }) as unknown as postgres.Sql;
 
-  const clickhouseThrowing = (error: Error) =>
-    ({ insert: async () => { throw error; } }) as unknown as ClickHouseClient;
+  const clickhouse = (insert: () => Promise<void>) =>
+    ({ insert }) as unknown as ClickHouseClient;
 
-  test("does not spend a row's attempt budget when ClickHouse is unreachable", async () => {
-    const updates: Update[] = [];
-    await expect(
-      drainRequestEvents({
-        sql: fakeSql(updates),
-        clickhouse: clickhouseThrowing(new Error("connect ECONNREFUSED")),
-      }),
-    ).rejects.toThrow("ECONNREFUSED");
-    expect(updates).toEqual([{ attemptsDelta: 0, error: "connect ECONNREFUSED" }]);
-    expect(isClickHouseRejection(new Error("x"))).toBeFalse();
+  test("claims, inserts, then deletes with no transaction open across the insert", async () => {
+    const statements: Statement[] = [];
+    let inserted = 0;
+    const taken = await drainRequestEvents({
+      sql: fakeSql(statements),
+      clickhouse: clickhouse(async () => { inserted += 1; }),
+    });
+    expect(taken).toBe(1);
+    expect(inserted).toBe(1);
+    expect(statements.map((s) => s.text.trim().split(/\s+/).slice(0, 2).join(" "))).toEqual([
+      "UPDATE request_event_outbox",
+      "DELETE FROM",
+    ]);
+    expect(statements[1]?.values[0]).toEqual(["1"]);
   });
 
-  test("counts an attempt when ClickHouse itself rejects the batch", async () => {
-    const updates: Update[] = [];
-    const rejection = new ClickHouseError({ message: "Cannot parse", code: "6", type: "CANNOT_PARSE_TEXT" });
-    await expect(
-      drainRequestEvents({ sql: fakeSql(updates), clickhouse: clickhouseThrowing(rejection) }),
-    ).rejects.toThrow("Cannot parse");
-    expect(updates[0]?.attemptsDelta).toBe(1);
-    expect(isClickHouseRejection(rejection)).toBeTrue();
+  test("counts an attempt and releases the claim on any insert failure", async () => {
+    for (const error of [new Error("connect ECONNREFUSED"), new ClickHouseError({ message: "Cannot parse", code: "6", type: "CANNOT_PARSE_TEXT" })]) {
+      const statements: Statement[] = [];
+      await expect(
+        drainRequestEvents({ sql: fakeSql(statements), clickhouse: clickhouse(async () => { throw error; }) }),
+      ).rejects.toThrow(error.message);
+      const release = statements[1];
+      expect(release?.text).toContain("attempts = attempts + 1");
+      expect(release?.text).toContain("claimed_at = NULL");
+      expect(release?.values).toEqual([error.message, ["1"]]);
+    }
+  });
+
+  test("parks unmappable rows in one statement and still delivers the rest", async () => {
+    const statements: Statement[] = [];
+    let inserted: unknown[] = [];
+    await drainRequestEvents({
+      sql: fakeSql(statements, [
+        { id: "1", payload: { event_id: "11111111-1111-1111-1111-111111111111" } },
+        { id: "2", payload: {} },
+      ]),
+      clickhouse: clickhouse(async function (this: unknown, ...args: unknown[]) {
+        inserted = args;
+      } as never),
+    });
+    const park = statements.find((s) => s.text.includes("unnest("));
+    expect(park?.values).toEqual([25, ["2"], ["request event payload has no event_id"]]);
+    expect(statements.at(-1)?.text).toContain("DELETE FROM");
+  });
+
+  test("isClickHouseRejection distinguishes server rejections", () => {
+    expect(isClickHouseRejection(new Error("x"))).toBeFalse();
+    expect(isClickHouseRejection(new ClickHouseError({ message: "m", code: "6", type: "T" }))).toBeTrue();
   });
 });
