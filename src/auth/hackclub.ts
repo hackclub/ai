@@ -41,13 +41,13 @@ const AUTH_BASE = "https://auth.hackclub.com";
 const SCOPES = "email name slack_id verification_status address";
 const STATE_COOKIE = "oauth_state";
 
-export const avatarUrlForSlackId = (slackId: string) =>
+const avatarUrlForSlackId = (slackId: string) =>
   `https://cachet.hackclub.com/users/${encodeURIComponent(slackId)}/r`;
 
 // Fraud is concentrated from these places; sign-in is reported, not blocked.
 const FLAGGED_COUNTRIES = new Set(["CN", "CHINA", "HK", "HONG KONG", "IN", "INDIA"]);
 
-export const hasFlaggedCountry = (identity: HackClubIdentity) =>
+const hasFlaggedCountry = (identity: HackClubIdentity) =>
   identity.addresses?.some((address) =>
     FLAGGED_COUNTRIES.has(address.country.trim().toUpperCase()),
   ) ?? false;
@@ -62,7 +62,7 @@ const redirect = (location: string, cookies: string[] = []) => {
  * Upserts the signed-in identity. New users get a billing account and the
  * default daily allowance through createUser.
  */
-export async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
+async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
   if (!identity.slack_id) {
     throw new HttpError(400, "User does not have a linked Slack account");
   }
