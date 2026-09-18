@@ -17,6 +17,10 @@ this is a lightweight LLM proxy, that amongst other things, implements:
 
 is it the best code? probably not. but hey, it works!
 
+## documentation
+
+user-facing docs (rules, rate limiting, API reference) live at **https://docs.ai.hackclub.com**, with their source in the [hackclub/ai-docs](https://github.com/hackclub/ai-docs) repo.
+
 you **must** have a reverse proxy (e.g. traefik) in front of the service to ensure that IPs aren't spoofed. we also highly recommend using openrouter, since it makes things like billing and provider ratelimits a lot less annoying, and also gives you much greater room to experiment and try out new models.
 
 ## env variables
