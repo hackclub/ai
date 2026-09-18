@@ -23,8 +23,15 @@ In production the server refuses to start unless `CLICKHOUSE_URL`,
 compose defaults above are for local development only, and compose binds
 both datastores to `127.0.0.1`.
 
-The containers apply SQL in `migrations/postgres` and
-`migrations/clickhouse` when their volumes are first created.
+Schema changes are SQL files in `migrations/postgres` and
+`migrations/clickhouse`, applied in filename order by `bun run db:migrate`
+and recorded in `schema_migrations`. The Docker containers also apply them
+when a volume is first created; the runner detects that and records them as
+applied. `bun run db:migrate --status` lists pending files (exit 2 if any).
+ClickHouse has no transactional DDL, so every ClickHouse migration must be
+idempotent (`IF NOT EXISTS`). Run `db:migrate` as a deploy step before
+starting the server; the server logs a warning at startup if files are
+pending but never applies them itself.
 
 Useful commands:
 
