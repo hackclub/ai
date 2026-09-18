@@ -180,8 +180,5 @@
   <section class="mt-8" aria-labelledby="response-heading">
     <h2 id="response-heading" class="mb-4 text-sm font-medium">Example response</h2>
     <CodeBlock code={data.response.code} html={data.response.html} />
-    <p class="text-muted-foreground mt-3 text-sm text-pretty">
-      Requests are logged under the versioned model the response reports, such as <code class="font-mono text-xs">jev/jev-1.13.0</code>, so <code class="font-mono text-xs">jev-latest</code> stays traceable in your activity.
-    </p>
   </section>
 </div>
