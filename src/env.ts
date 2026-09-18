@@ -85,14 +85,17 @@ export const loadEnv = (
     throw new Error("NODE_ENV must be development, production, or test");
   }
 
+  const requiredInProduction = (name: string, fallback: string) =>
+    nodeEnv === "production" ? required(source, name) : (source[name] || fallback);
+
   return {
     nodeEnv,
     port: integer(source, "PORT", 3000),
     baseUrl: source.BASE_URL ?? "http://localhost:3000",
     databaseUrl: required(source, "DATABASE_URL"),
-    clickhouseUrl: source.CLICKHOUSE_URL ?? "http://localhost:8123",
-    clickhouseUser: source.CLICKHOUSE_USER ?? "hcai",
-    clickhousePassword: source.CLICKHOUSE_PASSWORD ?? "hcai",
+    clickhouseUrl: requiredInProduction("CLICKHOUSE_URL", "http://localhost:8123"),
+    clickhouseUser: requiredInProduction("CLICKHOUSE_USER", "hcai"),
+    clickhousePassword: requiredInProduction("CLICKHOUSE_PASSWORD", "hcai"),
     openRouterApiKey: required(source, "OPENROUTER_API_KEY"),
     openRouterBaseUrl: source.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api",
     featuredModels: list(source.FEATURED_MODELS),

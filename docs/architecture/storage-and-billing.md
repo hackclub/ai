@@ -11,7 +11,9 @@ remain to be validated.
   reservations, charges, credits, and adjustments.
 - ClickHouse is the primary store for request analytics and complete searchable
   request and response bodies.
-- ClickHouse data is retained for 90 days.
+- ClickHouse keeps request and response bodies for 90 days (column TTL);
+  event dimensions (ids, model, tokens, cost, headers, attributes) are
+  retained indefinitely. Changing that is a policy decision, not a bug.
 - Billing enforcement never queries ClickHouse.
 - Finalized usage reaches ClickHouse through the `request_event_outbox`
   table, written in the finalization transaction. The analytics worker

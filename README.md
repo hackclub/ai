@@ -18,6 +18,11 @@ The default endpoints are:
 - ClickHouse HTTP: `http://localhost:8123`
 - ClickHouse native protocol: `localhost:9000`
 
+In production the server refuses to start unless `CLICKHOUSE_URL`,
+`CLICKHOUSE_USER`, and `CLICKHOUSE_PASSWORD` are set explicitly; the
+compose defaults above are for local development only, and compose binds
+both datastores to `127.0.0.1`.
+
 The containers apply SQL in `migrations/postgres` and
 `migrations/clickhouse` when their volumes are first created.
 
@@ -36,17 +41,21 @@ The PostgreSQL integration tests (billing engine, metered requests, and the
 HTTP proxy) are opt-in so the normal unit suite does not depend on Docker.
 Stop `bun run dev` first: its job worker drains the queue the tests inspect.
 
+CI (`.github/workflows/ci.yml`) runs the unit gates on every push and pull
+request, then starts Postgres and ClickHouse with `docker compose` and runs
+the same integration tests with the variables above set.
+
 ```bash
 BILLING_TEST_DATABASE_URL="$DATABASE_URL" bun test
 ```
 
-The end-to-end delivery test additionally runs a Graphile Worker job that writes
-and searches a ClickHouse event:
+The outbox delivery test additionally inserts an outbox row, drains it to
+ClickHouse, and checks the event is searchable:
 
 ```bash
 ANALYTICS_TEST_DATABASE_URL="$DATABASE_URL" \
 ANALYTICS_TEST_CLICKHOUSE_URL="$CLICKHOUSE_URL" \
-bun test src/analytics/request-event-task.integration.test.ts
+bun test src/analytics/request-events.integration.test.ts
 ```
 
 ## Development server
@@ -60,27 +69,30 @@ bun run dev            # http://localhost:3000
 ```
 
 `dev:seed` prints an API key for the proxy and a cookie that signs you into
-the dashboard without Hack Club OAuth. Set `ENABLED_FEATURES` in
-`.env` to turn on gated providers locally (the generated dev `.env` enables
-`enable_exa,enable_ocr,enable_replicate`). `bun run dev:reset-db` wipes the
+the dashboard without Hack Club OAuth. Providers are enabled by their keys:
+`/proxy/v1/replicate/*` is mounted only when `REPLICATE_API_KEY` is set, and
+Exa and OCR answer `503` with "<Provider> is not configured" until
+`EXA_API_KEY` / `MISTRAL_API_KEY` are set. `bun run dev:reset-db` wipes the
 local databases and re-applies the migrations.
 
 The server needs `DATABASE_URL` and `OPENROUTER_API_KEY`; see `.env.example`
 for the optional settings. On startup it creates the Graphile Worker schema,
 starts the in-process ClickHouse delivery worker, and listens on `PORT`.
+Error reporting goes to Sentry when `SENTRY_DSN` is set (`sendDefaultPii`
+is off, so bearer keys and cookies are never sent).
 
 ### HTTP surface
 
 | Route | Auth | Purpose |
 |---|---|---|
 | `GET /up` | none | Health: PostgreSQL, ClickHouse, OpenRouter key |
-| `GET /proxy/v1/models` | none | Allowlisted OpenRouter model listing |
+| `GET /proxy/v1/models` | none | Full OpenRouter model listing (language + embedding); no allowlist |
 | `POST /proxy/v1/chat/completions`, `/responses`, `/embeddings` | API key | OpenAI-compatible proxy |
 | `POST /proxy/v1/images/generations` | API key | Image generation via OpenRouter |
 | `POST /proxy/v1/moderations` | API key | OpenAI moderation pass-through (unbilled) |
-| `POST /proxy/v1/exa/*` | API key + `enable_exa` | Exa search, contents, answer |
-| `POST /proxy/v1/ocr` | API key + `enable_ocr` | Mistral OCR |
-| `/proxy/v1/replicate/*` | API key + `enable_replicate` | Replicate files, models, predictions (scoped to their creator; no account-wide listings) |
+| `POST /proxy/v1/exa/*` | API key (503 until `EXA_API_KEY` is set) | Exa search, contents, answer |
+| `POST /proxy/v1/ocr` | API key (503 until `MISTRAL_API_KEY` is set) | Mistral OCR |
+| `/proxy/v1/replicate/*` | API key (mounted only when `REPLICATE_API_KEY` is set) | Replicate files, models, predictions (scoped to their creator; no account-wide listings) |
 | `/auth/login`, `/auth/callback`, `POST /auth/logout` | cookie | Hack Club sign-in |
 | `GET/POST /api/keys`, `DELETE /api/keys/:id` | session | Dashboard key management |
 | `POST /api/ghss`, `POST /internal/revoke` | signature / shared secret | Leaked-key revocation |
@@ -90,6 +102,8 @@ through to the provider unchanged apart from `user` and `usage.include`. Errors
 use the previous gateway's `{ "error": "message" }` shape, with `429` when the
 account's funding or a limit policy cannot cover the reservation. Known coding
 agents and chat frontends are refused with the previous gateway's message.
+Allowlists apply only to `/images/generations` (`ALLOWED_IMAGE_MODELS`) and
+`/replicate/*` (`src/config/replicate-models.ts`).
 
 Every metered request is reserved before dispatch and finalized from the
 provider's reported cost; uncertain outcomes are reconciled by a five-minute
@@ -98,7 +112,6 @@ Graphile Worker cron (see `docs/architecture/storage-and-billing.md`).
 ### Not carried over
 
 - Per-user OpenRouter provisioned keys: limits are enforced by our ledger.
-- Sentry instrumentation.
 - Exa streaming responses (`stream: true` is rejected with 400).
 - The rate limiter is process-local, as before.
 

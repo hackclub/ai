@@ -4,7 +4,7 @@ import { HttpError } from "../gateway/http-error";
 
 type Sql = postgres.Sql;
 
-export const API_KEY_PREFIX = "sk-hc-v1-";
+const API_KEY_PREFIX = "sk-hc-v1-";
 
 export type AuthenticatedPrincipal = {
   userId: string;

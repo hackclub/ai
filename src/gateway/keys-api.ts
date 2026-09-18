@@ -45,7 +45,7 @@ export async function listApiKeys(sql: Sql, userId: string): Promise<ApiKeySumma
   }));
 }
 
-export async function createApiKeyForUser(sql: Sql, userId: string, rawName: unknown) {
+async function createApiKeyForUser(sql: Sql, userId: string, rawName: unknown) {
   const name = typeof rawName === "string" ? rawName.trim() : "";
   if (name.length < 1 || name.length > 100) {
     throw new HttpError(400, "Key name must be between 1 and 100 characters");
