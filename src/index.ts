@@ -1,5 +1,6 @@
 import { loadEnv } from "./env";
 import { installShutdownHandlers, startBackend } from "./lifecycle";
+import { log } from "./log";
 import { createBackend } from "./server";
 
 /**
@@ -21,5 +22,5 @@ backend.app.listen({
   idleTimeout: 0,
   maxRequestBodySize: env.maxRequestBodyBytes,
 });
-console.log(`Hack Club AI gateway listening on http://localhost:${env.port}`);
+log.info("gateway listening", { port: env.port });
 installShutdownHandlers(backend, { stopServer: () => backend.app.stop() });

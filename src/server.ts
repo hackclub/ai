@@ -19,6 +19,7 @@ import { moderationRoutes } from "./gateway/routes/moderations";
 import { ocrRoutes } from "./gateway/routes/ocr";
 import { replicateRoutes } from "./gateway/routes/replicate";
 import { webhookRoutes } from "./gateway/webhooks";
+import { log } from "./log";
 import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
@@ -88,7 +89,7 @@ export const createBackend = (env: Env): Backend => {
   // One counter shared by every proxy route group, keyed by user.
   const rateLimiter = new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const onSettlementError = (error: unknown, requestId: string) => {
-    console.error(`Billing settlement failed for request ${requestId}:`, error);
+    log.error("billing settlement failed", { requestId, error });
     Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
   };
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
@@ -180,7 +181,7 @@ export const createBackend = (env: Env): Backend => {
 
   const app = createApp({
     onError: (error) => {
-      console.error("Unhandled request error:", error);
+      log.error("unhandled request error", { error });
       Sentry.captureException(error);
     },
     health: createHealthCheck({
@@ -223,9 +224,11 @@ export const createBackend = (env: Env): Backend => {
     start: async () => {
       const pending = await pendingPostgresMigrations(sql);
       if (pending.length > 0) {
-        console.error(
-          `[migrations] ${pending.length} PostgreSQL migration(s) not applied: ${pending.join(", ")}. Run: bun run db:migrate`,
-        );
+        log.error("pending PostgreSQL migrations", {
+          count: pending.length,
+          migrations: pending,
+          hint: "Run: bun run db:migrate",
+        });
       }
       // Also creates the job-queue schema, which finalization depends on.
       worker ??= await startAnalyticsWorker({
@@ -240,7 +243,7 @@ export const createBackend = (env: Env): Backend => {
               ? { apiKey: env.replicateApiKey, pricing: replicatePricing }
               : undefined,
         },
-        log: (message) => console.log(`[billing.reconcile] ${message}`),
+        log: (message) => log.info("billing.reconcile", { message }),
       });
     },
     shutdown: async () => {

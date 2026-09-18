@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/bun";
 
+import { log } from "./log";
 import type { Backend } from "./server";
 
 /**
@@ -18,7 +19,7 @@ export const startBackend = (backend: Backend): Lifecycle => {
   const started = backend.start().catch((error: unknown) => {
     const startupError = error instanceof Error ? error : new Error(String(error));
     backend.setStartupError(startupError);
-    console.error("Failed to start background services:", startupError);
+    log.error("backend start failed", { error: startupError });
     Sentry.captureException(startupError, { tags: { stage: "startup" } });
   });
   return { started, startupError: backend.startupError };
@@ -40,12 +41,12 @@ export const installShutdownHandlers = (
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
-    console.log(`Received ${signal}, shutting down`);
+    log.info("shutting down", { signal });
     try {
       options.stopServer?.();
       await backend.shutdown();
     } catch (error) {
-      console.error("Shutdown failed:", error);
+      log.error("shutdown failed", { error });
     } finally {
       process.exit(0);
     }

@@ -16,6 +16,7 @@ import {
   reconcilePendingReservations,
   type ReplicateReconcileConfig,
 } from "../billing/reconciliation";
+import { log } from "../log";
 import {
   type RequestEventDrainer,
   startRequestEventDrainer,
@@ -97,7 +98,7 @@ export const startAnalyticsWorker = async (
     clickhouse: options.clickhouse,
     intervalMs: options.drainIntervalMs,
     onError: (error) =>
-      console.error("Failed to deliver request events to ClickHouse:", error),
+      log.error("request event delivery failed", { error }),
   });
   const runner = await run({
     connectionString: options.connectionString,
