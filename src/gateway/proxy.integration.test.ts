@@ -195,7 +195,8 @@ describe("proxy routes with PostgreSQL", () => {
       });
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("text/event-stream");
-      expect(response.headers.get("x-upstream")).toBe("yes");
+      expect(response.headers.get("x-upstream")).toBeNull();
+      expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
       expect(response.headers.get("content-encoding")).toBeNull();
       expect(await response.text()).toBe(wire);
 
