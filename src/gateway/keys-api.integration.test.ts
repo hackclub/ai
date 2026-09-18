@@ -35,7 +35,7 @@ describe("keys API and revoke webhooks with PostgreSQL", () => {
 
   integrationTest("requires a session", async () => {
     if (!sql) throw new Error("Missing database");
-    const response = await keysApiRoutes({ sql }).handle(
+    const response = await keysApiRoutes({ sql, baseUrl: "http://gateway.test" }).handle(
       new Request("http://gateway.test/api/keys"),
     );
     expect(response.status).toBe(401);
@@ -43,7 +43,7 @@ describe("keys API and revoke webhooks with PostgreSQL", () => {
 
   integrationTest("creates, lists, revokes, and validates names", async () => {
     if (!sql) throw new Error("Missing database");
-    const app = keysApiRoutes({ sql });
+    const app = keysApiRoutes({ sql, baseUrl: "http://gateway.test" });
     const call = (path: string, init: RequestInit = {}) =>
       app.handle(
         new Request(`http://gateway.test${path}`, {

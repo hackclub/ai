@@ -5,11 +5,14 @@ import { hashApiKey } from "../auth/api-keys";
 import { SESSION_COOKIE, cookieValue, sessionUser } from "../auth/sessions";
 import { issueApiKey, revokeApiKey } from "../auth/users";
 import { HttpError } from "./http-error";
+import { assertSameOrigin } from "./origin-check";
 
 type Sql = postgres.Sql;
 
 export type KeysApiOptions = {
   sql: Sql;
+  /** Public origin of this deployment; mutations must come from it. */
+  baseUrl: string;
   onKeyCreated?: (userId: string, keyId: string, name: string) => void;
 };
 
@@ -91,6 +94,7 @@ export async function revokeApiKeyByToken(sql: Sql, token: string) {
 export const keysApiRoutes = (options: KeysApiOptions) =>
   new Elysia({ prefix: "/api" })
     .derive(async ({ request }) => {
+      assertSameOrigin(request, options.baseUrl);
       const user = await sessionUser(
         options.sql,
         cookieValue(request.headers.get("cookie"), SESSION_COOKIE),

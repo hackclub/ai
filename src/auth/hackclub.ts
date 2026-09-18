@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import type postgres from "postgres";
 
 import { HttpError } from "../gateway/http-error";
+import { assertSameOrigin } from "../gateway/origin-check";
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
@@ -201,6 +202,7 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
       ]);
     })
     .post("/logout", async ({ request }) => {
+      assertSameOrigin(request, options.baseUrl);
       const token = cookieValue(request.headers.get("cookie"), SESSION_COOKIE);
       if (token) await deleteSession(options.sql, token);
       return redirect("/", [sessionCookie("", 0)]);
