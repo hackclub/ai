@@ -6,7 +6,9 @@ import {
   describePricing,
   estimatePredictionCost,
   parseReplicatePricing,
+  hasBillableMetrics,
   predictionCost,
+  type ReplicatePricing,
   scaleUsd,
 } from "./pricing";
 
@@ -103,6 +105,35 @@ describe("predictionCost", () => {
     const pricing = parseReplicatePricing(await fixture("retro-diffusion_rd-plus"))!;
     const cost = predictionCost(pricing, { image_output_count: 1 });
     expect(cost.toString()).toBe(Usd.parse("0.099").toString());
+  });
+});
+
+describe("hasBillableMetrics", () => {
+  test("requires the metric each pricing kind is keyed on", () => {
+    const hardware: ReplicatePricing = {
+      kind: "hardware",
+      hardware: "T4",
+      perSecondUsd: Usd.parse("0.001"),
+      medianRunUsd: null,
+    };
+    expect(hasBillableMetrics(hardware, { predict_time: 0 })).toBeTrue();
+    expect(hasBillableMetrics(hardware, { total_time: 2 })).toBeFalse();
+    expect(hasBillableMetrics(hardware, {})).toBeFalse();
+
+    const perUnit: ReplicatePricing = {
+      kind: "per-unit",
+      hardware: "A100",
+      medianRunUsd: null,
+      tiers: [
+        {
+          title: null,
+          criteria: [],
+          prices: [{ metric: "image_output_count", display: "image", unitUsd: Usd.parse("0.01"), title: "per image" }],
+        },
+      ],
+    };
+    expect(hasBillableMetrics(perUnit, { image_output_count: 2 })).toBeTrue();
+    expect(hasBillableMetrics(perUnit, { predict_time: 2 })).toBeFalse();
   });
 });
 

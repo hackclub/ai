@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { requestAuthorization } from "./shared";
 
 import { imagesFromChatResponse, parseImageGenerationRequest } from "./images";
-import { isValidOcrDocument, ocrPageCount, redactOcrResponse } from "./ocr";
+import { isValidOcrDocument, ocrPageCount, redactOcrResponse, requestsAnnotations } from "./ocr";
 
 describe("ocr helpers", () => {
   test("validates documents like the previous gateway", () => {
@@ -34,6 +34,15 @@ describe("ocr helpers", () => {
     expect(ocrPageCount(body)).toBe(2);
     expect(ocrPageCount({})).toBeNull();
     expect(JSON.parse(redactOcrResponse({ error: "x" }))).toEqual({ redacted: true });
+  });
+});
+
+describe("ocr annotation pricing", () => {
+  test("detects annotation requests, which Mistral bills at a higher page rate", () => {
+    expect(requestsAnnotations({ document: {} })).toBeFalse();
+    expect(requestsAnnotations({ document_annotation_format: null })).toBeFalse();
+    expect(requestsAnnotations({ document_annotation_format: { type: "json_schema" } })).toBeTrue();
+    expect(requestsAnnotations({ bbox_annotation_format: { type: "json_schema" } })).toBeTrue();
   });
 });
 

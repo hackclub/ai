@@ -171,7 +171,26 @@ describe("meterPrediction", () => {
     await drain(metered.response);
     const completion = await metered.completion;
     expect(completion.state).toBe("uncertain");
-    if (completion.state === "uncertain") expect(completion.reason).toContain("p3");
+    if (completion.state !== "uncertain") return;
+    expect(completion.reason).toContain("p3");
+    // The id is what reconciliation needs to bill the prediction later.
+    expect(completion.providerRequestId).toBe("p3");
+  });
+
+  test("holds a succeeded prediction without billable metrics for reconciliation", async () => {
+    const upstream = Response.json({ id: "p6", status: "succeeded", metrics: { total_time: 3 } });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => null,
+      timeoutMs: 1_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("uncertain");
+    if (completion.state !== "uncertain") return;
+    expect(completion.providerRequestId).toBe("p6");
+    expect(completion.reason).toContain("without billable metrics");
   });
 
   test("marks provider errors and lookup failures uncertain", async () => {
@@ -195,6 +214,8 @@ describe("meterPrediction", () => {
     await drain(broken.response);
     const completion = await broken.completion;
     expect(completion.state).toBe("uncertain");
-    if (completion.state === "uncertain") expect(completion.reason).toBe("lookup exploded");
+    if (completion.state !== "uncertain") return;
+    expect(completion.reason).toBe("lookup exploded");
+    expect(completion.providerRequestId).toBe("p4");
   });
 });

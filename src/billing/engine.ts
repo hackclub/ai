@@ -196,6 +196,16 @@ export class BillingEngine {
       const existing = existingRows[0];
       if (existing) {
         this.assertMatchingReservation(existing, input);
+        // Only a live hold can be handed back to a retrying caller. A
+        // released or settled reservation holds no funds, so dispatching
+        // against it would run the provider call unbilled.
+        if (existing.state !== "reserved") {
+          throw new InvalidReservationStateError(
+            input.requestId,
+            existing.state,
+            "reserve",
+          );
+        }
         return toReservation(existing);
       }
 
@@ -352,12 +362,16 @@ export class BillingEngine {
         return toReservation(reservation);
       }
 
-      if (reservation.state === "released") {
-        throw new InvalidReservationStateError(
-          input.requestId,
-          reservation.state,
-          "finalize",
-        );
+      // A reservation whose holds were released (the expiry sweeper beat a
+      // long-running request to it, possibly via pending_reconciliation)
+      // holds nothing, but the provider still charged for the work. It is
+      // finalized like a reservation with no holds: funded from what the
+      // account has available now, the rest booked as unfunded, and counted
+      // against the limit windows current at finalization.
+      let lateLimitWindows: LimitWindowRow[] = [];
+      if (limitHolds.length === 0 && input.actualCostUsd.toAtoms() > 0n) {
+        await this.materializeLimitWindows(tx, accountId, now);
+        lateLimitWindows = await this.lockLimitWindows(tx, accountId, now);
       }
 
       const writes: Statement[] = [];
@@ -401,6 +415,13 @@ export class BillingEngine {
           tx,
           reservation.id,
           limitHolds,
+          input.actualCostUsd,
+          now,
+        ),
+        ...this.commitLateLimitUsage(
+          tx,
+          reservation.id,
+          lateLimitWindows,
           input.actualCostUsd,
           now,
         ),
@@ -597,7 +618,9 @@ export class BillingEngine {
       const { now } = await this.lockReservationAccount(tx, requestId);
       const reservation = await this.requireReservation(tx, requestId, true);
 
-      if (reservation.state === "finalized" || reservation.state === "released") {
+      // A released reservation may still be marked pending: the provider
+      // may have charged for it, and finalize accepts released rows.
+      if (reservation.state === "finalized") {
         throw new InvalidReservationStateError(
           requestId,
           reservation.state,
@@ -653,7 +676,7 @@ export class BillingEngine {
           FROM billing_accounts
           WHERE id = ${accountId}::uuid
         ) AS account_id
-      FROM pg_advisory_xact_lock(hashtextextended(${accountId}, 0))
+      FROM pg_advisory_xact_lock(hashtextextended(${accountId}::uuid::text, 0))
     `;
     if (!row) throw new Error("PostgreSQL did not return its transaction time");
     if (!row.account_id) throw new BillingAccountNotFoundError(accountId);
@@ -1263,6 +1286,43 @@ export class BillingEngine {
             + EXCLUDED.committed_usd
       `,
     ];
+  }
+
+  /**
+   * Counts a late charge (a reservation finalized after its holds were
+   * released) against the limit windows current at finalization time.
+   */
+  private commitLateLimitUsage(
+    tx: TransactionSql,
+    reservationId: string,
+    windows: LimitWindowRow[],
+    actualCost: Usd,
+    now: Date,
+  ): Statement[] {
+    const actual = actualCost.toString();
+    return windows.flatMap((window) => [
+      tx`
+        UPDATE billing_limit_windows
+        SET
+          committed_usd = committed_usd + ${actual}::numeric,
+          updated_at = ${now}
+        WHERE id = ${window.id}::uuid
+      `,
+      tx`
+        INSERT INTO billing_reservation_limit_holds (
+          reservation_id,
+          limit_window_id,
+          reserved_usd,
+          committed_usd
+        )
+        VALUES (
+          ${reservationId}::uuid,
+          ${window.id}::uuid,
+          0,
+          ${actual}::numeric
+        )
+      `,
+    ]);
   }
 
   private finalizeLimitHolds(

@@ -19,8 +19,19 @@ export type OcrRouteDependencies = MeteredRouteDependencies & {
   reservationUsd?: string;
   /** Mistral OCR price per processed page. */
   perPagePriceUsd?: string;
+  /**
+   * Price per page when the request asks for document or bbox annotations,
+   * which Mistral bills at a higher rate than plain OCR.
+   */
+  annotationPagePriceUsd?: string;
   baseUrl?: string;
 };
+
+/** Request fields that switch Mistral to its annotation pricing. */
+const ANNOTATION_FIELDS = ["document_annotation_format", "bbox_annotation_format"] as const;
+
+export const requestsAnnotations = (body: Record<string, unknown>) =>
+  ANNOTATION_FIELDS.some((field) => body[field] !== undefined && body[field] !== null);
 
 const INVALID_DOCUMENT =
   "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'file'. URLs must use HTTPS or be valid base64-encoded data URIs.";
@@ -73,6 +84,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
   const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();
   const reservation = Usd.parse(deps.reservationUsd ?? "0.05");
   const perPage = Usd.parse(deps.perPagePriceUsd ?? "0.001");
+  const perAnnotatedPage = Usd.parse(deps.annotationPagePriceUsd ?? "0.003");
   const baseUrl = (deps.baseUrl ?? "https://api.mistral.ai").replace(/\/$/, "");
 
   return new Elysia({ prefix: "/proxy/v1" }).post("/ocr", async ({ request }) => {
@@ -83,6 +95,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
     const body = parseJsonObject(rawBody);
     if (!isValidOcrDocument(body.document)) throw new HttpError(400, INVALID_DOCUMENT);
     const model = typeof body.model === "string" ? body.model : "mistral-ocr-latest";
+    const pagePrice = requestsAnnotations(body) ? perAnnotatedPage : perPage;
     const requestBody = JSON.stringify(body);
     const requestId = crypto.randomUUID();
 
@@ -116,7 +129,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
             },
             extractCost: (response) => {
               const pages = ocrPageCount(response);
-              return pages === null ? null : perPage.multiply(BigInt(pages));
+              return pages === null ? null : pagePrice.multiply(BigInt(pages));
             },
             redactResponseBody: redactOcrResponse,
           }),

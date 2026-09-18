@@ -28,6 +28,7 @@ describe("Replicate routes with PostgreSQL", () => {
     body: unknown;
     form: FormData | null;
     headers: Headers;
+    signal: AbortSignal | null | undefined;
   }> = [];
   let nextStatus = 201;
   let predictionCounter = 0;
@@ -47,6 +48,7 @@ describe("Replicate routes with PostgreSQL", () => {
       body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       form: init?.body instanceof FormData ? init.body : null,
       headers: new Headers(init?.headers),
+      signal: init?.signal,
     });
     if (url.endsWith("/v1/files") && method === "POST") {
       return Response.json({ id: "file1", urls: { get: "https://api.replicate.com/v1/files/file1" } }, { status: 201 });
@@ -165,6 +167,35 @@ describe("Replicate routes with PostgreSQL", () => {
     });
     expect(response.status).toBe(403);
     expect(upstream.length).toBe(before);
+  });
+
+  integrationTest("builds model paths from the allowlisted id, not the raw params", async () => {
+    // Elysia decodes %2F, so a `..` segment in the model param used to reach
+    // /v1/predictions (every user's predictions) with the shared token.
+    const response = await call(`/models/${owner}/${name}:%2F..%2F..%2F..%2Fpredictions`, {
+      method: "GET",
+    });
+    expect(response.status).not.toBe(403);
+    await response.text();
+    expect(upstream.at(-1)?.url).toBe(`https://api.replicate.com/v1/models/${knownModel}`);
+
+    const version = await call(`/models/${owner}/${name}/versions/..%2F..%2F..%2Fpredictions`, {
+      method: "GET",
+    });
+    expect(version.status).toBe(400);
+  });
+
+  integrationTest("dispatches predictions without the client's abort signal", async () => {
+    const controller = new AbortController();
+    const response = await call(`/models/${owner}/${name}/predictions`, {
+      method: "POST",
+      body: JSON.stringify({ input: { a: 1 } }),
+      signal: controller.signal,
+    });
+    expect(response.status).toBe(201);
+    await response.text();
+    expect(upstream.at(-1)?.signal).toBeUndefined();
+    await latestReservation();
   });
 
   integrationTest("rejects conflicting versions in path and body", async () => {

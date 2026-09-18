@@ -28,6 +28,8 @@ export type Env = {
   mistralApiKey: string | null;
   /** Mistral OCR price per page in USD; Mistral reports no cost itself. */
   mistralOcrPagePriceUsd: string;
+  /** Mistral OCR price per page when annotations are requested. */
+  mistralOcrAnnotationPagePriceUsd: string;
   exaApiKey: string | null;
   replicateApiKey: string | null;
   /** Browser session used by GET /up to read Replicate's unused credit. */
@@ -104,6 +106,7 @@ export const loadEnv = (
     openAiModerationApiKey: source.OPENAI_MODERATION_API_KEY || null,
     mistralApiKey: source.MISTRAL_API_KEY || null,
     mistralOcrPagePriceUsd: source.MISTRAL_OCR_PAGE_PRICE_USD || "0.001",
+    mistralOcrAnnotationPagePriceUsd: source.MISTRAL_OCR_ANNOTATION_PAGE_PRICE_USD || "0.003",
     exaApiKey: source.EXA_API_KEY || null,
     replicateApiKey: source.REPLICATE_API_KEY || null,
     replicateUsername: source.REPLICATE_USERNAME || null,

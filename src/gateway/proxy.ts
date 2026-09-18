@@ -34,7 +34,25 @@ export type ProxyDependencies = {
   rateLimiter?: RateLimiter;
   /** Interval for whitespace keep-alives on non-streaming responses. */
   keepAliveMs?: number;
+  /**
+   * How long a reservation stays held before the expiry sweeper may release
+   * it. Must outlast the longest response the gateway will stream: a
+   * reservation released mid-flight is finalized without its holds.
+   * Defaults to 60 minutes.
+   */
+  reservationTtlMs?: number;
 };
+
+/** Request fields that count toward the prompt and so toward the estimate. */
+const BILLABLE_INPUT_FIELDS = [
+  "messages",
+  "input",
+  "prompt",
+  "instructions",
+  "system",
+  "tools",
+  "functions",
+] as const;
 
 const isEventStream = (response: Response) =>
   response.headers.get("content-type")?.includes("text/event-stream") ?? false;
@@ -161,6 +179,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
   const rateLimiter =
     deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const keepAliveMs = deps.keepAliveMs ?? 10_000;
+  const reservationTtlMs = deps.reservationTtlMs ?? 60 * 60 * 1_000;
   const unknownModelReservation = Usd.parse(deps.unknownModelReservationUsd ?? "0.05");
 
   const estimateFor = (
@@ -171,7 +190,13 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     const pricing = model ? modelPricing(model) : null;
     if (!pricing) return unknownModelReservation;
 
-    const billable = body.messages ?? body.input ?? body.prompt ?? body;
+    // System instructions and tool schemas are prompt tokens too; leaving
+    // them out under-reserves tool-heavy requests.
+    const billableFields = BILLABLE_INPUT_FIELDS.filter((field) => body[field] !== undefined);
+    const billable =
+      billableFields.length > 0
+        ? Object.fromEntries(billableFields.map((field) => [field, body[field]]))
+        : body;
     const requestedMaxOutputTokens =
       optionalInteger(body.max_tokens) ??
       optionalInteger(body.max_completion_tokens) ??
@@ -225,6 +250,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         endpoint,
         model: body.model,
         estimatedCostUsd: estimateFor(kind, model, body),
+        reservationExpiresAt: new Date(Date.now() + reservationTtlMs),
         analytics: {
           userId: principal.userId,
           apiKeyId: principal.apiKeyId,

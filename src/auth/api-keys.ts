@@ -20,12 +20,14 @@ type PrincipalRow = {
   user_id: string;
   api_key_id: string;
   billing_account_id: string | null;
+  billing_account_status: string | null;
   is_banned: boolean;
   is_idv_verified: boolean;
   skip_idv: boolean;
 };
 
 const BANNED_MESSAGE = "You are banned from using this service.";
+const SUSPENDED_MESSAGE = "This billing account is suspended.";
 const IDV_MESSAGE =
   "Identity verification required. Please verify at https://identity.hackclub.com";
 
@@ -61,6 +63,7 @@ export async function authenticateApiKey(
       api_key.id AS api_key_id,
       app_user.id AS user_id,
       account.id AS billing_account_id,
+      account.status AS billing_account_status,
       app_user.is_banned,
       app_user.is_idv_verified,
       app_user.skip_idv
@@ -80,6 +83,9 @@ export async function authenticateApiKey(
   }
   if (!row.billing_account_id) {
     throw new HttpError(403, "No billing account is attached to this user");
+  }
+  if (row.billing_account_status && row.billing_account_status !== "active") {
+    throw new HttpError(403, SUSPENDED_MESSAGE);
   }
 
   return {

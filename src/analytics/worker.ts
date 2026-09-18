@@ -14,6 +14,7 @@ import {
   expireStaleReservations,
   type OpenRouterConfig,
   reconcilePendingReservations,
+  type ReplicateReconcileConfig,
 } from "../billing/reconciliation";
 import {
   type RequestEventDrainer,
@@ -26,6 +27,7 @@ export type ReconciliationDependencies = {
   sql: postgres.Sql;
   billing: BillingEngine;
   openRouter: OpenRouterConfig;
+  replicate?: ReplicateReconcileConfig;
 };
 
 export type AnalyticsWorkerOptions = {
@@ -63,6 +65,7 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
         sql: deps.sql,
         billing: deps.billing,
         openRouter: deps.openRouter,
+        replicate: deps.replicate,
         log,
       });
       helpers.logger.info(

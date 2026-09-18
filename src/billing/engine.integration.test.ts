@@ -3,7 +3,7 @@ import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../analytics/worker";
 import { BillingEngine } from "./engine";
-import { LimitExceededError } from "./errors";
+import { InvalidReservationStateError, LimitExceededError } from "./errors";
 import { Usd } from "./money";
 
 const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
@@ -285,6 +285,85 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(again.state).toBe("finalized");
     expect(again.requestId).toBe(firstRequestId);
   });
+
+  integrationTest("refuses to hand a released reservation back to a retrying caller", async () => {
+    if (!engine) throw new Error("Integration database unavailable");
+
+    // secondRequestId was released above; a retry must not dispatch against it.
+    await expect(
+      engine.reserve({
+        requestId: secondRequestId,
+        accountId,
+        provider: "openrouter",
+        estimatedCostUsd: Usd.parse("0.2"),
+      }),
+    ).rejects.toBeInstanceOf(InvalidReservationStateError);
+  });
+
+  integrationTest(
+    "finalizes a reservation the expiry sweeper released, funding it from current windows",
+    async () => {
+      if (!engine || !sql) throw new Error("Integration database unavailable");
+
+      const lateAccountId = crypto.randomUUID();
+      createdAccountIds.push(lateAccountId);
+      await sql`
+        INSERT INTO billing_accounts (id, owner_type, owner_id)
+        VALUES (${lateAccountId}::uuid, 'user', ${crypto.randomUUID()}::uuid)
+      `;
+      await sql`
+        INSERT INTO billing_funding_policies (account_id, name, cadence, amount_usd)
+        VALUES (${lateAccountId}::uuid, 'Late allowance', 'day', 1)
+      `;
+      await sql`
+        INSERT INTO billing_limit_policies (account_id, name, cadence, limit_usd)
+        VALUES (${lateAccountId}::uuid, 'Late limit', 'day', 0.8)
+      `;
+
+      // A long request: reserved, swept by expiry, then settled after all.
+      const requestId = crypto.randomUUID();
+      await engine.reserve({
+        requestId,
+        accountId: lateAccountId,
+        provider: "openrouter",
+        estimatedCostUsd: Usd.parse("0.2"),
+      });
+      expect((await engine.release(requestId)).state).toBe("released");
+
+      const pending = await engine.markPendingReconciliation(requestId, "stream outlived hold");
+      expect(pending.state).toBe("pending_reconciliation");
+
+      const finalized = await engine.finalize({
+        requestId,
+        actualCostUsd: Usd.parse("0.3"),
+        usageSource: "reconciled",
+        providerRequestId: `gen-integration-late-${runId}`,
+      });
+      expect(finalized.state).toBe("finalized");
+      expect(finalized.actualCostUsd).toBe("0.300000000000");
+      expect(finalized.unfundedCostUsd).toBe("0.000000000000");
+
+      const [ledger] = await sql<{ amount_usd: string }[]>`
+        SELECT amount_usd::text FROM billing_ledger_entries
+        WHERE account_id = ${lateAccountId}::uuid AND category = 'usage'
+      `;
+      expect(ledger?.amount_usd).toBe("0.300000000000");
+
+      const [window] = await sql<{ reserved_usd: string; committed_usd: string }[]>`
+        SELECT reserved_usd::text, committed_usd::text FROM billing_funding_windows
+        WHERE account_id = ${lateAccountId}::uuid
+      `;
+      expect(window?.reserved_usd).toBe("0.000000000000");
+      expect(window?.committed_usd).toBe("0.300000000000");
+
+      const [limit] = await sql<{ reserved_usd: string; committed_usd: string }[]>`
+        SELECT reserved_usd::text, committed_usd::text FROM billing_limit_windows
+        WHERE account_id = ${lateAccountId}::uuid
+      `;
+      expect(limit?.reserved_usd).toBe("0.000000000000");
+      expect(limit?.committed_usd).toBe("0.300000000000");
+    },
+  );
 
   integrationTest(
     "serializes concurrent reservations so funding cannot be overspent",

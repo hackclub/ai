@@ -22,6 +22,7 @@ export type ApiKeySummary = {
 };
 
 const MAX_ACTIVE_KEYS = 50;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function listApiKeys(sql: Sql, userId: string): Promise<ApiKeySummary[]> {
   const rows = await sql<
@@ -114,7 +115,7 @@ export const keysApiRoutes = (options: KeysApiOptions) =>
     })
     .delete("/keys/:id", async ({ params, user }) => {
       const id = params.id;
-      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(400, "Operation failed");
+      if (!UUID.test(id)) throw new HttpError(400, "Operation failed");
       const [owned] = await options.sql<{ id: string }[]>`
         SELECT id FROM api_keys WHERE id = ${id}::uuid AND user_id = ${user.id}::uuid
       `;

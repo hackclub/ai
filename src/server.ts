@@ -21,6 +21,7 @@ import { replicateRoutes } from "./gateway/routes/replicate";
 import { webhookRoutes } from "./gateway/webhooks";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
+import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
 export type Backend = {
   app: ReturnType<typeof createApp>;
@@ -84,6 +85,8 @@ export const createBackend = (env: Env): Backend => {
     Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
   };
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
+  // One pricing cache shared by the route and the reconciler.
+  const replicatePricing = env.replicateApiKey ? createReplicatePricingSource({}) : null;
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -91,6 +94,7 @@ export const createBackend = (env: Env): Backend => {
       ...metered,
       mistralApiKey: env.mistralApiKey,
       perPagePriceUsd: env.mistralOcrPagePriceUsd,
+      annotationPagePriceUsd: env.mistralOcrAnnotationPagePriceUsd,
     }),
     jevRoutes({
       ...metered,
@@ -113,12 +117,13 @@ export const createBackend = (env: Env): Backend => {
     keysApiRoutes({ sql }),
     webhookRoutes({ sql }),
   ];
-  if (env.replicateApiKey) {
+  if (env.replicateApiKey && replicatePricing) {
     routes.push(
       replicateRoutes({
         ...metered,
         replicateApiKey: env.replicateApiKey,
         publicBaseUrl: env.baseUrl,
+        pricing: replicatePricing,
       }),
     );
   }
@@ -204,7 +209,15 @@ export const createBackend = (env: Env): Backend => {
       worker ??= await startAnalyticsWorker({
         connectionString: env.databaseUrl,
         clickhouse,
-        reconciliation: { sql, billing, openRouter },
+        reconciliation: {
+          sql,
+          billing,
+          openRouter,
+          replicate:
+            env.replicateApiKey && replicatePricing
+              ? { apiKey: env.replicateApiKey, pricing: replicatePricing }
+              : undefined,
+        },
         log: (message) => console.log(`[billing.reconcile] ${message}`),
       });
     },

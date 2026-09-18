@@ -1,4 +1,4 @@
-import type { ClickHouseClient } from "@clickhouse/client";
+import { type ClickHouseClient, ClickHouseError } from "@clickhouse/client";
 import type postgres from "postgres";
 
 import type { JsonValue } from "../billing/engine";
@@ -86,8 +86,15 @@ export const toClickHouseEvent = (payload: RequestEventPayload) => {
   };
 };
 
-/** Rows that failed this many times stay in the outbox for inspection. */
+/**
+ * Rows ClickHouse rejected this many times stay in the outbox for
+ * inspection. Only rejections count: a failure to reach ClickHouse at all
+ * says nothing about the rows, so an outage never parks them.
+ */
 export const MAX_DELIVERY_ATTEMPTS = 25;
+
+/** Longest pause between passes while ClickHouse keeps failing. */
+const MAX_BACKOFF_MS = 60_000;
 
 export type DrainOptions = {
   sql: postgres.Sql;
@@ -106,9 +113,10 @@ const errorMessage = (error: unknown) =>
  * to ClickHouse and returns how many rows it took. Rows are locked with SKIP
  * LOCKED, so several drainers can run at once, and deleted in the same
  * transaction as the insert: a crash after the insert redelivers the batch,
- * which ReplacingMergeTree collapses by event_id. A batch that fails to
- * insert is released with its attempt count raised; a payload that cannot
- * be mapped at all is parked immediately.
+ * which ReplacingMergeTree collapses by event_id. A batch ClickHouse rejects
+ * is released with its attempt count raised and sinks behind fresh rows; a
+ * batch that never reached ClickHouse is released with only the error
+ * recorded; a payload that cannot be mapped at all is parked immediately.
  */
 export const drainRequestEvents = async ({
   sql,
@@ -122,7 +130,7 @@ export const drainRequestEvents = async ({
         SELECT id::text, payload
         FROM request_event_outbox
         WHERE attempts < ${MAX_DELIVERY_ATTEMPTS}
-        ORDER BY id
+        ORDER BY attempts, id
         LIMIT ${batchSize}
         FOR UPDATE SKIP LOCKED
       `;
@@ -163,15 +171,19 @@ export const drainRequestEvents = async ({
     });
   } catch (error) {
     if (taken.length > 0) {
+      const rejected = error instanceof ClickHouseError ? 1 : 0;
       await sql`
         UPDATE request_event_outbox
-        SET attempts = attempts + 1, last_error = ${errorMessage(error)}
+        SET attempts = attempts + ${rejected}, last_error = ${errorMessage(error)}
         WHERE id = ANY(${taken}::bigint[])
       `;
     }
     throw error;
   }
 };
+
+/** Whether ClickHouse itself refused the batch, as opposed to being unreachable. */
+export const isClickHouseRejection = (error: unknown) => error instanceof ClickHouseError;
 
 export type DrainerOptions = DrainOptions & {
   /** Pause between passes once the outbox is empty. */
@@ -183,8 +195,11 @@ export type RequestEventDrainer = { stop: () => Promise<void> };
 
 /**
  * Runs drainRequestEvents continuously: back to back while a backlog
- * exists, then once per interval. `stop` resolves after the pass in flight
- * finishes.
+ * exists, then once per interval. Consecutive failures back off
+ * exponentially (up to a minute), and a rejected batch is retried at half
+ * the size until a single poison row is isolated, so one bad payload
+ * cannot drag its neighbours over the attempt limit. `stop` resolves after
+ * the pass in flight finishes.
  */
 export const startRequestEventDrainer = (
   options: DrainerOptions,
@@ -194,21 +209,34 @@ export const startRequestEventDrainer = (
   let stopped = false;
   let wake = () => {};
 
-  const sleep = () =>
+  const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
       wake = resolve;
-      setTimeout(resolve, intervalMs);
+      setTimeout(resolve, ms);
     });
 
   const loop = (async () => {
+    let failures = 0;
+    let currentBatch = batchSize;
     while (!stopped) {
       let taken = 0;
       try {
-        taken = await drainRequestEvents({ ...options, batchSize });
+        taken = await drainRequestEvents({ ...options, batchSize: currentBatch });
+        failures = 0;
+        currentBatch = batchSize;
       } catch (error) {
+        failures += 1;
+        if (isClickHouseRejection(error)) {
+          currentBatch = Math.max(1, Math.floor(currentBatch / 2));
+        }
         options.onError?.(error);
       }
-      if (!stopped && taken < batchSize) await sleep();
+      if (stopped) break;
+      if (failures > 0) {
+        await sleep(Math.min(intervalMs * 2 ** (failures - 1), MAX_BACKOFF_MS));
+      } else if (taken < currentBatch) {
+        await sleep(intervalMs);
+      }
     }
   })();
 

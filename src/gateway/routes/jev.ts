@@ -29,6 +29,11 @@ export type JevRouteDependencies = MeteredRouteDependencies & {
 
 const DEFAULT_MODEL = "jev-latest";
 const TOKENS_PER_PRICE_UNIT = 1_000_000n;
+/**
+ * The configured input price is Jev's. Any other model TypeSafe might serve
+ * is priced differently, so only the Jev family is forwarded.
+ */
+const JEV_MODEL = /^jev(-[a-z0-9.]+)?$/i;
 
 const HOP_BY_HOP_HEADERS = ["content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"];
 
@@ -95,7 +100,11 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     const principal = await authorize(request, rawBody);
 
     const body = parseJsonObject(rawBody);
-    if (typeof body.model !== "string" || !body.model) body.model = DEFAULT_MODEL;
+    const model = typeof body.model === "string" && body.model ? body.model : DEFAULT_MODEL;
+    if (!JEV_MODEL.test(model)) {
+      throw new HttpError(400, `Unknown model ${model}. Only Jev models are available.`);
+    }
+    body.model = model;
     const requestBody = JSON.stringify(body);
     const requestId = crypto.randomUUID();
 

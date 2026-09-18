@@ -10,11 +10,17 @@ import { allowedReplicateModels } from "../../config/replicate-models";
 import {
   createReplicatePricingSource,
   estimatePredictionCost,
+  hasBillableMetrics,
   predictionCost,
-  type ReplicatePredictionMetrics,
   type ReplicatePricing,
   type ReplicatePricingSource,
 } from "../../providers/replicate/pricing";
+import {
+  fetchReplicatePrediction,
+  isTerminal,
+  parsePrediction,
+  type PredictionSnapshot,
+} from "../../providers/replicate/predictions";
 import {
   ownsReplicateResource,
   recordReplicateResource,
@@ -44,8 +50,21 @@ export type ReplicateRouteDependencies = {
   pricing?: ReplicatePricingSource;
   /** How long to keep polling an async prediction for its final metrics. */
   settlementTimeoutMs?: number;
+  /**
+   * Smallest hold placed before dispatch. Models whose page carries no median
+   * run price would otherwise estimate to $0, which passes every funding and
+   * limit check. Defaults to 0.05 USD.
+   */
+  minimumHoldUsd?: string;
   onSettlementError?: (error: unknown, requestId: string) => void;
 };
+
+/**
+ * Margin added to the settlement window for the reservation's lifetime: the
+ * `Prefer: wait` phase (up to 60 s), the final poll, and clock skew. A
+ * reservation the expiry sweeper releases mid-flight loses its charge.
+ */
+const RESERVATION_TTL_MARGIN_MS = 5 * 60 * 1_000;
 
 const PREDICTION_ID = /^[a-z0-9]+$/;
 
@@ -102,25 +121,7 @@ export const resolveModelReference = (reference: string): ModelReference => {
   return { model, version: `${model}:${versionId}` };
 };
 
-const TERMINAL_STATUSES = new Set(["succeeded", "failed", "canceled", "aborted"]);
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
-
-type PredictionSnapshot = {
-  id?: string;
-  status?: string;
-  metrics?: ReplicatePredictionMetrics;
-};
-
-const parsePrediction = (body: string): PredictionSnapshot | null => {
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as PredictionSnapshot)
-      : null;
-  } catch {
-    return null;
-  }
-};
 
 export type PredictionSettlement = {
   pricing: ReplicatePricing;
@@ -139,14 +140,14 @@ const awaitTerminal = async (
   initial: PredictionSnapshot,
   settlement: PredictionSettlement,
 ): Promise<PredictionSnapshot | null> => {
-  if (initial.status && TERMINAL_STATUSES.has(initial.status)) return initial;
+  if (isTerminal(initial)) return initial;
   if (!initial.id) return null;
   const sleep = settlement.sleep ?? Bun.sleep;
   const deadline = Date.now() + settlement.timeoutMs;
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
     await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)] ?? 5_000);
     const latest = await settlement.lookup(initial.id);
-    if (latest?.status && TERMINAL_STATUSES.has(latest.status)) return latest;
+    if (isTerminal(latest)) return latest;
   }
   return null;
 };
@@ -171,10 +172,16 @@ export const meterPrediction = (
   const chunks: Uint8Array[] = [];
   const reader = upstream.body?.getReader();
   const captured = () => new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
-  const uncertain = (reason: string, bodyCapture: "complete" | "partial" = "complete") =>
+  // The prediction id is kept on every uncertain outcome so reconciliation
+  // can look the prediction up later instead of releasing the hold unbilled.
+  const uncertain = (
+    reason: string,
+    bodyCapture: "complete" | "partial" = "complete",
+    predictionId: string | null = null,
+  ) =>
     settle({
       state: "uncertain",
-      providerRequestId: null,
+      providerRequestId: predictionId,
       reason,
       responseBody: captured(),
       bodyCapture,
@@ -190,25 +197,46 @@ export const meterPrediction = (
       uncertain("Replicate response was not a prediction object");
       return;
     }
+    const predictionId = initial.id ?? null;
     let final: PredictionSnapshot | null;
     try {
       final = await awaitTerminal(initial, settlement);
     } catch (error) {
-      uncertain(error instanceof Error ? error.message : "Prediction lookup failed");
+      uncertain(
+        error instanceof Error ? error.message : "Prediction lookup failed",
+        "complete",
+        predictionId,
+      );
       return;
     }
     if (!final) {
-      uncertain(`Prediction ${initial.id ?? "?"} did not finish within the settlement window`);
+      uncertain(
+        `Prediction ${predictionId ?? "?"} did not finish within the settlement window`,
+        "complete",
+        predictionId,
+      );
+      return;
+    }
+    const metrics = final.metrics ?? {};
+    // A successful run without the metric its price is keyed on cannot be
+    // billed from the response. Holding it for reconciliation beats closing
+    // it at $0 as if Replicate had reported nothing to charge.
+    if (final.status === "succeeded" && !hasBillableMetrics(settlement.pricing, metrics)) {
+      uncertain(
+        `Prediction ${predictionId ?? "?"} succeeded without billable metrics`,
+        "complete",
+        final.id ?? predictionId,
+      );
       return;
     }
     settle({
       state: "complete",
-      providerRequestId: final.id ?? initial.id ?? null,
+      providerRequestId: final.id ?? predictionId,
       usage: {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
-        costUsd: predictionCost(settlement.pricing, final.metrics ?? {}),
+        costUsd: predictionCost(settlement.pricing, metrics),
       },
       responseBody: body,
       bodyCapture: "complete",
@@ -314,6 +342,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const pricingSource = deps.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
   const settlementTimeoutMs = deps.settlementTimeoutMs ?? 15 * 60 * 1_000;
+  const minimumHold = Usd.parse(deps.minimumHoldUsd ?? "0.05");
 
   const resolvePricing = async (model: string) => {
     let pricing: ReplicatePricing | null;
@@ -329,11 +358,15 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   };
 
   const lookupPrediction = async (id: string) => {
-    const response = await fetchImplementation(`${baseUrl}/v1/predictions/${id}`, {
-      headers: { authorization: `Bearer ${deps.replicateApiKey}` },
+    const lookup = await fetchReplicatePrediction(id, {
+      apiKey: deps.replicateApiKey,
+      baseUrl,
+      fetch: fetchImplementation,
     });
-    if (!response.ok) throw new Error(`Prediction ${id} lookup returned HTTP ${response.status}`);
-    return parsePrediction(await response.text());
+    if (lookup.state === "not_found") {
+      throw new Error(`Prediction ${id} lookup returned HTTP 404`);
+    }
+    return lookup.prediction;
   };
 
   const upstreamHeaders = (request: Request) => {
@@ -426,7 +459,8 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
         ? (payload.input as Record<string, unknown>)
         : {};
-    const costUsd = estimatePredictionCost(pricing, input);
+    const estimate = estimatePredictionCost(pricing, input);
+    const costUsd = estimate.toAtoms() < minimumHold.toAtoms() ? minimumHold : estimate;
     const requestBody = JSON.stringify(payload);
     const requestId = crypto.randomUUID();
     let metered;
@@ -438,19 +472,25 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
         endpoint: "replicate/predictions",
         model,
         estimatedCostUsd: costUsd,
+        reservationExpiresAt: new Date(
+          Date.now() + settlementTimeoutMs + RESERVATION_TTL_MARGIN_MS,
+        ),
         analytics: {
           userId: principal.userId,
           apiKeyId: principal.apiKeyId,
           requestHeaders: request.headers,
           attributes: { ip: clientIp(request.headers) },
         },
+        // The client's abort signal is deliberately not forwarded: Replicate
+        // creates the prediction before a `Prefer: wait` response returns,
+        // so aborting the upstream call would release the hold for a run
+        // that still executes (and still delivers to any webhook).
         execute: async () =>
           meterPrediction(
             await fetchImplementation(`${baseUrl}${path}`, {
               method: "POST",
               headers: upstreamHeaders(request),
               body: requestBody,
-              signal: request.signal,
             }),
             requestBody,
             { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
@@ -562,20 +602,21 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       }
       return billedPrediction(request, principal, { model: fullModelId, version: null }, body);
     })
+    // Upstream paths are built from the allowlisted id, never from the raw
+    // params: Elysia decodes `%2F`, so a decoded `..` segment would otherwise
+    // let a caller reach any /v1 endpoint with the shared account token.
     .get("/models/:owner/:model", ({ request, params }) => {
-      validateModelAccess(params.owner, params.model);
-      return forward(request, `/v1/models/${params.owner}/${params.model}`);
+      const fullId = validateModelAccess(params.owner, params.model);
+      return forward(request, `/v1/models/${fullId}`);
     })
     .get("/models/:owner/:model/versions", ({ request, params }) => {
-      validateModelAccess(params.owner, params.model);
-      return forwardJson(request, `/v1/models/${params.owner}/${params.model}/versions`);
+      const fullId = validateModelAccess(params.owner, params.model);
+      return forwardJson(request, `/v1/models/${fullId}/versions`);
     })
     .get("/models/:owner/:model/versions/:id", ({ request, params }) => {
-      validateModelAccess(params.owner, params.model);
-      return forward(
-        request,
-        `/v1/models/${params.owner}/${params.model}/versions/${encodeURIComponent(params.id)}`,
-      );
+      const fullId = validateModelAccess(params.owner, params.model);
+      if (!VERSION_ID.test(params.id)) throw new HttpError(400, "Invalid version ID");
+      return forward(request, `/v1/models/${fullId}/versions/${params.id}`);
     })
     // Predictions
     .post("/predictions", async ({ request, principal }) => {

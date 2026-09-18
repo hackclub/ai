@@ -167,6 +167,14 @@ describe("jevRoutes", () => {
     expect(response.status).toBe(401);
   });
 
+  test("rejects models outside the Jev family before reserving", async () => {
+    const { app, calls, upstream } = build(() => Response.json(successBody));
+    const response = await app.handle(post("/proxy/v1/jev/systemone", { model: "gpt-4o", state: "x" }));
+    expect(response.status).toBe(400);
+    expect(calls).toEqual([]);
+    expect(upstream).toEqual([]);
+  });
+
   test("rejects invalid JSON bodies", async () => {
     const { app } = build(() => Response.json(successBody));
     const response = await app.handle(request("/proxy/v1/jev/systemone", { method: "POST", body: "{" }));

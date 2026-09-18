@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type postgres from "postgres";
 
 import type { FinalizeInput, Reservation } from "./engine";
+import { Usd } from "./money";
 import {
   expireStaleReservations,
   fetchOpenRouterGeneration,
@@ -148,6 +149,95 @@ describe("reconcilePendingReservations", () => {
     });
     expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 1 });
     expect(finalized[0]?.requestId).toBe("r2");
+  });
+});
+
+describe("reconcilePendingReservations for Replicate", () => {
+  const minute = 60_000;
+  const now = () => new Date(1_000_000 * minute);
+  const pending = (requestId: string, providerRequestId: string | null, ageMs: number) => ({
+    request_id: requestId,
+    provider: "replicate",
+    provider_request_id: providerRequestId,
+    reconciliation_reason: "did not finish within the settlement window",
+    updated_at: new Date(now().getTime() - ageMs),
+  });
+  const pricing = {
+    get: async () => ({
+      kind: "hardware" as const,
+      hardware: "T4",
+      perSecondUsd: Usd.parse("0.001"),
+      medianRunUsd: null,
+    }),
+  };
+  const replicate = (respond: (url: string) => Response) => ({
+    apiKey: "rkey",
+    pricing,
+    fetch: (async (input, init) => {
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer rkey");
+      return respond(String(input));
+    }) as typeof fetch,
+  });
+  const openRouterUnused = openRouter(() => {
+    throw new Error("OpenRouter must not be consulted for Replicate rows");
+  });
+
+  test("bills a finished prediction from its metrics and the model's live pricing", async () => {
+    const { billing, finalized } = fakeBilling();
+    const result = await reconcilePendingReservations({
+      sql: fakeSql([pending("r1", "pred1", minute)]),
+      billing,
+      openRouter: openRouterUnused,
+      replicate: replicate((url) => {
+        expect(url).toBe("https://api.replicate.com/v1/predictions/pred1");
+        return Response.json({
+          id: "pred1",
+          status: "succeeded",
+          model: "owner/name",
+          metrics: { predict_time: 2 },
+        });
+      }),
+      now,
+    });
+    expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
+    expect(finalized[0]?.actualCostUsd.toString()).toBe("0.002000000000");
+    expect(finalized[0]?.providerRequestId).toBe("pred1");
+    expect(finalized[0]?.analytics?.model).toBe("owner/name");
+  });
+
+  test("keeps a running prediction pending however old it is", async () => {
+    const { billing, finalized, released } = fakeBilling();
+    const result = await reconcilePendingReservations({
+      sql: fakeSql([pending("old-running", "pred2", 48 * 60 * minute)]),
+      billing,
+      openRouter: openRouterUnused,
+      replicate: replicate(() => Response.json({ id: "pred2", status: "processing" })),
+      now,
+    });
+    expect(result).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
+    expect(finalized).toEqual([]);
+    expect(released).toEqual([]);
+  });
+
+  test("releases an old prediction Replicate no longer knows, and skips rows without Replicate access", async () => {
+    const { billing, released } = fakeBilling();
+    const withAccess = await reconcilePendingReservations({
+      sql: fakeSql([pending("gone", "pred3", 25 * 60 * minute)]),
+      billing,
+      openRouter: openRouterUnused,
+      replicate: replicate(() => new Response("", { status: 404 })),
+      now,
+    });
+    expect(withAccess).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
+    expect(released).toEqual(["gone"]);
+
+    const withoutAccess = await reconcilePendingReservations({
+      sql: fakeSql([pending("young", "pred4", minute)]),
+      billing,
+      openRouter: openRouterUnused,
+      now,
+    });
+    expect(withoutAccess).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
   });
 });
 

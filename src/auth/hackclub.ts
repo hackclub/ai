@@ -68,31 +68,53 @@ export async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
   }
   const name = `${identity.first_name} ${identity.last_name}`.trim() || null;
   const avatar = avatarUrlForSlackId(identity.slack_id);
-  const [existing] = await sql<{ id: string }[]>`
-    UPDATE users
-    SET
-      email = ${identity.primary_email},
-      name = ${name},
-      avatar = ${avatar},
-      is_idv_verified = ${identity.ysws_eligible},
-      updated_at = now()
-    WHERE slack_id = ${identity.slack_id}
-    RETURNING id
-  `;
-  if (existing) return existing.id;
+  const updateExisting = async () => {
+    const [existing] = await sql<{ id: string }[]>`
+      UPDATE users
+      SET
+        email = ${identity.primary_email},
+        name = ${name},
+        avatar = ${avatar},
+        is_idv_verified = ${identity.ysws_eligible},
+        updated_at = now()
+      WHERE slack_id = ${identity.slack_id}
+      RETURNING id
+    `;
+    return existing?.id ?? null;
+  };
 
-  const created = await createUser(sql, {
-    slackId: identity.slack_id,
-    email: identity.primary_email,
-    name,
-    avatar,
-  });
+  const existingId = await updateExisting();
+  if (existingId) return existingId;
+
+  let created: Awaited<ReturnType<typeof createUser>>;
+  try {
+    created = await createUser(sql, {
+      slackId: identity.slack_id,
+      email: identity.primary_email,
+      name,
+      avatar,
+    });
+  } catch (error) {
+    // Two first sign-ins for the same person landing together (two tabs, a
+    // double click) both miss the update; the loser adopts the winner's row.
+    if (isUniqueViolation(error)) {
+      const racedId = await updateExisting();
+      if (racedId) return racedId;
+    }
+    throw error;
+  }
   await sql`
     UPDATE users SET is_idv_verified = ${identity.ysws_eligible}
     WHERE id = ${created.userId}::uuid
   `;
   return created.userId;
 }
+
+const isUniqueViolation = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error as { code?: unknown }).code === "23505";
 
 /** `/auth/login`, `/auth/callback`, and `/auth/logout`. */
 export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {

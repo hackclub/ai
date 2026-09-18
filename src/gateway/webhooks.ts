@@ -19,11 +19,17 @@ export type WebhookOptions = {
   fetch?: typeof fetch;
 };
 
+/** Base64 to bytes, or null when the input is not base64 at all. */
+const base64Bytes = (value: string): Uint8Array<ArrayBuffer> | null => {
+  try {
+    return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+  } catch {
+    return null;
+  }
+};
+
 const pemToBytes = (pem: string) =>
-  Uint8Array.from(
-    atob(pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s/g, "")),
-    (character) => character.charCodeAt(0),
-  );
+  base64Bytes(pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s/g, ""));
 
 export const verifyGitHubSignature = async (
   keys: GitHubPublicKeys,
@@ -33,9 +39,14 @@ export const verifyGitHubSignature = async (
 ) => {
   const publicKey = keys.public_keys.find((key) => key.key_identifier === keyId);
   if (!publicKey) return false;
+  // Unauthenticated input: a malformed signature is a failed verification,
+  // not a server error.
+  const signatureBytes = base64Bytes(signature);
+  const keyBytes = pemToBytes(publicKey.key);
+  if (!signatureBytes || !keyBytes) return false;
   const key = await crypto.subtle.importKey(
     "spki",
-    pemToBytes(publicKey.key),
+    keyBytes,
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["verify"],
@@ -43,9 +54,33 @@ export const verifyGitHubSignature = async (
   return crypto.subtle.verify(
     { name: "ECDSA", hash: "SHA-256" },
     key,
-    Uint8Array.from(atob(signature), (character) => character.charCodeAt(0)),
+    signatureBytes,
     new TextEncoder().encode(payload),
   );
+};
+
+/** The secret-scanning payload: an array of matches, each with a string token. */
+const parseSecretMatches = (raw: string): SecretMatch[] | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const matches: SecretMatch[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object") return null;
+    const { token, type, url, source } = item as Record<string, unknown>;
+    if (typeof token !== "string") return null;
+    matches.push({
+      token,
+      type: typeof type === "string" ? type : "",
+      url: typeof url === "string" ? url : "",
+      source: typeof source === "string" ? source : "",
+    });
+  }
+  return matches;
 };
 
 /**
@@ -96,7 +131,10 @@ export const webhookRoutes = (options: WebhookOptions) => {
       if (!(await verifyGitHubSignature(await githubKeys(), raw, signature, keyId))) {
         return Response.json({ error: "Invalid signature" }, { status: 403 });
       }
-      const secrets = JSON.parse(raw) as SecretMatch[];
+      const secrets = parseSecretMatches(raw);
+      if (!secrets) {
+        return Response.json({ error: "Invalid payload" }, { status: 400 });
+      }
       const results = [];
       for (const secret of secrets) {
         const result = await revokeApiKeyByToken(options.sql, secret.token);

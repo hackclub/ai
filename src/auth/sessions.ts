@@ -93,7 +93,15 @@ export const cookieValue = (cookieHeader: string | null, name: string) => {
   if (!cookieHeader) return undefined;
   for (const part of cookieHeader.split(";")) {
     const [key, ...rest] = part.trim().split("=");
-    if (key === name) return decodeURIComponent(rest.join("="));
+    if (key === name) {
+      // A value that is not valid percent-encoding is treated as no cookie,
+      // not as a server error: the browser may hold one from a sibling host.
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return undefined;
+      }
+    }
   }
   return undefined;
 };

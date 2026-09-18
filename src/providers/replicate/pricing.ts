@@ -241,6 +241,21 @@ export const predictionCost = (
   return chosen ? tierCost(chosen, units) : Usd.zero;
 };
 
+/**
+ * Whether the metrics carry the value the price is keyed on at all. A
+ * succeeded prediction whose metrics lack it (a renamed metric, a missing
+ * `metrics` block) would otherwise bill as exactly $0.
+ */
+export const hasBillableMetrics = (
+  pricing: ReplicatePricing,
+  metrics: ReplicatePredictionMetrics,
+): boolean => {
+  if (pricing.kind === "hardware") return typeof metrics.predict_time === "number";
+  return pricing.tiers.some((tier) =>
+    tier.prices.some((price) => typeof metrics[price.metric] === "number"),
+  );
+};
+
 const HARDWARE_HOLD_MULTIPLIER = 4n;
 const DEFAULT_DURATION_SECONDS = 60;
 
