@@ -1,3 +1,4 @@
+import type { AvailableSourceRow, ExistingHoldRow } from "./locks";
 import { Usd } from "./money";
 
 /**
@@ -6,21 +7,6 @@ import { Usd } from "./money";
  * id as the final tiebreak. Amounts are bigint atoms (see money.ts); no
  * floating point ever enters here.
  */
-
-// Step 1: defined here temporarily; moved to ./locks in Step 3.
-type AvailableSourceRow = {
-  id: string;
-  priority: number;
-  available_usd: string;
-  expires_at: Date | null;
-};
-
-type ExistingHoldRow = {
-  id: string;
-  priority: number;
-  reserved_usd: string;
-  expires_at: Date | null;
-};
 
 export type FundingSource = {
   kind: "window" | "credit";
