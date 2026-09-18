@@ -102,7 +102,6 @@ export type ReconcileOptions = {
   openRouter: OpenRouterConfig;
   /** Enables reconciling Replicate predictions; without it they are skipped until released. */
   replicate?: ReplicateReconcileConfig;
-  now?: () => Date;
   /** Age after which a reservation without a provider record is released. */
   maxAgeMs?: number;
   limit?: number;
@@ -121,7 +120,8 @@ type PendingRow = {
   provider: string;
   provider_request_id: string | null;
   reconciliation_reason: string | null;
-  updated_at: Date;
+  expired: boolean;
+  age_ms: number;
 };
 
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -217,13 +217,18 @@ const replicateCharge = async (
 export async function reconcilePendingReservations(
   options: ReconcileOptions,
 ): Promise<ReconcileResult> {
-  const now = options.now ?? (() => new Date());
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const log = options.log ?? (() => {});
   const result: ReconcileResult = { finalized: 0, released: 0, skipped: 0, failed: 0 };
 
   const rows = await options.sql<PendingRow[]>`
-    SELECT request_id, provider, provider_request_id, reconciliation_reason, updated_at
+    SELECT
+      request_id,
+      provider,
+      provider_request_id,
+      reconciliation_reason,
+      updated_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
+      floor(extract(epoch FROM (now() - updated_at)) * 1000)::bigint::int AS age_ms
     FROM billing_reservations
     WHERE state = 'pending_reconciliation'
     ORDER BY updated_at ASC
@@ -242,8 +247,8 @@ export async function reconcilePendingReservations(
   };
 
   for (const row of rows) {
-    const ageMs = now().getTime() - row.updated_at.getTime();
-    const expired = ageMs >= maxAgeMs;
+    const { expired } = row;
+    const ageMs = row.age_ms;
     try {
       const pending = lookupCharge(row);
       if (!pending) {

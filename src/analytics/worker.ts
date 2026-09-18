@@ -20,9 +20,11 @@ import { log } from "../log";
 import {
   type RequestEventDrainer,
   startRequestEventDrainer,
+  stripParkedBodies,
 } from "./request-events";
 
 export const RECONCILE_TASK = "billing.reconcile";
+export const OUTBOX_RETENTION_TASK = "analytics.strip_parked_bodies";
 
 export type ReconciliationDependencies = {
   sql: postgres.Sql;
@@ -47,6 +49,7 @@ export const migrateJobQueue = (connectionString: string) =>
   runMigrations({ connectionString });
 
 export type TaskListOptions = {
+  sql: postgres.Sql;
   reconciliation?: ReconciliationDependencies;
   log?: (message: string) => void;
 };
@@ -74,6 +77,10 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
       );
     };
   }
+  tasks[OUTBOX_RETENTION_TASK] = async (_payload, helpers) => {
+    const stripped = await stripParkedBodies(resolved.sql);
+    helpers.logger.info(`analytics.strip_parked_bodies: stripped=${stripped}`);
+  };
   return tasks;
 };
 
@@ -102,14 +109,24 @@ export const startAnalyticsWorker = async (
   });
   const runner = await run({
     connectionString: options.connectionString,
+    // The drainer's max: 1 pool is shared with the retention task below; the
+    // retention statement is short and runs once a day, so contention with
+    // the once-a-second drain loop is negligible.
     taskList: taskList({
+      sql,
       reconciliation: options.reconciliation,
       log: options.log,
     }),
     concurrency: options.concurrency ?? 8,
     noHandleSignals: true,
-    parsedCronItems: parseCronItems(
-      options.reconciliation
+    parsedCronItems: parseCronItems([
+      {
+        task: OUTBOX_RETENTION_TASK,
+        match: "17 3 * * *",
+        identifier: OUTBOX_RETENTION_TASK,
+        options: { queueName: OUTBOX_RETENTION_TASK, maxAttempts: 3, backfillPeriod: 0 },
+      },
+      ...(options.reconciliation
         ? [
             {
               task: RECONCILE_TASK,
@@ -119,8 +136,8 @@ export const startAnalyticsWorker = async (
               options: { queueName: RECONCILE_TASK, maxAttempts: 3, backfillPeriod: 0 },
             },
           ]
-        : [],
-    ),
+        : []),
+    ]),
   });
   return {
     runner,

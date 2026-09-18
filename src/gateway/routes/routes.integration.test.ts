@@ -1,17 +1,18 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../../analytics/worker";
 import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
 import { type Fetch, OpenRouterAdapter } from "../../providers/openrouter/adapter";
+import { integrationDatabaseUrl, integrationTestFor } from "../../test/integration-db";
 import { exaRoutes } from "./exa";
 import { imagesRoutes } from "./images";
 import { moderationRoutes } from "./moderations";
 import { ocrRoutes } from "./ocr";
 
-const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
-const integrationTest = databaseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
+const integrationTest = integrationTestFor(databaseUrl);
 const runId = crypto.randomUUID().slice(0, 8);
 
 describe("provider routes with PostgreSQL", () => {

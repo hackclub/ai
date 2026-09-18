@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { createSession, SESSION_COOKIE } from "../auth/sessions";
 import { createUser } from "../auth/users";
+import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
 import { keysApiRoutes, revokeApiKeyByToken } from "./keys-api";
 import { webhookRoutes } from "./webhooks";
 
-const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
-const integrationTest = databaseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
+const integrationTest = integrationTestFor(databaseUrl);
 const runId = crypto.randomUUID().slice(0, 8);
 
 describe("keys API and revoke webhooks with PostgreSQL", () => {

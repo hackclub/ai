@@ -1,14 +1,40 @@
 import type postgres from "postgres";
 
 import {
-  BillingAccountNotFoundError,
+  allocate,
+  type ExistingHold,
+  type FundingSource,
+  minAtoms,
+  toExistingHolds,
+  toFundingSources,
+} from "./allocation";
+import {
   InsufficientFundsError,
   InvalidReservationStateError,
   LimitExceededError,
   ReservationConflictError,
   ReservationNotFoundError,
 } from "./errors";
+import {
+  lockAccount,
+  lockAvailableCredits,
+  lockAvailableWindows,
+  lockCreditHolds,
+  lockLimitHolds,
+  lockLimitWindows,
+  lockReservationAccount,
+  lockWindowHolds,
+  type LimitWindowRow,
+  requireReservation,
+  type ReservationRow,
+  selectReservation,
+  type Statement,
+} from "./locks";
 import { Usd } from "./money";
+import {
+  materializeFundingWindows,
+  materializeLimitWindows,
+} from "./windows";
 
 type Sql = postgres.Sql;
 type TransactionSql = postgres.TransactionSql;
@@ -61,69 +87,9 @@ export type FinalizeInput = {
   analytics?: Record<string, JsonValue>;
 };
 
-type ReservationRow = {
-  id: string;
-  request_id: string;
-  account_id: string;
-  provider: string;
-  provider_request_id: string | null;
-  state: ReservationState;
-  estimated_cost_usd: string;
-  actual_cost_usd: string | null;
-  unfunded_cost_usd: string;
-  expires_at: Date;
-};
-
-type LimitWindowRow = {
-  id: string;
-  policy_name: string;
-  available_usd: string;
-};
-
-type AvailableSourceRow = {
-  id: string;
-  priority: number;
-  available_usd: string;
-  expires_at: Date | null;
-};
-
-type ExistingHoldRow = {
-  id: string;
-  priority: number;
-  reserved_usd: string;
-  expires_at: Date | null;
-};
-
-type FundingSource = {
-  kind: "window" | "credit";
-  id: string;
-  priority: number;
-  availableAtoms: bigint;
-  expiresAt: Date | null;
-};
-
-type ExistingHold = FundingSource & {
-  reservedAtoms: bigint;
-};
-
-/** A statement queued for one pipelined round trip. */
-type Statement = postgres.PendingQuery<postgres.Row[]>;
-
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1_000;
 
 const UNIQUE_VIOLATION = "23505";
-
-const compareSources = (left: FundingSource, right: FundingSource) => {
-  if (left.priority !== right.priority) {
-    return left.priority - right.priority;
-  }
-
-  const leftExpiry = left.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  const rightExpiry = right.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  if (leftExpiry !== rightExpiry) return leftExpiry - rightExpiry;
-
-  return left.id.localeCompare(right.id);
-};
 
 const toReservation = (row: ReservationRow): Reservation => ({
   id: row.id,
@@ -140,9 +106,6 @@ const toReservation = (row: ReservationRow): Reservation => ({
   unfundedCostUsd: Usd.parse(row.unfunded_cost_usd).toString(),
   expiresAt: row.expires_at,
 });
-
-const minAtoms = (left: bigint, right: bigint) =>
-  left < right ? left : right;
 
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" &&
@@ -172,7 +135,7 @@ export class BillingEngine {
     return this.sql.begin(async (tx) => {
       // Concurrent reserves for one request id share an account, so the
       // account lock also serializes idempotent retries.
-      const now = await this.lockAccount(tx, input.accountId);
+      const now = await lockAccount(tx, input.accountId);
       const expiresAt =
         input.expiresAt ?? new Date(now.getTime() + DEFAULT_RESERVATION_TTL_MS);
       if (expiresAt <= now) {
@@ -185,12 +148,12 @@ export class BillingEngine {
       // current windows exist by the time they are locked.
       const [existingRows, , , limits, windowRows, creditRows] =
         await Promise.all([
-          this.selectReservation(tx, input.requestId, true),
-          this.materializeFundingWindows(tx, input.accountId, now),
-          this.materializeLimitWindows(tx, input.accountId, now),
-          this.lockLimitWindows(tx, input.accountId, now),
-          this.lockAvailableWindows(tx, input.accountId, now),
-          this.lockAvailableCredits(tx, input.accountId, now),
+          selectReservation(tx, input.requestId, true),
+          materializeFundingWindows(tx, input.accountId, now),
+          materializeLimitWindows(tx, input.accountId, now),
+          lockLimitWindows(tx, input.accountId, now),
+          lockAvailableWindows(tx, input.accountId, now),
+          lockAvailableCredits(tx, input.accountId, now),
         ]);
 
       const existing = existingRows[0];
@@ -216,8 +179,8 @@ export class BillingEngine {
         }
       }
 
-      const sources = this.toFundingSources(windowRows, creditRows);
-      const allocations = this.allocate(estimateAtoms, sources);
+      const sources = toFundingSources(windowRows, creditRows);
+      const allocations = allocate(estimateAtoms, sources);
       if (allocations.remainingAtoms > 0n) {
         throw new InsufficientFundsError();
       }
@@ -322,7 +285,7 @@ export class BillingEngine {
     }
 
     return this.sql.begin(async (tx) => {
-      const { accountId, now } = await this.lockReservationAccount(
+      const { accountId, now } = await lockReservationAccount(
         tx,
         input.requestId,
       );
@@ -337,12 +300,12 @@ export class BillingEngine {
         creditRows,
         limitHolds,
       ] = await Promise.all([
-        this.selectReservation(tx, input.requestId, true),
-        this.lockWindowHolds(tx, input.requestId),
-        this.lockCreditHolds(tx, input.requestId),
-        this.lockAvailableWindows(tx, accountId, now),
-        this.lockAvailableCredits(tx, accountId, now),
-        this.lockLimitHolds(tx, input.requestId),
+        selectReservation(tx, input.requestId, true),
+        lockWindowHolds(tx, input.requestId),
+        lockCreditHolds(tx, input.requestId),
+        lockAvailableWindows(tx, accountId, now),
+        lockAvailableCredits(tx, accountId, now),
+        lockLimitHolds(tx, input.requestId),
       ]);
 
       const reservation = reservationRows[0];
@@ -370,14 +333,14 @@ export class BillingEngine {
       // against the limit windows current at finalization.
       let lateLimitWindows: LimitWindowRow[] = [];
       if (limitHolds.length === 0 && input.actualCostUsd.toAtoms() > 0n) {
-        await this.materializeLimitWindows(tx, accountId, now);
-        lateLimitWindows = await this.lockLimitWindows(tx, accountId, now);
+        await materializeLimitWindows(tx, accountId, now);
+        lateLimitWindows = await lockLimitWindows(tx, accountId, now);
       }
 
       const writes: Statement[] = [];
       let remainingAtoms = input.actualCostUsd.toAtoms();
 
-      for (const hold of this.toExistingHolds(windowHoldRows, creditHoldRows)) {
+      for (const hold of toExistingHolds(windowHoldRows, creditHoldRows)) {
         const committedAtoms = minAtoms(remainingAtoms, hold.reservedAtoms);
         writes.push(
           ...this.commitExistingHold(
@@ -392,9 +355,9 @@ export class BillingEngine {
       }
 
       if (remainingAtoms > 0n) {
-        const additional = this.allocate(
+        const additional = allocate(
           remainingAtoms,
-          this.toFundingSources(windowRows, creditRows),
+          toFundingSources(windowRows, creditRows),
         );
         for (const allocation of additional.items) {
           writes.push(
@@ -523,8 +486,8 @@ export class BillingEngine {
 
   async release(requestId: string): Promise<Reservation> {
     return this.sql.begin(async (tx) => {
-      const { now } = await this.lockReservationAccount(tx, requestId);
-      const reservation = await this.requireReservation(tx, requestId, true);
+      const { now } = await lockReservationAccount(tx, requestId);
+      const reservation = await requireReservation(tx, requestId, true);
 
       if (reservation.state === "released") {
         return toReservation(reservation);
@@ -615,8 +578,8 @@ export class BillingEngine {
     providerRequestId?: string,
   ): Promise<Reservation> {
     return this.sql.begin(async (tx) => {
-      const { now } = await this.lockReservationAccount(tx, requestId);
-      const reservation = await this.requireReservation(tx, requestId, true);
+      const { now } = await lockReservationAccount(tx, requestId);
+      const reservation = await requireReservation(tx, requestId, true);
 
       // A released reservation may still be marked pending: the provider
       // may have charged for it, and finalize accepts released rows.
@@ -659,104 +622,6 @@ export class BillingEngine {
     });
   }
 
-  /**
-   * Takes the account's advisory lock, confirms the account exists, and
-   * reads the transaction clock in one round trip. The lock is taken in the
-   * FROM clause so it is held before the account row is read.
-   */
-  private async lockAccount(
-    tx: TransactionSql,
-    accountId: string,
-  ): Promise<Date> {
-    const [row] = await tx<{ now: Date; account_id: string | null }[]>`
-      SELECT
-        transaction_timestamp() AS now,
-        (
-          SELECT id
-          FROM billing_accounts
-          WHERE id = ${accountId}::uuid
-        ) AS account_id
-      FROM pg_advisory_xact_lock(hashtextextended(${accountId}::uuid::text, 0))
-    `;
-    if (!row) throw new Error("PostgreSQL did not return its transaction time");
-    if (!row.account_id) throw new BillingAccountNotFoundError(accountId);
-    return row.now;
-  }
-
-  /**
-   * Resolves a reservation's account and takes that account's advisory lock
-   * in one round trip. The reservation row itself is locked afterwards by
-   * the caller, once the account lock orders it against reserves.
-   */
-  private async lockReservationAccount(
-    tx: TransactionSql,
-    requestId: string,
-  ): Promise<{ accountId: string; now: Date }> {
-    const [row] = await tx<{ account_id: string; now: Date }[]>`
-      SELECT
-        account_id,
-        pg_advisory_xact_lock(hashtextextended(account_id::text, 0)),
-        transaction_timestamp() AS now
-      FROM billing_reservations
-      WHERE request_id = ${requestId}::uuid
-    `;
-    if (!row) throw new ReservationNotFoundError(requestId);
-    return { accountId: row.account_id, now: row.now };
-  }
-
-  private selectReservation(
-    tx: TransactionSql,
-    requestId: string,
-    forUpdate: boolean,
-  ) {
-    return forUpdate
-      ? tx<ReservationRow[]>`
-          SELECT
-            id,
-            request_id,
-            account_id,
-            provider,
-            provider_request_id,
-            state,
-            estimated_cost_usd::text,
-            actual_cost_usd::text,
-            unfunded_cost_usd::text,
-            expires_at
-          FROM billing_reservations
-          WHERE request_id = ${requestId}::uuid
-          FOR UPDATE
-        `
-      : tx<ReservationRow[]>`
-          SELECT
-            id,
-            request_id,
-            account_id,
-            provider,
-            provider_request_id,
-            state,
-            estimated_cost_usd::text,
-            actual_cost_usd::text,
-            unfunded_cost_usd::text,
-            expires_at
-          FROM billing_reservations
-          WHERE request_id = ${requestId}::uuid
-        `;
-  }
-
-  private async requireReservation(
-    tx: TransactionSql,
-    requestId: string,
-    forUpdate: boolean,
-  ) {
-    const [reservation] = await this.selectReservation(
-      tx,
-      requestId,
-      forUpdate,
-    );
-    if (!reservation) throw new ReservationNotFoundError(requestId);
-    return reservation;
-  }
-
   private assertMatchingReservation(
     existing: ReservationRow,
     input: ReserveInput,
@@ -776,251 +641,6 @@ export class BillingEngine {
         "estimated cost differs",
       );
     }
-  }
-
-  private materializeFundingWindows(
-    tx: TransactionSql,
-    accountId: string,
-    now: Date,
-  ) {
-    return tx`
-      WITH policies AS (
-        SELECT
-          policy.*,
-          date_trunc(
-            policy.cadence,
-            ${now}::timestamptz AT TIME ZONE policy.timezone
-          ) AS local_start
-        FROM billing_funding_policies AS policy
-        WHERE
-          policy.account_id = ${accountId}::uuid
-          AND policy.enabled
-          AND policy.effective_from <= ${now}
-          AND (
-            policy.effective_until IS NULL
-            OR policy.effective_until > ${now}
-          )
-      ),
-      windows AS (
-        SELECT
-          id AS policy_id,
-          account_id,
-          generation,
-          local_start AT TIME ZONE timezone AS window_start,
-          (
-            local_start
-            + CASE cadence
-                WHEN 'day' THEN INTERVAL '1 day'
-                WHEN 'week' THEN INTERVAL '1 week'
-                WHEN 'month' THEN INTERVAL '1 month'
-                WHEN 'year' THEN INTERVAL '1 year'
-              END
-          ) AT TIME ZONE timezone AS window_end,
-          amount_usd
-        FROM policies
-      )
-      INSERT INTO billing_funding_windows (
-        policy_id,
-        account_id,
-        generation,
-        window_start,
-        window_end,
-        granted_usd
-      )
-      SELECT
-        policy_id,
-        account_id,
-        generation,
-        window_start,
-        window_end,
-        amount_usd
-      FROM windows
-      ON CONFLICT (policy_id, generation, window_start) DO NOTHING
-    `;
-  }
-
-  private materializeLimitWindows(
-    tx: TransactionSql,
-    accountId: string,
-    now: Date,
-  ) {
-    return tx`
-      WITH policies AS (
-        SELECT
-          policy.*,
-          CASE
-            WHEN cadence = 'lifetime' THEN effective_from
-            ELSE date_trunc(
-              policy.cadence,
-              ${now}::timestamptz AT TIME ZONE policy.timezone
-            ) AT TIME ZONE policy.timezone
-          END AS window_start,
-          CASE
-            WHEN cadence = 'lifetime' THEN COALESCE(
-              effective_until,
-              '9999-12-31 23:59:59+00'::timestamptz
-            )
-            ELSE (
-              date_trunc(
-                policy.cadence,
-                ${now}::timestamptz AT TIME ZONE policy.timezone
-              )
-              + CASE cadence
-                  WHEN 'day' THEN INTERVAL '1 day'
-                  WHEN 'week' THEN INTERVAL '1 week'
-                  WHEN 'month' THEN INTERVAL '1 month'
-                  WHEN 'year' THEN INTERVAL '1 year'
-                END
-            ) AT TIME ZONE policy.timezone
-          END AS window_end
-        FROM billing_limit_policies AS policy
-        WHERE
-          policy.account_id = ${accountId}::uuid
-          AND policy.enabled
-          AND policy.effective_from <= ${now}
-          AND (
-            policy.effective_until IS NULL
-            OR policy.effective_until > ${now}
-          )
-      )
-      INSERT INTO billing_limit_windows (
-        policy_id,
-        account_id,
-        generation,
-        window_start,
-        window_end,
-        limit_usd
-      )
-      SELECT
-        id,
-        account_id,
-        generation,
-        window_start,
-        window_end,
-        limit_usd
-      FROM policies
-      ON CONFLICT (policy_id, generation, window_start) DO NOTHING
-    `;
-  }
-
-  private lockLimitWindows(
-    tx: TransactionSql,
-    accountId: string,
-    now: Date,
-  ) {
-    return tx<LimitWindowRow[]>`
-      SELECT
-        limit_window.id,
-        policy.name AS policy_name,
-        (
-          limit_window.limit_usd
-          - limit_window.reserved_usd
-          - limit_window.committed_usd
-        )::text AS available_usd
-      FROM billing_limit_windows AS limit_window
-      INNER JOIN billing_limit_policies AS policy
-        ON policy.id = limit_window.policy_id
-      WHERE
-        limit_window.account_id = ${accountId}::uuid
-        AND limit_window.generation = policy.generation
-        AND limit_window.superseded_at IS NULL
-        AND limit_window.window_start <= ${now}
-        AND limit_window.window_end > ${now}
-        AND policy.enabled
-      ORDER BY policy.id, limit_window.id
-      FOR UPDATE OF limit_window
-    `;
-  }
-
-  private lockAvailableWindows(
-    tx: TransactionSql,
-    accountId: string,
-    now: Date,
-  ) {
-    return tx<AvailableSourceRow[]>`
-      SELECT
-        funding_window.id,
-        policy.priority,
-        (
-          funding_window.granted_usd
-          - funding_window.reserved_usd
-          - funding_window.committed_usd
-        )::text AS available_usd,
-        funding_window.window_end AS expires_at
-      FROM billing_funding_windows AS funding_window
-      INNER JOIN billing_funding_policies AS policy
-        ON policy.id = funding_window.policy_id
-      WHERE
-        funding_window.account_id = ${accountId}::uuid
-        AND funding_window.generation = policy.generation
-        AND funding_window.superseded_at IS NULL
-        AND funding_window.window_start <= ${now}
-        AND funding_window.window_end > ${now}
-        AND policy.enabled
-      ORDER BY policy.priority, funding_window.window_end, funding_window.id
-      FOR UPDATE OF funding_window
-    `;
-  }
-
-  private lockAvailableCredits(
-    tx: TransactionSql,
-    accountId: string,
-    now: Date,
-  ) {
-    return tx<AvailableSourceRow[]>`
-      SELECT
-        id,
-        priority,
-        (granted_usd - reserved_usd - committed_usd)::text AS available_usd,
-        expires_at
-      FROM billing_credit_grants
-      WHERE
-        account_id = ${accountId}::uuid
-        AND valid_from <= ${now}
-        AND (expires_at IS NULL OR expires_at > ${now})
-      ORDER BY priority, expires_at NULLS LAST, id
-      FOR UPDATE
-    `;
-  }
-
-  private toFundingSources(
-    windows: AvailableSourceRow[],
-    credits: AvailableSourceRow[],
-  ): FundingSource[] {
-    return [
-      ...windows.map((row) => ({
-        kind: "window" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: Usd.parse(row.available_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-      ...credits.map((row) => ({
-        kind: "credit" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: Usd.parse(row.available_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-    ].sort(compareSources);
-  }
-
-  private allocate(amountAtoms: bigint, sources: FundingSource[]) {
-    let remainingAtoms = amountAtoms;
-    const items: {
-      source: FundingSource;
-      amountAtoms: bigint;
-    }[] = [];
-
-    for (const source of sources) {
-      if (remainingAtoms === 0n) break;
-      const amount = minAtoms(remainingAtoms, source.availableAtoms);
-      if (amount <= 0n) continue;
-      items.push({ source, amountAtoms: amount });
-      remainingAtoms -= amount;
-    }
-
-    return { items, remainingAtoms };
   }
 
   private reserveFunding(
@@ -1075,85 +695,6 @@ export class BillingEngine {
         )
       `,
     ];
-  }
-
-  /** Hold rows are keyed by request id so they need no prior lookup. */
-  private lockWindowHolds(tx: TransactionSql, requestId: string) {
-    return tx<ExistingHoldRow[]>`
-      SELECT
-        funding_window.id,
-        policy.priority,
-        hold.reserved_usd::text,
-        funding_window.window_end AS expires_at
-      FROM billing_reservation_funding_holds AS hold
-      INNER JOIN billing_funding_windows AS funding_window
-        ON funding_window.id = hold.funding_window_id
-      INNER JOIN billing_funding_policies AS policy
-        ON policy.id = funding_window.policy_id
-      WHERE hold.reservation_id = (
-        SELECT id FROM billing_reservations WHERE request_id = ${requestId}::uuid
-      )
-      ORDER BY policy.priority, funding_window.window_end, funding_window.id
-      FOR UPDATE OF hold, funding_window
-    `;
-  }
-
-  private lockCreditHolds(tx: TransactionSql, requestId: string) {
-    return tx<ExistingHoldRow[]>`
-      SELECT
-        credit.id,
-        credit.priority,
-        hold.reserved_usd::text,
-        credit.expires_at
-      FROM billing_reservation_credit_holds AS hold
-      INNER JOIN billing_credit_grants AS credit
-        ON credit.id = hold.credit_grant_id
-      WHERE hold.reservation_id = (
-        SELECT id FROM billing_reservations WHERE request_id = ${requestId}::uuid
-      )
-      ORDER BY credit.priority, credit.expires_at NULLS LAST, credit.id
-      FOR UPDATE OF hold, credit
-    `;
-  }
-
-  private lockLimitHolds(tx: TransactionSql, requestId: string) {
-    return tx<{ id: string; reserved_usd: string }[]>`
-      SELECT
-        limit_window.id,
-        hold.reserved_usd::text
-      FROM billing_reservation_limit_holds AS hold
-      INNER JOIN billing_limit_windows AS limit_window
-        ON limit_window.id = hold.limit_window_id
-      WHERE hold.reservation_id = (
-        SELECT id FROM billing_reservations WHERE request_id = ${requestId}::uuid
-      )
-      ORDER BY limit_window.id
-      FOR UPDATE OF hold, limit_window
-    `;
-  }
-
-  private toExistingHolds(
-    windows: ExistingHoldRow[],
-    credits: ExistingHoldRow[],
-  ): ExistingHold[] {
-    return [
-      ...windows.map((row) => ({
-        kind: "window" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: 0n,
-        reservedAtoms: Usd.parse(row.reserved_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-      ...credits.map((row) => ({
-        kind: "credit" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: 0n,
-        reservedAtoms: Usd.parse(row.reserved_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-    ].sort(compareSources);
   }
 
   private commitExistingHold(

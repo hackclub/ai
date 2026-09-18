@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import postgres, { type Sql } from "postgres";
 
 import { listMigrationFiles, migratePostgres, splitClickHouseStatements } from "../src/migrations";
+import { integrationDatabaseUrl, integrationTestFor } from "../src/test/integration-db";
 
 describe("splitClickHouseStatements", () => {
   test("splits the real clickhouse migration into two statements and drops the trailing comment block", async () => {
@@ -19,22 +20,25 @@ describe("splitClickHouseStatements", () => {
 });
 
 describe("listMigrationFiles", () => {
-  test("lists the five postgres migrations in order and ignores non-.sql files", async () => {
+  test("lists the postgres migrations in filename order", async () => {
     const files = await listMigrationFiles("migrations/postgres");
 
-    expect(files).toEqual([
+    expect(files.slice(0, 5)).toEqual([
       "0001_billing.sql",
       "0002_identity.sql",
       "0003_sessions.sql",
       "0004_replicate_resources.sql",
       "0005_request_event_outbox.sql",
     ]);
+    for (const file of files) {
+      expect(file).toMatch(/^\d{4}_[a-z0-9_]+\.sql$/);
+    }
+    expect(files).toEqual([...files].sort());
   });
 });
 
-// Same idiom as src/billing/engine.integration.test.ts:9-10.
-const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
-const integrationTest = databaseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
+const integrationTest = integrationTestFor(databaseUrl);
 
 describe("migratePostgres against a scratch database", () => {
   let adminSql: Sql | undefined;
@@ -63,16 +67,18 @@ describe("migratePostgres against a scratch database", () => {
     await adminSql.end();
   });
 
-  integrationTest("applies all five files, then applies nothing on a second run", async () => {
+  integrationTest("applies every file, then applies nothing on a second run", async () => {
     if (!scratchUrl) throw new Error("scratch database was not created");
 
+    const expected = (await listMigrationFiles("migrations/postgres")).length;
+
     const first = await migratePostgres(scratchUrl, { log: () => {} });
-    expect(first).toEqual({ applied: 5, skipped: 0 });
+    expect(first).toEqual({ applied: expected, skipped: 0 });
 
     const sql = postgres(scratchUrl, { max: 2 });
     try {
       const rows = await sql<{ version: string }[]>`SELECT version FROM schema_migrations`;
-      expect(rows).toHaveLength(5);
+      expect(rows).toHaveLength(expected);
 
       const [outbox] = await sql<{ to_regclass: string | null }[]>`
         SELECT to_regclass('public.request_event_outbox') AS to_regclass
@@ -83,6 +89,6 @@ describe("migratePostgres against a scratch database", () => {
     }
 
     const second = await migratePostgres(scratchUrl, { log: () => {} });
-    expect(second).toEqual({ applied: 0, skipped: 5 });
+    expect(second).toEqual({ applied: 0, skipped: expected });
   });
 });
