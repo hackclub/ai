@@ -1,11 +1,12 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { hackClubAuthRoutes, type HackClubIdentity } from "./hackclub";
 import { SESSION_COOKIE, cookieValue, sessionUser } from "./sessions";
+import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
 
-const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
-const integrationTest = databaseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
+const integrationTest = integrationTestFor(databaseUrl);
 const runId = crypto.randomUUID().slice(0, 8);
 
 describe("Hack Club OAuth with PostgreSQL", () => {

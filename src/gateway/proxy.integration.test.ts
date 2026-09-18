@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../analytics/worker";
@@ -7,9 +7,10 @@ import { createApp } from "../app";
 import { BillingEngine } from "../billing/engine";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
+import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
 
-const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
-const integrationTest = databaseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
+const integrationTest = integrationTestFor(databaseUrl);
 
 const runId = crypto.randomUUID().slice(0, 8);
 const encoder = new TextEncoder();
