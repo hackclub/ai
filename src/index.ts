@@ -16,6 +16,10 @@ if (failure) {
   process.exit(1);
 }
 
-backend.app.listen({ port: env.port, idleTimeout: 0 });
+backend.app.listen({
+  port: env.port,
+  idleTimeout: 0,
+  maxRequestBodySize: env.maxRequestBodyBytes,
+});
 console.log(`Hack Club AI gateway listening on http://localhost:${env.port}`);
 installShutdownHandlers(backend, { stopServer: () => backend.app.stop() });

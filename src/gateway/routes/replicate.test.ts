@@ -363,3 +363,66 @@ describe("billedPrediction ownership failures", () => {
     expect(String((errors[0]?.error as Error)?.message)).toContain("p9");
   });
 });
+
+describe("POST /files size limit", () => {
+  const principalSql = (async () => [
+    {
+      user_id: "u1",
+      api_key_id: "k1",
+      billing_account_id: "a1",
+      billing_account_status: "active",
+      is_banned: false,
+      is_idv_verified: true,
+      skip_idv: false,
+    },
+  ]) as unknown as ReplicateRouteDependencies["sql"];
+
+  const buildApp = (fetchImpl: typeof fetch) =>
+    replicateRoutes({
+      sql: principalSql,
+      billing: {} as never, // never reached by this route
+      replicateApiKey: "test",
+      enforceIdv: false,
+      maxUploadBytes: 16,
+      fetch: fetchImpl,
+    });
+
+  test("rejects an upload over the limit with 413 before contacting Replicate", async () => {
+    const app = buildApp((async () => {
+      throw new Error("upstream must not be called");
+    }) as unknown as typeof fetch);
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(32)]), "big.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("upload limit");
+  });
+
+  test("accepts an upload at or under the limit and reaches the upstream", async () => {
+    const app = buildApp((async () =>
+      Response.json({ id: "f1" }, { status: 201 })) as unknown as typeof fetch);
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+  });
+});

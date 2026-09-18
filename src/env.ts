@@ -45,6 +45,8 @@ export type Env = {
    * docs/architecture/storage-and-billing.md.
    */
   reservationFallbackOutputTokens: number;
+  /** Largest accepted HTTP request body, in bytes. */
+  maxRequestBodyBytes: number;
 };
 
 const list = (value: string | undefined) =>
@@ -122,6 +124,7 @@ export const loadEnv = (
       "RESERVATION_FALLBACK_OUTPUT_TOKENS",
       8192,
     ),
+    maxRequestBodyBytes: integer(source, "MAX_REQUEST_BODY_BYTES", 20 * 1024 * 1024),
   };
 };
 

@@ -52,6 +52,8 @@ export type ReplicateRouteDependencies = MeteredRouteDependencies & {
    * limit check. Defaults to 0.05 USD.
    */
   minimumHoldUsd?: string;
+  /** Largest accepted file upload; defaults to 20 MiB. */
+  maxUploadBytes?: number;
 };
 
 /**
@@ -337,6 +339,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const pricingSource = deps.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
   const settlementTimeoutMs = deps.settlementTimeoutMs ?? 15 * 60 * 1_000;
   const minimumHold = Usd.parse(deps.minimumHoldUsd ?? "0.05");
+  const maxUploadBytes = deps.maxUploadBytes ?? 20 * 1024 * 1024;
 
   const resolvePricing = async (model: string) => {
     let pricing: ReplicatePricing | null;
@@ -511,6 +514,9 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       const form = await request.formData().catch(() => null);
       const content = form?.get("content");
       if (!(content instanceof File)) throw new HttpError(400, "File content is required");
+      if (content.size > maxUploadBytes) {
+        throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
+      }
       const upload = new FormData();
       upload.append("content", content);
       // The official SDK sends metadata as a JSON blob part; curl users send a string.

@@ -134,6 +134,7 @@ export const createBackend = (env: Env): Backend => {
         replicateApiKey: env.replicateApiKey,
         publicBaseUrl: env.baseUrl,
         pricing: replicatePricing,
+        maxUploadBytes: env.maxRequestBodyBytes,
       }),
     );
   }

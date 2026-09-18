@@ -22,7 +22,15 @@ export type Fetch = (
 export type OpenRouterAdapterOptions = {
   baseUrl?: string;
   fetch?: Fetch;
+  maxCapturedBytes?: number;
 };
+
+/**
+ * Largest response body kept for analytics/search. Streamed bodies past this
+ * cap are truncated for storage only; the client still receives every byte
+ * and the SSE observer still sees every chunk for usage parsing.
+ */
+export const MAX_CAPTURED_RESPONSE_BYTES = 1024 * 1024;
 
 type ObservedUsage = {
   requestId: string | null;
@@ -56,7 +64,7 @@ class OpenRouterResponseObserver {
   private error: string | null = null;
   private readonly parser: ServerSentEventParser | null;
 
-  constructor(private readonly eventStream: boolean) {
+  constructor(readonly eventStream: boolean) {
     this.parser = eventStream
       ? new ServerSentEventParser(({ data }) => {
           if (data === "[DONE]") return;
@@ -102,7 +110,7 @@ class OpenRouterResponseObserver {
 const uncertainCompletion = (
   observation: ObservedUsage,
   body: string,
-  bodyCapture: "complete" | "partial",
+  bodyCapture: "complete" | "partial" | "truncated",
   reason?: string,
 ): ProviderCompletion => ({
   state: "uncertain",
@@ -118,12 +126,15 @@ const uncertainCompletion = (
 const meterResponse = (
   upstream: Response,
   requestBody: string,
+  maxCapturedBytes: number,
 ): MeteredProviderResponse => {
   let settle: (completion: ProviderCompletion) => void = () => {};
   const completion = new Promise<ProviderCompletion>((resolve) => {
     settle = resolve;
   });
   const chunks: Uint8Array[] = [];
+  let capturedBytes = 0;
+  let truncated = false;
   const observer = new OpenRouterResponseObserver(
     upstream.headers.get("content-type")?.includes("text/event-stream") ??
       false,
@@ -154,8 +165,19 @@ const meterResponse = (
         if (cancelled) return;
         if (!next.done) {
           const copy = next.value.slice();
-          chunks.push(copy);
           observer.push(copy);
+          // Non-streaming bodies are parsed whole for usage; they are
+          // bounded by the provider's single JSON document, so only event
+          // streams are capped here.
+          if (
+            !observer.eventStream ||
+            capturedBytes + copy.byteLength <= maxCapturedBytes
+          ) {
+            chunks.push(copy);
+            capturedBytes += copy.byteLength;
+          } else {
+            truncated = true;
+          }
           controller.enqueue(next.value);
           return;
         }
@@ -168,10 +190,16 @@ const meterResponse = (
             providerRequestId: observation.requestId,
             usage: observation.usage,
             responseBody: captured,
-            bodyCapture: "complete",
+            bodyCapture: truncated ? "truncated" : "complete",
           });
         } else {
-          settleOnce(uncertainCompletion(observation, captured, "complete"));
+          settleOnce(
+            uncertainCompletion(
+              observation,
+              captured,
+              truncated ? "truncated" : "complete",
+            ),
+          );
         }
         controller.close();
       } catch (error) {
@@ -181,7 +209,7 @@ const meterResponse = (
           uncertainCompletion(
             observer.finish(captured),
             captured,
-            "partial",
+            truncated ? "truncated" : "partial",
             error instanceof Error ? error.message : "Response stream failed",
           ),
         );
@@ -202,7 +230,7 @@ const meterResponse = (
         providerRequestId: observation.requestId,
         reason: typeof reason === "string" ? reason : "Client cancelled stream",
         responseBody: captured,
-        bodyCapture: "partial",
+        bodyCapture: truncated ? "truncated" : "partial",
       });
     },
   });
@@ -221,6 +249,7 @@ const meterResponse = (
 export class OpenRouterAdapter {
   private readonly baseUrl: string;
   private readonly fetchImplementation: Fetch;
+  private readonly maxCapturedBytes: number;
 
   constructor(options: OpenRouterAdapterOptions = {}) {
     this.baseUrl = (options.baseUrl ?? "https://openrouter.ai/api").replace(
@@ -228,6 +257,8 @@ export class OpenRouterAdapter {
       "",
     );
     this.fetchImplementation = options.fetch ?? fetch;
+    this.maxCapturedBytes =
+      options.maxCapturedBytes ?? MAX_CAPTURED_RESPONSE_BYTES;
   }
 
   async execute(request: OpenRouterRequest): Promise<MeteredProviderResponse> {
@@ -246,6 +277,6 @@ export class OpenRouterAdapter {
       },
     );
 
-    return meterResponse(upstream, requestBody);
+    return meterResponse(upstream, requestBody, this.maxCapturedBytes);
   }
 }

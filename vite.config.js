@@ -12,7 +12,14 @@ export default defineConfig(({ mode }) => {
     plugins: [
       tailwindcss(),
       sveltekit({
-        adapter: adapter({ serverOptions: { idleTimeout: 0 } }),
+        adapter: adapter({
+          serverOptions: {
+            idleTimeout: 0,
+            // Build-time default; BODY_SIZE_LIMIT overrides at runtime. Keep in
+            // step with MAX_REQUEST_BODY_BYTES in src/env.ts.
+            maxRequestBodySize: 20 * 1024 * 1024,
+          },
+        }),
         // SvelteKit's global same-origin check is disabled because SDK clients
         // call /proxy with no Origin header (and with multipart uploads).
         // Cookie-authenticated Elysia routes (/api/keys*, /api/dismiss-agent-banner,

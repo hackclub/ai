@@ -132,6 +132,11 @@ bun run start          # bun ./build
 bun run check          # svelte-check
 ```
 
+> The built server accepts request bodies up to 20 MiB by default. Set
+> `BODY_SIZE_LIMIT` (for example `BODY_SIZE_LIMIT=20M`) to change it at
+> runtime; the standalone API reads `MAX_REQUEST_BODY_BYTES` instead. Keep the
+> two equal.
+
 Pages: `/` (marketing, redirects signed-in users), `/dashboard`, `/keys`,
 `/activity` (with cursor-paged "Load more"), `/models`, `/models/<id>`,
 `/global`, `/replicate`, and `/jev`.

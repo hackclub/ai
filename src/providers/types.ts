@@ -13,21 +13,21 @@ export type ProviderCompletion =
       providerRequestId: string | null;
       usage: NormalizedUsage;
       responseBody: string;
-      bodyCapture: "complete";
+      bodyCapture: "complete" | "truncated";
     }
   | {
       state: "uncertain";
       providerRequestId: string | null;
       reason: string;
       responseBody: string;
-      bodyCapture: "complete" | "partial";
+      bodyCapture: "complete" | "partial" | "truncated";
     }
   | {
       state: "cancelled";
       providerRequestId: string | null;
       reason: string;
       responseBody: string;
-      bodyCapture: "partial";
+      bodyCapture: "partial" | "truncated";
     };
 
 export type MeteredProviderResponse = {
