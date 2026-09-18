@@ -124,7 +124,7 @@ export const createBackend = (env: Env): Backend => {
       allowedImageModels: env.allowedImageModels,
       attributionHeaders,
     }),
-    keysApiRoutes({ sql }),
+    keysApiRoutes({ sql, baseUrl: env.baseUrl }),
     webhookRoutes({ sql }),
   ];
   if (env.replicateApiKey && replicatePricing) {
