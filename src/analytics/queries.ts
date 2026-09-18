@@ -61,8 +61,45 @@ const toStats = (row: StatsRow | undefined): UsageStats => {
  * Dashboard reads against ClickHouse. These are analytics: they never feed
  * billing enforcement, which stays in PostgreSQL.
  */
+export type AnalyticsQueriesOptions = {
+  /** How long a global aggregate is served from memory. Default 60 s. */
+  globalCacheTtlMs?: number;
+  now?: () => number;
+};
+
 export class AnalyticsQueries {
-  constructor(private readonly clickhouse: ClickHouseClient) {}
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+  private readonly cache = new Map<string, { value: unknown; fetchedAt: number }>();
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+
+  constructor(
+    private readonly clickhouse: ClickHouseClient,
+    options: AnalyticsQueriesOptions = {},
+  ) {
+    this.ttlMs = options.globalCacheTtlMs ?? 60_000;
+    this.now = options.now ?? Date.now;
+  }
+
+  /** Serves `key` from memory within the TTL; single-flight; stale-on-error. */
+  private memo<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const cached = this.cache.get(key);
+    if (cached && this.now() - cached.fetchedAt < this.ttlMs) return Promise.resolve(cached.value as T);
+    const pending = this.inFlight.get(key);
+    if (pending) return pending as Promise<T>;
+    const refresh = load()
+      .then((value) => {
+        this.cache.set(key, { value, fetchedAt: this.now() });
+        return value;
+      })
+      .catch((error) => {
+        if (cached) return cached.value as T;
+        throw error;
+      })
+      .finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, refresh);
+    return refresh;
+  }
 
   async userStats(accountId: string): Promise<UsageStats> {
     const result = await this.clickhouse.query({
@@ -81,7 +118,15 @@ export class AnalyticsQueries {
     return toStats(row);
   }
 
-  async globalStats(): Promise<UsageStats> {
+  globalStats(): Promise<UsageStats> {
+    return this.memo("globalStats", () => this.loadGlobalStats());
+  }
+
+  modelStats(): Promise<ModelUsageStats[]> {
+    return this.memo("modelStats", () => this.loadModelStats());
+  }
+
+  private async loadGlobalStats(): Promise<UsageStats> {
     const result = await this.clickhouse.query({
       query: `
         SELECT
@@ -96,7 +141,7 @@ export class AnalyticsQueries {
     return toStats(row);
   }
 
-  async modelStats(): Promise<ModelUsageStats[]> {
+  private async loadModelStats(): Promise<ModelUsageStats[]> {
     const result = await this.clickhouse.query({
       query: `
         SELECT
