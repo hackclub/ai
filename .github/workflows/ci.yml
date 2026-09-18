@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run check
+      - run: bun test
+      - run: bun audit
+      - run: bun run build
+        env:
+          # vite.config.js loads .env into process.env; the build itself
+          # does not need real values.
+          DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
+          OPENROUTER_API_KEY: ci
+          TYPESAFE_API_KEY: ci
+
+  integration:
+    name: PostgreSQL + ClickHouse integration tests
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
+      # compose.yaml mounts migrations/* into docker-entrypoint-initdb.d, so a
+      # fresh volume applies every migration. Once plans/002 lands, add
+      # `bun run db:migrate` after this step so the runner is exercised too.
+      - run: docker compose up -d --wait
+      - run: bun test
+        env:
+          DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
+          CLICKHOUSE_URL: http://localhost:8123
+          CLICKHOUSE_USER: hcai
+          CLICKHOUSE_PASSWORD: hcai
+          OPENROUTER_API_KEY: ci
+          TYPESAFE_API_KEY: ci
+          BILLING_TEST_DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
+          ANALYTICS_TEST_DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
+          ANALYTICS_TEST_CLICKHOUSE_URL: http://localhost:8123
+      - if: always()
+        run: docker compose logs --no-color postgres clickhouse | tail -n 200
+      - if: always()
+        run: docker compose down --volumes
