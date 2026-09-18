@@ -140,4 +140,33 @@ describe("OpenRouterAdapter", () => {
     expect(completion.providerRequestId).toBe("gen-cancelled");
     expect(completion.responseBody).toContain("gen-cancelled");
   });
+
+  test("settles cancellation even when the upstream cancel rejects", async () => {
+    const adapter = new OpenRouterAdapter({
+      fetch: (async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(encoder.encode('data: {"id":"gen-gone"}\n\n'));
+            },
+            cancel() {
+              throw new Error("socket already closed");
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        )),
+    });
+    const result = await adapter.execute({
+      endpoint: "chat/completions",
+      body: { model: "test/model", stream: true },
+      apiKey: "secret",
+    });
+    const reader = result.response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client disconnected");
+
+    const completion = await result.completion;
+    expect(completion.state).toBe("cancelled");
+    expect(completion.providerRequestId).toBe("gen-gone");
+  });
 });

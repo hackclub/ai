@@ -191,7 +191,10 @@ const meterResponse = (
 
     async cancel(reason) {
       cancelled = true;
-      await reader.cancel(reason);
+      // The upstream may already be gone (aborted fetch, closed socket). A
+      // rejected cancel must not leave `completion` unsettled, or the
+      // reservation would only ever close by expiry.
+      await reader.cancel(reason).catch(() => {});
       const captured = responseText(chunks);
       const observation = observer.finish(captured);
       settleOnce({

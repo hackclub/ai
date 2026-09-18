@@ -56,31 +56,35 @@ export const withKeepAlive = (response: Response, intervalMs: number) => {
   if (!response.body || isEventStream(response) || intervalMs <= 0) {
     return response;
   }
-  const upstream = response.body;
+  const reader = response.body.getReader();
   const space = new TextEncoder().encode(" ");
+  let finished = false;
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = upstream.getReader();
       let firstByte = false;
       const timer = setInterval(() => {
-        if (!firstByte) controller.enqueue(space);
+        if (!firstByte && !finished) controller.enqueue(space);
       }, intervalMs);
       try {
         while (true) {
           const next = await reader.read();
           if (next.done) break;
           firstByte = true;
-          controller.enqueue(next.value);
+          if (!finished) controller.enqueue(next.value);
         }
-        controller.close();
+        if (!finished) controller.close();
       } catch (error) {
-        controller.error(error);
+        if (!finished) controller.error(error);
       } finally {
+        finished = true;
         clearInterval(timer);
       }
     },
     cancel(reason) {
-      return upstream.cancel(reason);
+      // The body is locked to `reader` above, so cancelling the stream itself
+      // would throw and leave the upstream (and its billing) running.
+      finished = true;
+      return reader.cancel(reason);
     },
   });
   return new Response(body, {

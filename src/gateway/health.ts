@@ -10,6 +10,10 @@ export type HealthOptions = {
    * browser session cookie; skipped when either value is missing.
    */
   replicate?: { username: string; sessionId: string } | null;
+  /** Mistral (OCR). Skipped when no key is configured. */
+  mistral?: { apiKey: string; baseUrl?: string } | null;
+  /** Exa. Skipped when no key is configured. */
+  exa?: { apiKey: string; baseUrl?: string } | null;
   cacheMs?: number;
   now?: () => number;
 };
@@ -19,6 +23,9 @@ export type HealthReport = {
   postgres: boolean;
   clickhouse: boolean;
   openRouter: boolean;
+  /** Present only when the provider is configured. */
+  mistral?: boolean;
+  exa?: boolean;
   /** OpenRouter credits purchased minus used, as the previous gateway reported. */
   balanceRemaining?: number;
   /** Remaining spend allowed on the shared key; the previous gateway's name. */
@@ -36,9 +43,10 @@ const numberOrUndefined = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 /**
- * GET /up. Checks PostgreSQL, ClickHouse, and OpenRouter and caches the
- * verdict so a probe storm cannot amplify load. The previous gateway's
- * balance and Replicate credit fields are kept for monitors that read them.
+ * GET /up. Checks PostgreSQL, ClickHouse, OpenRouter, and any configured
+ * provider (Mistral, Exa, Replicate) and caches the verdict so a probe storm
+ * cannot amplify load. The previous gateway's balance and Replicate credit
+ * fields are kept for monitors that read them.
  */
 export const createHealthCheck = (options: HealthOptions) => {
   const cacheMs = options.cacheMs ?? 30_000;
@@ -91,8 +99,36 @@ export const createHealthCheck = (options: HealthOptions) => {
       .catch(() => undefined);
   };
 
+  /** Authenticated listing; a rejected key answers 401. */
+  const mistralOk = () => {
+    if (!options.mistral) return Promise.resolve(undefined);
+    const base = (options.mistral.baseUrl ?? "https://api.mistral.ai").replace(/\/$/, "");
+    return fetchImplementation(`${base}/v1/models`, {
+      headers: { authorization: `Bearer ${options.mistral.apiKey}` },
+    })
+      .then((response) => response.ok)
+      .catch(() => false);
+  };
+
+  /**
+   * Exa has no key-status endpoint and every real search is billed, so send
+   * an empty search body: the key is checked first, so a good key answers
+   * 400 (invalid body) and a bad one 401, without running a search.
+   */
+  const exaOk = () => {
+    if (!options.exa) return Promise.resolve(undefined);
+    const base = (options.exa.baseUrl ?? "https://api.exa.ai").replace(/\/$/, "");
+    return fetchImplementation(`${base}/search`, {
+      method: "POST",
+      headers: { "x-api-key": options.exa.apiKey, "content-type": "application/json" },
+      body: "{}",
+    })
+      .then((response) => response.ok || response.status === 400)
+      .catch(() => false);
+  };
+
   const check = async (): Promise<HealthReport> => {
-    const [postgresOk, clickhouseOk, key, balanceRemaining, replicateUnusedCredit] =
+    const [postgresOk, clickhouseOk, key, balanceRemaining, replicateUnusedCredit, mistral, exa] =
       await Promise.all([
         options.sql`SELECT 1`.then(() => true, () => false),
         options.clickhouse
@@ -101,6 +137,8 @@ export const createHealthCheck = (options: HealthOptions) => {
         keyStatus(),
         credits(),
         replicateCredit(),
+        mistralOk(),
+        exaOk(),
       ]);
 
     const openRouterOk = key !== null;
@@ -108,11 +146,18 @@ export const createHealthCheck = (options: HealthOptions) => {
       !options.replicate ||
       (replicateUnusedCredit !== undefined && replicateUnusedCredit > REPLICATE_MIN_CREDIT);
 
+    const providersOk = mistral !== false && exa !== false;
+
     return {
-      status: postgresOk && clickhouseOk && openRouterOk && replicateOk ? "up" : "down",
+      status:
+        postgresOk && clickhouseOk && openRouterOk && replicateOk && providersOk
+          ? "up"
+          : "down",
       postgres: postgresOk,
       clickhouse: clickhouseOk,
       openRouter: openRouterOk,
+      ...(mistral !== undefined ? { mistral } : {}),
+      ...(exa !== undefined ? { exa } : {}),
       ...(balanceRemaining !== undefined ? { balanceRemaining } : {}),
       ...(key?.limitRemaining !== undefined
         ? { dailyKeyUsageRemaining: key.limitRemaining, keyLimitRemaining: key.limitRemaining }

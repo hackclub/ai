@@ -172,6 +172,8 @@ export const createBackend = (env: Env): Backend => {
         env.replicateUsername && env.replicateSessionId
           ? { username: env.replicateUsername, sessionId: env.replicateSessionId }
           : null,
+      mistral: env.mistralApiKey ? { apiKey: env.mistralApiKey } : null,
+      exa: env.exaApiKey ? { apiKey: env.exaApiKey } : null,
     }),
     proxy: {
       sql,
