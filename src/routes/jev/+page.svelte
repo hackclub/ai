@@ -73,7 +73,7 @@
   </PageHeader>
 
   <section class="mt-10" aria-labelledby="what-heading">
-    <h2 id="what-heading" class="mb-4 text-sm font-medium">What Jev is</h2>
+    <h2 id="what-heading" class="mb-4 text-sm font-medium">What's Jev?</h2>
     <div class="bg-card space-y-3 rounded-lg border p-4 text-sm text-pretty">
       <p>
         Jev is the first of what TypeSafe calls <strong>System One models</strong>, released in September 2026. A chat model generates a reply one token at a time and you parse the result. Jev does not generate text at all. It reads your <strong>state</strong> (e.g. support messages, JSON records) and a map of <strong>questions</strong>, and returns a typed answer to every question in a single parallel pass.
