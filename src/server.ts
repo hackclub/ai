@@ -118,6 +118,7 @@ export const createBackend = (env: Env): Backend => {
       replicateRoutes({
         ...metered,
         replicateApiKey: env.replicateApiKey,
+        publicBaseUrl: env.baseUrl,
       }),
     );
   }

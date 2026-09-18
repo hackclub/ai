@@ -80,7 +80,7 @@ starts the in-process ClickHouse delivery worker, and listens on `PORT`.
 | `POST /proxy/v1/moderations` | API key | OpenAI moderation pass-through (unbilled) |
 | `POST /proxy/v1/exa/*` | API key + `enable_exa` | Exa search, contents, answer |
 | `POST /proxy/v1/ocr` | API key + `enable_ocr` | Mistral OCR |
-| `/proxy/v1/replicate/*` | API key + `enable_replicate` | Replicate files, models, predictions |
+| `/proxy/v1/replicate/*` | API key + `enable_replicate` | Replicate files, models, predictions (scoped to their creator; no account-wide listings) |
 | `/auth/login`, `/auth/callback`, `POST /auth/logout` | cookie | Hack Club sign-in |
 | `GET/POST /api/keys`, `DELETE /api/keys/:id` | session | Dashboard key management |
 | `POST /api/ghss`, `POST /internal/revoke` | signature / shared secret | Leaked-key revocation |

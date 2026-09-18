@@ -15,6 +15,11 @@ import {
   type ReplicatePricing,
   type ReplicatePricingSource,
 } from "../../providers/replicate/pricing";
+import {
+  ownsReplicateResource,
+  recordReplicateResource,
+  type ReplicateResourceKind,
+} from "../../providers/replicate/resources";
 import type {
   MeteredProviderResponse,
   ProviderCompletion,
@@ -32,7 +37,10 @@ export type ReplicateRouteDependencies = {
   enforceIdv: boolean;
   fetch?: typeof fetch;
   rateLimiter?: RateLimiter;
+  /** Replicate API origin. */
   baseUrl?: string;
+  /** This gateway's public origin, used to rewrite Replicate's API links in responses. */
+  publicBaseUrl?: string;
   pricing?: ReplicatePricingSource;
   /** How long to keep polling an async prediction for its final metrics. */
   settlementTimeoutMs?: number;
@@ -59,7 +67,42 @@ export const validateVersionAccess = (model: string, version: string) => {
   }
 };
 
-const TERMINAL_STATUSES = new Set(["succeeded", "failed", "canceled"]);
+const VERSION_ID = /^[0-9a-f]{64}$/;
+
+export type ModelReference = {
+  /** Allowlisted owner/name. */
+  model: string;
+  /** `owner/name:version` when a specific allowlisted version was named, else null. */
+  version: string | null;
+};
+
+const parseOwnerName = (value: string) => {
+  const [owner, name, ...rest] = value.split("/");
+  if (!owner || !name || rest.length > 0) throw new HttpError(400, "Invalid model format.");
+  return validateModelAccess(owner, name);
+};
+
+/**
+ * Resolves the `version` field of a prediction request, which Replicate
+ * accepts as a bare 64-character version id, `owner/name:version`, or
+ * `owner/name` for official models. Whatever form it takes, the reference
+ * must land on an allowlisted model (and version, when one is named).
+ */
+export const resolveModelReference = (reference: string): ModelReference => {
+  if (VERSION_ID.test(reference)) {
+    const model = allowedReplicateModelVersions[reference];
+    if (!model) throw new HttpError(403, `Version ${reference} is not in the allowed list.`);
+    return { model, version: `${model}:${reference}` };
+  }
+  const [ownerName, versionId, ...rest] = reference.split(":");
+  if (!ownerName || rest.length > 0) throw new HttpError(400, "Invalid model format.");
+  const model = parseOwnerName(ownerName);
+  if (versionId === undefined) return { model, version: null };
+  validateVersionAccess(model, versionId);
+  return { model, version: `${model}:${versionId}` };
+};
+
+const TERMINAL_STATUSES = new Set(["succeeded", "failed", "canceled", "aborted"]);
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
 
 type PredictionSnapshot = {
@@ -213,6 +256,31 @@ export const meterPrediction = (
   };
 };
 
+const LINK_KEYS = new Set(["get", "cancel", "next", "previous"]);
+const OPAQUE_KEYS = new Set(["input", "output", "logs"]);
+
+/**
+ * Replicate responses link back to api.replicate.com (`urls.get`,
+ * `urls.cancel`, pagination `next`/`previous`). Clients such as the official
+ * SDK follow those links verbatim with the proxy credentials, so they are
+ * rewritten to point at this gateway. Model inputs and outputs are left alone.
+ */
+export const rewriteUpstreamLinks = (value: unknown, from: string, to: string): unknown => {
+  if (Array.isArray(value)) return value.map((item) => rewriteUpstreamLinks(item, from, to));
+  if (!value || typeof value !== "object") return value;
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (OPAQUE_KEYS.has(key)) {
+      result[key] = entry;
+    } else if (LINK_KEYS.has(key) && typeof entry === "string" && entry.startsWith(from)) {
+      result[key] = `${to}${entry.slice(from.length)}`;
+    } else {
+      result[key] = rewriteUpstreamLinks(entry, from, to);
+    }
+  }
+  return result;
+};
+
 const passthrough = (upstream: Response) => {
   const headers = new Headers(upstream.headers);
   for (const name of ["content-encoding", "content-length", "transfer-encoding", "connection"]) {
@@ -239,6 +307,9 @@ const readJson = async (request: Request) => {
 export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const fetchImplementation = deps.fetch ?? fetch;
   const baseUrl = (deps.baseUrl ?? "https://api.replicate.com").replace(/\/$/, "");
+  const publicBaseUrl = (deps.publicBaseUrl ?? "http://localhost:3000").replace(/\/$/, "");
+  const upstreamLinkPrefix = `${baseUrl}/v1/`;
+  const publicLinkPrefix = `${publicBaseUrl}/proxy/v1/replicate/`;
   const rateLimiter =
     deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const pricingSource = deps.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
@@ -278,6 +349,26 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     return headers;
   };
 
+  /**
+   * Buffers a JSON response so Replicate's API links can be rewritten to this
+   * gateway. Non-JSON bodies pass through unchanged.
+   */
+  const rewrittenJson = async (upstream: Response) => {
+    const text = await upstream.text();
+    const headers = new Headers(upstream.headers);
+    for (const name of ["content-encoding", "content-length", "transfer-encoding", "connection"]) {
+      headers.delete(name);
+    }
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      return { parsed, response: new Response(text, { status: upstream.status, headers }) };
+    }
+    const body = JSON.stringify(rewriteUpstreamLinks(parsed, upstreamLinkPrefix, publicLinkPrefix));
+    return { parsed, response: new Response(body, { status: upstream.status, headers }) };
+  };
+
   const forward = async (request: Request, path: string, init: RequestInit = {}) =>
     passthrough(
       await fetchImplementation(`${baseUrl}${path}`, {
@@ -286,29 +377,57 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       }),
     );
 
-  const withCursor = (request: Request, path: string) => {
-    const cursor = new URL(request.url).searchParams.get("cursor");
-    return cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path;
+  const forwardJson = async (request: Request, path: string, init: RequestInit = {}) =>
+    (
+      await rewrittenJson(
+        await fetchImplementation(`${baseUrl}${path}`, {
+          headers: upstreamHeaders(request),
+          ...init,
+        }),
+      )
+    ).response;
+
+  /** Resources are only visible to the user who created them through the proxy. */
+  const assertOwner = async (kind: ReplicateResourceKind, id: string, userId: string) => {
+    if (!(await ownsReplicateResource(deps.sql, kind, id, userId))) {
+      throw new HttpError(404, `${kind === "file" ? "File" : "Prediction"} ${id} not found.`);
+    }
+  };
+
+  const idOf = (value: unknown) =>
+    value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
+      ? (value as { id: string }).id
+      : null;
+
+  const notListable = (what: string) => () => {
+    throw new HttpError(
+      404,
+      `Listing ${what} is not available through the proxy. Keep the ids of the ${what} you create.`,
+    );
   };
 
   /**
    * Holds an estimate from the model's live pricing, forwards the prediction,
-   * and settles the real cost from the prediction's metrics.
+   * records who created it, and settles the real cost from the prediction's
+   * metrics.
    */
   const billedPrediction = async (
     request: Request,
     principal: { userId: string; apiKeyId: string; billingAccountId: string },
-    model: string,
-    path: string,
+    reference: ModelReference,
     body: Record<string, unknown>,
   ) => {
+    const { model } = reference;
+    const path = reference.version ? "/v1/predictions" : `/v1/models/${model}/predictions`;
+    const { model: _model, version: _version, ...rest } = body;
+    const payload = reference.version ? { ...rest, version: reference.version } : rest;
     const pricing = await resolvePricing(model);
     const input =
-      body.input && typeof body.input === "object" && !Array.isArray(body.input)
-        ? (body.input as Record<string, unknown>)
+      payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+        ? (payload.input as Record<string, unknown>)
         : {};
     const costUsd = estimatePredictionCost(pricing, input);
-    const requestBody = JSON.stringify(body);
+    const requestBody = JSON.stringify(payload);
     const requestId = crypto.randomUUID();
     let metered;
     try {
@@ -345,7 +464,20 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       throw error;
     }
     metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
-    return passthrough(metered.response);
+    // A prediction response is a single JSON document, so buffering it costs
+    // nothing and lets ownership be recorded before the client can poll.
+    const { parsed, response } = await rewrittenJson(metered.response);
+    const id = metered.response.ok ? idOf(parsed) : null;
+    if (id) {
+      await recordReplicateResource(deps.sql, {
+        kind: "prediction",
+        id,
+        userId: principal.userId,
+        apiKeyId: principal.apiKeyId,
+        model,
+      });
+    }
+    return response;
   };
 
   return new Elysia({ prefix: "/proxy/v1/replicate" })
@@ -361,71 +493,74 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       return { principal };
     })
     // Files
-    .post("/files", async ({ request }) => {
+    .post("/files", async ({ request, principal }) => {
       const form = await request.formData().catch(() => null);
       const content = form?.get("content");
       if (!(content instanceof File)) throw new HttpError(400, "File content is required");
       const upload = new FormData();
       upload.append("content", content);
+      // The official SDK sends metadata as a JSON blob part; curl users send a string.
       const metadata = form?.get("metadata");
-      if (typeof metadata === "string") upload.append("metadata", metadata);
-      return passthrough(
+      if (typeof metadata === "string" || metadata instanceof Blob) {
+        upload.append("metadata", metadata);
+      }
+      for (const field of ["type", "filename"]) {
+        const value = form?.get(field);
+        if (typeof value === "string") upload.append(field, value);
+      }
+      const { parsed, response } = await rewrittenJson(
         await fetchImplementation(`${baseUrl}/v1/files`, {
           method: "POST",
           headers: { authorization: `Bearer ${deps.replicateApiKey}` },
           body: upload,
         }),
       );
+      const id = response.ok ? idOf(parsed) : null;
+      if (id) {
+        await recordReplicateResource(deps.sql, {
+          kind: "file",
+          id,
+          userId: principal.userId,
+          apiKeyId: principal.apiKeyId,
+        });
+      }
+      return response;
     })
-    .get("/files/:id", ({ request, params }) =>
-      forward(request, `/v1/files/${encodeURIComponent(params.id)}`),
-    )
-    .delete("/files/:id", ({ request, params }) =>
-      forward(request, `/v1/files/${encodeURIComponent(params.id)}`, { method: "DELETE" }),
-    )
-    // Deployments
-    .post("/deployments/:owner/:name/predictions", async ({ request, params, principal }) => {
-      const fullId = validateModelAccess(params.owner, params.name);
-      const { body } = await readJson(request);
-      return billedPrediction(
-        request,
-        principal,
-        fullId,
-        `/v1/deployments/${params.owner}/${params.name}/predictions`,
-        body,
-      );
+    .get("/files", notListable("files"))
+    .get("/files/:id", async ({ request, params, principal }) => {
+      await assertOwner("file", params.id, principal.userId);
+      return forwardJson(request, `/v1/files/${encodeURIComponent(params.id)}`);
     })
-    .get("/deployments/:owner/:name", ({ request, params }) => {
-      validateModelAccess(params.owner, params.name);
-      return forward(request, `/v1/deployments/${params.owner}/${params.name}`);
+    .get("/files/:id/download", async ({ request, params, principal }) => {
+      await assertOwner("file", params.id, principal.userId);
+      const query = new URL(request.url).search;
+      return forward(request, `/v1/files/${encodeURIComponent(params.id)}/download${query}`);
     })
-    .get("/deployments", ({ request }) => forward(request, withCursor(request, "/v1/deployments")))
+    .delete("/files/:id", async ({ request, params, principal }) => {
+      await assertOwner("file", params.id, principal.userId);
+      return forward(request, `/v1/files/${encodeURIComponent(params.id)}`, { method: "DELETE" });
+    })
     // Models
     .post("/models/:owner/:model/predictions", async ({ request, params, principal }) => {
       const fullModelId = validateModelAccess(params.owner, params.model);
-      const version = versionFromModelName(params.model);
+      const pathVersion = versionFromModelName(params.model);
       const { body } = await readJson(request);
-
-      if (version) {
-        validateVersionAccess(fullModelId, version);
-        const bodyVersion = typeof body.version === "string" ? body.version : undefined;
-        const canonical = `${fullModelId}:${version}`;
-        if (bodyVersion && bodyVersion !== version && bodyVersion !== canonical) {
+      const bodyVersion = typeof body.version === "string" ? body.version : undefined;
+      if (pathVersion) {
+        const reference = resolveModelReference(`${fullModelId}:${pathVersion}`);
+        if (bodyVersion && bodyVersion !== pathVersion && bodyVersion !== reference.version) {
           throw new HttpError(400, "Conflicting version specified in path and request body.");
         }
-        const { model: _model, version: _version, ...rest } = body;
-        return billedPrediction(request, principal, fullModelId, "/v1/predictions", {
-          ...rest,
-          version: canonical,
-        });
+        return billedPrediction(request, principal, reference, body);
       }
-      return billedPrediction(
-        request,
-        principal,
-        fullModelId,
-        `/v1/models/${fullModelId}/predictions`,
-        body,
-      );
+      if (bodyVersion) {
+        const reference = resolveModelReference(bodyVersion);
+        if (reference.model !== fullModelId) {
+          throw new HttpError(400, "Conflicting model specified in path and request body.");
+        }
+        return billedPrediction(request, principal, reference, body);
+      }
+      return billedPrediction(request, principal, { model: fullModelId, version: null }, body);
     })
     .get("/models/:owner/:model", ({ request, params }) => {
       validateModelAccess(params.owner, params.model);
@@ -433,7 +568,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     })
     .get("/models/:owner/:model/versions", ({ request, params }) => {
       validateModelAccess(params.owner, params.model);
-      return forward(request, `/v1/models/${params.owner}/${params.model}/versions`);
+      return forwardJson(request, `/v1/models/${params.owner}/${params.model}/versions`);
     })
     .get("/models/:owner/:model/versions/:id", ({ request, params }) => {
       validateModelAccess(params.owner, params.model);
@@ -446,26 +581,29 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     .post("/predictions", async ({ request, principal }) => {
       const { body } = await readJson(request);
       const version = typeof body.version === "string" ? body.version : undefined;
-      let modelString = typeof body.model === "string" ? body.model : undefined;
-      if (!modelString && version) modelString = allowedReplicateModelVersions[version];
-      if (!modelString) {
+      const model = typeof body.model === "string" ? body.model : undefined;
+      if (!version && !model) {
         throw new HttpError(
           400,
-          "Could not validate model access. Please provide the 'model' field (owner/name) in the body, or ensure the 'version' is recognized.",
+          "Provide 'version' (a version id, owner/name:version, or owner/name) or 'model' (owner/name).",
         );
       }
-      const [owner, name] = modelString.split("/");
-      if (!owner || !name) throw new HttpError(400, "Invalid model format.");
-      const fullModelId = validateModelAccess(owner, name);
-      return billedPrediction(request, principal, fullModelId, "/v1/predictions", body);
+      // `version` is what Replicate runs, so access is decided from it alone.
+      const reference = version ? resolveModelReference(version) : resolveModelReference(model ?? "");
+      if (version && model && parseOwnerName(model) !== reference.model) {
+        throw new HttpError(400, "Conflicting model and version specified in request body.");
+      }
+      return billedPrediction(request, principal, reference, body);
     })
-    .get("/predictions/:id", ({ request, params }) => {
+    .get("/predictions", notListable("predictions"))
+    .get("/predictions/:id", async ({ request, params, principal }) => {
       if (!PREDICTION_ID.test(params.id)) throw new HttpError(400, "Invalid prediction ID");
-      return forward(request, `/v1/predictions/${params.id}`);
+      await assertOwner("prediction", params.id, principal.userId);
+      return forwardJson(request, `/v1/predictions/${params.id}`);
     })
-    .post("/predictions/:id/cancel", ({ request, params }) => {
+    .post("/predictions/:id/cancel", async ({ request, params, principal }) => {
       if (!PREDICTION_ID.test(params.id)) throw new HttpError(400, "Invalid prediction ID");
-      return forward(request, `/v1/predictions/${params.id}/cancel`, { method: "POST" });
-    })
-    .get("/predictions", ({ request }) => forward(request, withCursor(request, "/v1/predictions")));
+      await assertOwner("prediction", params.id, principal.userId);
+      return forwardJson(request, `/v1/predictions/${params.id}/cancel`, { method: "POST" });
+    });
 };

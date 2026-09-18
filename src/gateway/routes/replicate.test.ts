@@ -6,6 +6,8 @@ import { allowedReplicateModels } from "../../config/replicate-models";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import {
   meterPrediction,
+  resolveModelReference,
+  rewriteUpstreamLinks,
   validateModelAccess,
   validateVersionAccess,
   versionFromModelName,
@@ -32,10 +34,55 @@ describe("Replicate allowlist", () => {
     expect(() => validateVersionAccess(knownModel, knownVersion)).not.toThrow();
   });
 
+  test("resolves every version form Replicate accepts against the allowlist", () => {
+    const canonical = `${knownModel}:${knownVersion}`;
+    expect(resolveModelReference(knownVersion)).toEqual({ model: knownModel, version: canonical });
+    expect(resolveModelReference(canonical)).toEqual({ model: knownModel, version: canonical });
+    expect(resolveModelReference(knownModel)).toEqual({ model: knownModel, version: null });
+    // An unknown version id, or a known model paired with someone else's version, is refused.
+    expect(() => resolveModelReference("a".repeat(64))).toThrow("is not in the allowed list");
+    expect(() => resolveModelReference(`${knownModel}:${"a".repeat(64)}`)).toThrow(
+      "is not in the allowed list",
+    );
+    expect(() => resolveModelReference("black-forest-labs/flux-1.1-pro")).toThrow(
+      "is not in the allowed list",
+    );
+    expect(() => resolveModelReference("nonsense")).toThrow("Invalid model format.");
+  });
+
   test("every allowlisted version belongs to an allowlisted model", () => {
     for (const model of Object.values(allowedReplicateModelVersions)) {
       expect(allowedReplicateModels).toContain(model);
     }
+  });
+});
+
+describe("rewriteUpstreamLinks", () => {
+  const from = "https://api.replicate.com/v1/";
+  const to = "https://gateway.test/proxy/v1/replicate/";
+
+  test("points API links at the gateway but leaves model data and stream links alone", () => {
+    const prediction = {
+      id: "p1",
+      urls: {
+        get: `${from}predictions/p1`,
+        cancel: `${from}predictions/p1/cancel`,
+        stream: "https://stream.replicate.com/v1/files/abc",
+        web: "https://replicate.com/p/p1",
+      },
+      input: { get: `${from}predictions/other` },
+      output: [`${from}predictions/other`],
+    };
+    expect(rewriteUpstreamLinks(prediction, from, to)).toEqual({
+      ...prediction,
+      urls: {
+        ...prediction.urls,
+        get: `${to}predictions/p1`,
+        cancel: `${to}predictions/p1/cancel`,
+      },
+    });
+    expect(rewriteUpstreamLinks({ next: `${from}models/a/b/versions?cursor=x`, previous: null, results: [] }, from, to))
+      .toEqual({ next: `${to}models/a/b/versions?cursor=x`, previous: null, results: [] });
   });
 });
 
@@ -91,6 +138,26 @@ describe("meterPrediction", () => {
     // A failed run still bills the hardware time Replicate reports.
     expect(completion.usage.costUsd.toString()).toBe(Usd.parse("0.004").toString());
     expect(polls).toBe(3);
+  });
+
+  test("treats an aborted prediction as terminal", async () => {
+    let polls = 0;
+    const upstream = Response.json({ id: "p5", status: "starting" }, { status: 201 });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => {
+        polls += 1;
+        return { id: "p5", status: "aborted" };
+      },
+      timeoutMs: 10_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("complete");
+    if (completion.state !== "complete") return;
+    expect(completion.usage.costUsd.toString()).toBe(Usd.zero.toString());
+    expect(polls).toBe(1);
   });
 
   test("leaves the reservation uncertain when the prediction never finishes", async () => {
