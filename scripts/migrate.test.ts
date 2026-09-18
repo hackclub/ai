@@ -19,16 +19,20 @@ describe("splitClickHouseStatements", () => {
 });
 
 describe("listMigrationFiles", () => {
-  test("lists the five postgres migrations in order and ignores non-.sql files", async () => {
+  test("lists the postgres migrations in filename order", async () => {
     const files = await listMigrationFiles("migrations/postgres");
 
-    expect(files).toEqual([
+    expect(files.slice(0, 5)).toEqual([
       "0001_billing.sql",
       "0002_identity.sql",
       "0003_sessions.sql",
       "0004_replicate_resources.sql",
       "0005_request_event_outbox.sql",
     ]);
+    for (const file of files) {
+      expect(file).toMatch(/^\d{4}_[a-z0-9_]+\.sql$/);
+    }
+    expect(files).toEqual([...files].sort());
   });
 });
 
