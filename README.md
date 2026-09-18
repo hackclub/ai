@@ -41,6 +41,10 @@ The PostgreSQL integration tests (billing engine, metered requests, and the
 HTTP proxy) are opt-in so the normal unit suite does not depend on Docker.
 Stop `bun run dev` first: its job worker drains the queue the tests inspect.
 
+CI (`.github/workflows/ci.yml`) runs the unit gates on every push and pull
+request, then starts Postgres and ClickHouse with `docker compose` and runs
+the same integration tests with the variables above set.
+
 ```bash
 BILLING_TEST_DATABASE_URL="$DATABASE_URL" bun test
 ```
