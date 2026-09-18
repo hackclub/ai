@@ -4,10 +4,10 @@ import postgres, { type Sql } from "postgres";
 import { migrateJobQueue } from "../../analytics/worker";
 import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
-import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
-import { replicateModelCosts } from "../../config/replicate-models";
 import { createFeatureFlags } from "../../features";
+import { Usd } from "../../billing/money";
+import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import { replicateRoutes } from "./replicate";
 
 const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
@@ -25,6 +25,12 @@ describe("Replicate routes with PostgreSQL", () => {
   let apiKey: string;
   const upstream: Array<{ url: string; method: string; body: unknown; headers: Headers }> = [];
   let nextStatus = 201;
+  const pricing: ReplicatePricing = {
+    kind: "hardware",
+    hardware: "T4",
+    perSecondUsd: Usd.parse("0.0002"),
+    medianRunUsd: Usd.parse("0.001"),
+  };
 
   const fakeFetch = (async (input, init) => {
     const url = String(input);
@@ -34,6 +40,11 @@ describe("Replicate routes with PostgreSQL", () => {
       body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       headers: new Headers(init?.headers),
     });
+    // The create call returns a still-running prediction; the follow-up
+    // lookup reports it finished with 2.5s of hardware time.
+    if (url.endsWith("/v1/predictions/pred1")) {
+      return Response.json({ id: "pred1", status: "succeeded", metrics: { predict_time: 2.5 } });
+    }
     return Response.json({ id: "pred1", status: "starting" }, { status: nextStatus });
   }) as typeof fetch;
 
@@ -46,6 +57,8 @@ describe("Replicate routes with PostgreSQL", () => {
       replicateApiKey: "replicate-secret",
       enforceIdv: false,
       fetch: fakeFetch,
+      pricing: { get: async () => pricing },
+      settlementTimeoutMs: 5_000,
     });
   };
 
@@ -127,7 +140,7 @@ describe("Replicate routes with PostgreSQL", () => {
     });
   });
 
-  integrationTest("creates a versioned prediction and bills the fixed cost", async () => {
+  integrationTest("creates a versioned prediction and bills the reported hardware time", async () => {
     if (!sql) throw new Error("Missing database");
     nextStatus = 201;
     const response = await call(`/models/${owner}/${name}:${knownVersion}/predictions`, {
@@ -144,9 +157,10 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(sent?.headers.get("authorization")).toBe("Bearer replicate-secret");
     expect(sent?.headers.get("prefer")).toBe("wait");
 
-    const expected = Usd.parse(replicateModelCosts.get(knownModel) ?? "0").toString();
+    // 2.5 seconds at $0.0002/s.
+    const expected = Usd.parse("0.0005").toString();
     let row: { state: string; actual_cost_usd: string } | undefined;
-    for (let attempt = 0; attempt < 50 && row?.state !== "finalized"; attempt += 1) {
+    for (let attempt = 0; attempt < 200 && row?.state !== "finalized"; attempt += 1) {
       [row] = await sql<{ state: string; actual_cost_usd: string }[]>`
         SELECT state, actual_cost_usd::text FROM billing_reservations
         WHERE account_id = ${accountId}::uuid AND provider = 'replicate'
@@ -156,6 +170,7 @@ describe("Replicate routes with PostgreSQL", () => {
     }
     expect(row?.state).toBe("finalized");
     expect(row?.actual_cost_usd).toBe(expected);
+    expect(upstream.some((call) => call.url.endsWith("/v1/predictions/pred1"))).toBeTrue();
   });
 
   integrationTest("finalizes a provider error at zero cost", async () => {

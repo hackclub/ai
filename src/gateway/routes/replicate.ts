@@ -6,11 +6,16 @@ import type { BillingEngine } from "../../billing/engine";
 import { InsufficientFundsError, LimitExceededError } from "../../billing/errors";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
-import {
-  allowedReplicateModels,
-  replicateModelCosts,
-} from "../../config/replicate-models";
+import { allowedReplicateModels } from "../../config/replicate-models";
 import type { FeatureFlags } from "../../features";
+import {
+  createReplicatePricingSource,
+  estimatePredictionCost,
+  predictionCost,
+  type ReplicatePredictionMetrics,
+  type ReplicatePricing,
+  type ReplicatePricingSource,
+} from "../../providers/replicate/pricing";
 import type {
   MeteredProviderResponse,
   ProviderCompletion,
@@ -30,6 +35,9 @@ export type ReplicateRouteDependencies = {
   fetch?: typeof fetch;
   rateLimiter?: RateLimiter;
   baseUrl?: string;
+  pricing?: ReplicatePricingSource;
+  /** How long to keep polling an async prediction for its final metrics. */
+  settlementTimeoutMs?: number;
   onSettlementError?: (error: unknown, requestId: string) => void;
 };
 
@@ -54,18 +62,67 @@ export const validateVersionAccess = (model: string, version: string) => {
   }
 };
 
-const fixedCost = (model: string) => Usd.parse(replicateModelCosts.get(model) ?? "0");
+const TERMINAL_STATUSES = new Set(["succeeded", "failed", "canceled"]);
+const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
+
+type PredictionSnapshot = {
+  id?: string;
+  status?: string;
+  metrics?: ReplicatePredictionMetrics;
+};
+
+const parsePrediction = (body: string): PredictionSnapshot | null => {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as PredictionSnapshot)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+export type PredictionSettlement = {
+  pricing: ReplicatePricing;
+  /** Fetches the current state of a prediction by id. */
+  lookup: (id: string) => Promise<PredictionSnapshot | null>;
+  timeoutMs: number;
+  sleep?: (ms: number) => Promise<void>;
+};
 
 /**
- * Wraps a Replicate JSON response for the metered lifecycle. Replicate does
- * not report per-request cost, so a successful prediction bills the fixed
- * price from the config and any other status resolves as uncertain, which
- * the lifecycle finalizes at zero for non-2xx responses.
+ * Waits until a prediction reaches a terminal status. A `Prefer: wait`
+ * response is usually terminal already; otherwise the prediction is polled
+ * with a gentle backoff until the deadline passes.
  */
-export const meterFixedCost = (
+const awaitTerminal = async (
+  initial: PredictionSnapshot,
+  settlement: PredictionSettlement,
+): Promise<PredictionSnapshot | null> => {
+  if (initial.status && TERMINAL_STATUSES.has(initial.status)) return initial;
+  if (!initial.id) return null;
+  const sleep = settlement.sleep ?? Bun.sleep;
+  const deadline = Date.now() + settlement.timeoutMs;
+  for (let attempt = 0; Date.now() < deadline; attempt += 1) {
+    await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)] ?? 5_000);
+    const latest = await settlement.lookup(initial.id);
+    if (latest?.status && TERMINAL_STATUSES.has(latest.status)) return latest;
+  }
+  return null;
+};
+
+/**
+ * Wraps a Replicate prediction response for the metered lifecycle. The body
+ * streams to the client untouched; once it has been read, the prediction is
+ * followed to a terminal status and billed from its reported metrics. Failed
+ * and cancelled predictions still bill any hardware time Replicate reports.
+ * Anything that prevents reading final metrics resolves as uncertain so the
+ * reservation is held for reconciliation instead of being guessed.
+ */
+export const meterPrediction = (
   upstream: Response,
   requestBody: string,
-  costUsd: Usd,
+  settlement: PredictionSettlement,
 ): MeteredProviderResponse => {
   let settle: (completion: ProviderCompletion) => void = () => {};
   const completion = new Promise<ProviderCompletion>((resolve) => {
@@ -74,28 +131,51 @@ export const meterFixedCost = (
   const chunks: Uint8Array[] = [];
   const reader = upstream.body?.getReader();
   const captured = () => new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
-  const finish = () => {
+  const uncertain = (reason: string, bodyCapture: "complete" | "partial" = "complete") =>
+    settle({
+      state: "uncertain",
+      providerRequestId: null,
+      reason,
+      responseBody: captured(),
+      bodyCapture,
+    });
+  const finish = async () => {
     const body = captured();
-    if (upstream.ok) {
-      settle({
-        state: "complete",
-        providerRequestId: null,
-        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd },
-        responseBody: body,
-        bodyCapture: "complete",
-      });
-    } else {
-      settle({
-        state: "uncertain",
-        providerRequestId: null,
-        reason: `Replicate returned HTTP ${upstream.status}`,
-        responseBody: body,
-        bodyCapture: "complete",
-      });
+    if (!upstream.ok) {
+      uncertain(`Replicate returned HTTP ${upstream.status}`);
+      return;
     }
+    const initial = parsePrediction(body);
+    if (!initial) {
+      uncertain("Replicate response was not a prediction object");
+      return;
+    }
+    let final: PredictionSnapshot | null;
+    try {
+      final = await awaitTerminal(initial, settlement);
+    } catch (error) {
+      uncertain(error instanceof Error ? error.message : "Prediction lookup failed");
+      return;
+    }
+    if (!final) {
+      uncertain(`Prediction ${initial.id ?? "?"} did not finish within the settlement window`);
+      return;
+    }
+    settle({
+      state: "complete",
+      providerRequestId: final.id ?? initial.id ?? null,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        costUsd: predictionCost(settlement.pricing, final.metrics ?? {}),
+      },
+      responseBody: body,
+      bodyCapture: "complete",
+    });
   };
   if (!reader) {
-    finish();
+    void finish();
     return { response: upstream, requestBody, completion };
   }
   const body = new ReadableStream<Uint8Array>({
@@ -107,16 +187,10 @@ export const meterFixedCost = (
           controller.enqueue(next.value);
           return;
         }
-        finish();
         controller.close();
+        void finish();
       } catch (error) {
-        settle({
-          state: "uncertain",
-          providerRequestId: null,
-          reason: error instanceof Error ? error.message : "Response stream failed",
-          responseBody: captured(),
-          bodyCapture: "partial",
-        });
+        uncertain(error instanceof Error ? error.message : "Response stream failed", "partial");
         controller.error(error);
       }
     },
@@ -170,6 +244,29 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const baseUrl = (deps.baseUrl ?? "https://api.replicate.com").replace(/\/$/, "");
   const rateLimiter =
     deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
+  const pricingSource = deps.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
+  const settlementTimeoutMs = deps.settlementTimeoutMs ?? 15 * 60 * 1_000;
+
+  const resolvePricing = async (model: string) => {
+    let pricing: ReplicatePricing | null;
+    try {
+      pricing = await pricingSource.get(model);
+    } catch {
+      pricing = null;
+    }
+    if (!pricing) {
+      throw new HttpError(503, `Pricing for ${model} is unavailable right now. Please retry shortly.`);
+    }
+    return pricing;
+  };
+
+  const lookupPrediction = async (id: string) => {
+    const response = await fetchImplementation(`${baseUrl}/v1/predictions/${id}`, {
+      headers: { authorization: `Bearer ${deps.replicateApiKey}` },
+    });
+    if (!response.ok) throw new Error(`Prediction ${id} lookup returned HTTP ${response.status}`);
+    return parsePrediction(await response.text());
+  };
 
   const upstreamHeaders = (request: Request) => {
     const headers: Record<string, string> = {
@@ -197,7 +294,10 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     return cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path;
   };
 
-  /** Bills a fixed price and forwards the prediction request. */
+  /**
+   * Holds an estimate from the model's live pricing, forwards the prediction,
+   * and settles the real cost from the prediction's metrics.
+   */
   const billedPrediction = async (
     request: Request,
     principal: { userId: string; apiKeyId: string; billingAccountId: string },
@@ -205,7 +305,12 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     path: string,
     body: Record<string, unknown>,
   ) => {
-    const costUsd = fixedCost(model);
+    const pricing = await resolvePricing(model);
+    const input =
+      body.input && typeof body.input === "object" && !Array.isArray(body.input)
+        ? (body.input as Record<string, unknown>)
+        : {};
+    const costUsd = estimatePredictionCost(pricing, input);
     const requestBody = JSON.stringify(body);
     const requestId = crypto.randomUUID();
     let metered;
@@ -224,7 +329,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
           attributes: { ip: clientIp(request.headers) },
         },
         execute: async () =>
-          meterFixedCost(
+          meterPrediction(
             await fetchImplementation(`${baseUrl}${path}`, {
               method: "POST",
               headers: upstreamHeaders(request),
@@ -232,7 +337,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
               signal: request.signal,
             }),
             requestBody,
-            costUsd,
+            { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
           ),
       });
     } catch (error) {

@@ -2,6 +2,11 @@ import {
   type ReplicateCategoryConfig,
   replicateCategories,
 } from "../../config/replicate-models";
+import {
+  createReplicatePricingSource,
+  describePricing,
+  type ReplicatePricingSource,
+} from "./pricing";
 
 export type ReplicateModel = {
   url: string;
@@ -18,6 +23,8 @@ export type ReplicateModel = {
     input?: Record<string, unknown>;
     output?: unknown;
   };
+  /** Human pricing summary from Replicate's live pricing, when available. */
+  pricing?: string;
   latest_version?: {
     id: string;
     created_at: string;
@@ -39,35 +46,56 @@ export type ReplicateCatalogOptions = {
   fetch?: typeof fetch;
   ttlMs?: number;
   baseUrl?: string;
+  pricing?: ReplicatePricingSource;
 };
 
-/**
- * Fetches the curated Replicate models grouped by category, with a
- * ten-minute single-flight cache. Models that Replicate does not return are
- * dropped from their category rather than failing the whole listing.
- */
 export const createReplicateCatalog = (options: ReplicateCatalogOptions) => {
   const fetchImplementation = options.fetch ?? fetch;
   const ttlMs = options.ttlMs ?? 10 * 60 * 1_000;
   const baseUrl = (options.baseUrl ?? "https://api.replicate.com").replace(/\/$/, "");
+  const pricingSource =
+    options.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
   let cache: { data: ReplicateCategory[]; fetchedAt: number } | null = null;
   let inFlight: Promise<ReplicateCategory[]> | null = null;
+
+  const pricingSummary = async (modelId: string) => {
+    try {
+      const pricing = await pricingSource.get(modelId);
+      return pricing ? describePricing(pricing) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   const refresh = async () => {
     const categories = await Promise.all(
       replicateCategories.map(async (category: ReplicateCategoryConfig) => {
         const models = await Promise.all(
           category.models.map(async (model) => {
-            const response = await fetchImplementation(
-              `${baseUrl}/v1/models/${model.id}`,
-              { headers: { authorization: `Bearer ${options.apiKey}` } },
-            );
-            return response.ok ? ((await response.json()) as ReplicateModel) : null;
+            const [response, pricing] = await Promise.all([
+              fetchImplementation(`${baseUrl}/v1/models/${model.id}`, {
+                headers: { authorization: `Bearer ${options.apiKey}` },
+              }),
+              pricingSummary(model.id),
+            ]);
+            if (!response.ok) return null;
+            const data = (await response.json()) as ReplicateModel;
+            return pricing ? { ...data, pricing } : data;
           }),
         );
+        // Replicate aliases renamed models (e.g. inworld/tts-1.5-mini now
+        // resolves to inworld/realtime-tts-1.5-mini), so two configured IDs can
+        // return the same model. Keep the first occurrence per owner/name.
+        const seen = new Set<string>();
         return {
           name: category.name,
-          models: models.filter((model): model is ReplicateModel => model !== null),
+          models: models.filter((model): model is ReplicateModel => {
+            if (model === null) return false;
+            const key = `${model.owner}/${model.name}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          }),
         };
       }),
     );
