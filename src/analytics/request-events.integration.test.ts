@@ -1,12 +1,13 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
+import { integrationClickHouseUrl, integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
 import { drainRequestEvents, MAX_DELIVERY_ATTEMPTS, stripParkedBodies } from "./request-events";
 
-const databaseUrl = process.env.ANALYTICS_TEST_DATABASE_URL;
-const clickhouseUrl = process.env.ANALYTICS_TEST_CLICKHOUSE_URL;
-const integrationTest = databaseUrl && clickhouseUrl ? test : test.skip;
+const databaseUrl = integrationDatabaseUrl("ANALYTICS_TEST_DATABASE_URL");
+const clickhouseUrl = integrationClickHouseUrl();
+const integrationTest = integrationTestFor(databaseUrl, clickhouseUrl);
 
 describe("request event delivery with PostgreSQL and ClickHouse", () => {
   let sql: Sql | undefined;
