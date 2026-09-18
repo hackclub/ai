@@ -21,6 +21,7 @@ import { replicateRoutes } from "./gateway/routes/replicate";
 import { webhookRoutes } from "./gateway/webhooks";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
+import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
 export type Backend = {
@@ -29,6 +30,8 @@ export type Backend = {
   clickhouse: ClickHouseClient;
   billing: BillingEngine;
   catalog: ModelCatalog;
+  /** Replicate model listing for the dashboard; null when REPLICATE_API_KEY is unset. */
+  replicateCatalog: ReplicateCatalog | null;
   queries: AnalyticsQueries;
   env: Env;
   /** Starts the job worker; idempotent. */
@@ -90,6 +93,10 @@ export const createBackend = (env: Env): Backend => {
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
   const replicatePricing = env.replicateApiKey ? createReplicatePricingSource({}) : null;
+  const replicateCatalog =
+    env.replicateApiKey && replicatePricing
+      ? createReplicateCatalog({ apiKey: env.replicateApiKey, pricing: replicatePricing })
+      : null;
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -208,6 +215,7 @@ export const createBackend = (env: Env): Backend => {
     clickhouse,
     billing,
     catalog,
+    replicateCatalog,
     queries,
     env,
     start: async () => {
