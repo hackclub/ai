@@ -169,6 +169,12 @@ export const meterPrediction = (
   const completion = new Promise<ProviderCompletion>((resolve) => {
     settle = resolve;
   });
+  let settled = false;
+  const settleOnce = (result: ProviderCompletion) => {
+    if (settled) return;
+    settled = true;
+    settle(result);
+  };
   const chunks: Uint8Array[] = [];
   const reader = upstream.body?.getReader();
   const captured = () => new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
@@ -179,7 +185,7 @@ export const meterPrediction = (
     bodyCapture: "complete" | "partial" = "complete",
     predictionId: string | null = null,
   ) =>
-    settle({
+    settleOnce({
       state: "uncertain",
       providerRequestId: predictionId,
       reason,
@@ -229,7 +235,7 @@ export const meterPrediction = (
       );
       return;
     }
-    settle({
+    settleOnce({
       state: "complete",
       providerRequestId: final.id ?? predictionId,
       usage: {
@@ -263,12 +269,20 @@ export const meterPrediction = (
       }
     },
     async cancel(reason) {
-      await reader.cancel(reason);
-      settle({
+      // The upstream may already be gone (aborted fetch, closed socket). A
+      // rejected cancel must not leave `completion` unsettled, or the
+      // reservation would only ever close by expiry.
+      await reader.cancel(reason).catch(() => {});
+      const body = captured();
+      // Replicate creates the prediction before responding, so a cancelled
+      // read still names a run that may be billed; keep its id for
+      // reconciliation, exactly as `finish()` does.
+      const predictionId = upstream.ok ? (parsePrediction(body)?.id ?? null) : null;
+      settleOnce({
         state: "cancelled",
-        providerRequestId: null,
+        providerRequestId: predictionId,
         reason: typeof reason === "string" ? reason : "Client cancelled response",
-        responseBody: captured(),
+        responseBody: body,
         bodyCapture: "partial",
       });
     },
@@ -509,13 +523,23 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     const { parsed, response } = await rewrittenJson(metered.response);
     const id = metered.response.ok ? idOf(parsed) : null;
     if (id) {
-      await recordReplicateResource(deps.sql, {
-        kind: "prediction",
-        id,
-        userId: principal.userId,
-        apiKeyId: principal.apiKeyId,
-        model,
-      });
+      try {
+        await recordReplicateResource(deps.sql, {
+          kind: "prediction",
+          id,
+          userId: principal.userId,
+          apiKeyId: principal.apiKeyId,
+          model,
+        });
+      } catch (error) {
+        // The prediction exists upstream and its hold is placed; a lost
+        // ownership row must not turn that into a 500. The user keeps the id
+        // from the body; the row can be repaired by hand from this report.
+        deps.onSettlementError?.(
+          new Error(`Failed to record ownership of prediction ${id}`, { cause: error }),
+          requestId,
+        );
+      }
     }
     return response;
   };

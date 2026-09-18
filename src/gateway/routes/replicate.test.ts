@@ -6,11 +6,13 @@ import { allowedReplicateModels } from "../../config/replicate-models";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import {
   meterPrediction,
+  replicateRoutes,
   resolveModelReference,
   rewriteUpstreamLinks,
   validateModelAccess,
   validateVersionAccess,
   versionFromModelName,
+  type ReplicateRouteDependencies,
 } from "./replicate";
 
 const knownVersion = Object.keys(allowedReplicateModelVersions)[0] ?? "";
@@ -217,5 +219,147 @@ describe("meterPrediction", () => {
     if (completion.state !== "uncertain") return;
     expect(completion.reason).toBe("lookup exploded");
     expect(completion.providerRequestId).toBe("p4");
+  });
+
+  test("settles a cancellation even when the upstream cancel rejects", async () => {
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new TextEncoder().encode('{"id":"p7","status":"starting"}'));
+        },
+        cancel() {
+          throw new Error("socket already closed");
+        },
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    );
+    const metered = meterPrediction(upstream, "{}", { pricing, lookup: async () => null, timeoutMs: 1_000, sleep: noSleep });
+    const reader = metered.response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client disconnected");
+    const completion = await metered.completion;
+    expect(completion.state).toBe("cancelled");
+    if (completion.state !== "cancelled") return;
+    expect(completion.providerRequestId).toBe("p7");
+    expect(completion.reason).toBe("client disconnected");
+  });
+
+  test("settles once: a cancellation that wins the race is not overwritten by a later pull failure", async () => {
+    let pulls = 0;
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) {
+            controller.enqueue(new TextEncoder().encode('{"id":"p8","status":"starting"}'));
+            return;
+          }
+          throw new Error("stream broke after cancel");
+        },
+        cancel() {},
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    );
+    const metered = meterPrediction(upstream, "{}", { pricing, lookup: async () => null, timeoutMs: 1_000, sleep: noSleep });
+    const reader = metered.response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client disconnected");
+    const completion = await metered.completion;
+    // The settleOnce guard means the first outcome (cancelled) wins, even if
+    // Bun were to invoke `pull` again after `cancel` and throw.
+    expect(completion.state).toBe("cancelled");
+  });
+});
+
+describe("billedPrediction ownership failures", () => {
+  const pricing: ReplicatePricing = {
+    kind: "hardware",
+    hardware: "T4",
+    perSecondUsd: Usd.parse("0.001"),
+    medianRunUsd: Usd.parse("0.002"),
+  };
+
+  test("returns the prediction even when recording ownership fails, and reports it", async () => {
+    const userId = "11111111-1111-1111-1111-111111111111";
+    const apiKeyId = "22222222-2222-2222-2222-222222222222";
+    const billingAccountId = "33333333-3333-3333-3333-333333333333";
+
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return [
+          {
+            api_key_id: apiKeyId,
+            user_id: userId,
+            billing_account_id: billingAccountId,
+            billing_account_status: "active",
+            is_banned: false,
+            is_idv_verified: true,
+            skip_idv: true,
+          },
+        ];
+      }
+      if (query.includes("replicate_resources") && query.includes("INSERT")) {
+        throw new Error("insert failed");
+      }
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    const reservation = (requestId: string, state: "reserved" | "finalized") => ({
+      id: `res-${requestId}`,
+      requestId,
+      accountId: billingAccountId,
+      provider: "replicate",
+      providerRequestId: null,
+      state,
+      estimatedCostUsd: "0.010000000000",
+      actualCostUsd: null,
+      unfundedCostUsd: "0.000000000000",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const billing = {
+      reserve: async (input: { requestId: string }) => reservation(input.requestId, "reserved"),
+      finalize: async (input: { requestId: string }) => reservation(input.requestId, "finalized"),
+      release: async (requestId: string) => reservation(requestId, "finalized"),
+      markPendingReconciliation: async (requestId: string) => reservation(requestId, "finalized"),
+    } as unknown as ReplicateRouteDependencies["billing"];
+
+    const fakeFetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes(`/v1/models/${knownModel}/predictions`)) {
+        return Response.json(
+          { id: "p9", status: "succeeded", metrics: { predict_time: 1 }, urls: {} },
+          { status: 201 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const errors: Array<{ error: unknown; requestId: string }> = [];
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing,
+      replicateApiKey: "test-key",
+      enforceIdv: false,
+      fetch: fakeFetch,
+      pricing: { get: async () => pricing },
+      onSettlementError: (error, requestId) => errors.push({ error, requestId }),
+    });
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/predictions", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+        body: JSON.stringify({ version: knownModel, input: {} }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { id: string };
+    expect(body.id).toBe("p9");
+    expect(errors).toHaveLength(1);
+    expect(String((errors[0]?.error as Error)?.message)).toContain("p9");
   });
 });
