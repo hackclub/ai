@@ -27,6 +27,21 @@ export const clientIp = (headers: Headers) =>
   "";
 
 /**
+ * The credential a request carries, as an `Authorization` value. Exa's SDKs
+ * send the key in `x-api-key` instead of a bearer header; the same Hack Club
+ * key is accepted there so those clients work by changing only the base URL.
+ */
+export const requestAuthorization = (
+  headers: Headers,
+  options: { acceptApiKeyHeader?: boolean } = {},
+): string | undefined => {
+  const authorization = headers.get("authorization");
+  if (authorization) return authorization;
+  const apiKey = options.acceptApiKeyHeader ? headers.get("x-api-key")?.trim() : null;
+  return apiKey ? `Bearer ${apiKey}` : undefined;
+};
+
+/**
  * The checks every metered provider route shares, in the same order as the
  * OpenRouter proxy: abuse blocklist, API key, rate limit.
  */
@@ -35,11 +50,12 @@ export async function authorizeProviderRequest(
   rateLimiter: RateLimiter,
   request: Request,
   rawBody: string,
+  options: { acceptApiKeyHeader?: boolean } = {},
 ): Promise<AuthenticatedPrincipal> {
   assertNotBlockedClient(request.headers, rawBody);
   const principal = await authenticateApiKey(
     deps.sql,
-    request.headers.get("authorization") ?? undefined,
+    requestAuthorization(request.headers, options),
     { enforceIdv: deps.enforceIdv },
   );
   rateLimiter.consume(principal.userId);

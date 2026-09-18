@@ -1,5 +1,4 @@
 import type { ClickHouseClient } from "@clickhouse/client";
-import type postgres from "postgres";
 import {
   parseCronItems,
   run,
@@ -8,13 +7,18 @@ import {
   type TaskList,
 } from "graphile-worker";
 
-import { type BillingEngine, REQUEST_EVENT_TASK } from "../billing/engine";
+import postgres from "postgres";
+
+import type { BillingEngine } from "../billing/engine";
 import {
   expireStaleReservations,
   type OpenRouterConfig,
   reconcilePendingReservations,
 } from "../billing/reconciliation";
-import { makeRequestEventTask } from "./request-event-task";
+import {
+  type RequestEventDrainer,
+  startRequestEventDrainer,
+} from "./request-events";
 
 export const RECONCILE_TASK = "billing.reconcile";
 
@@ -28,32 +32,24 @@ export type AnalyticsWorkerOptions = {
   connectionString: string;
   clickhouse: ClickHouseClient;
   concurrency?: number;
+  /** Pause between outbox passes once it is empty. Default one second. */
+  drainIntervalMs?: number;
   /** Enables the periodic billing.reconcile task when provided. */
   reconciliation?: ReconciliationDependencies;
   log?: (message: string) => void;
 };
 
-/**
- * Creates the Graphile Worker schema if needed. Must run before the first
- * finalization, which calls graphile_worker.add_job.
- */
+/** Creates the Graphile Worker schema, which the reconcile cron needs. */
 export const migrateJobQueue = (connectionString: string) =>
   runMigrations({ connectionString });
 
 export type TaskListOptions = {
-  clickhouse: ClickHouseClient;
   reconciliation?: ReconciliationDependencies;
   log?: (message: string) => void;
 };
 
-export const taskList = (
-  options: ClickHouseClient | TaskListOptions,
-): TaskList => {
-  const resolved: TaskListOptions =
-    "clickhouse" in options ? options : { clickhouse: options };
-  const tasks: TaskList = {
-    [REQUEST_EVENT_TASK]: makeRequestEventTask(resolved.clickhouse),
-  };
+export const taskList = (resolved: TaskListOptions): TaskList => {
+  const tasks: TaskList = {};
   const deps = resolved.reconciliation;
   if (deps) {
     tasks[RECONCILE_TASK] = async (_payload, helpers) => {
@@ -77,15 +73,32 @@ export const taskList = (
   return tasks;
 };
 
-/** Starts the in-process job runner. Stop it with `runner.stop()`. */
+export type AnalyticsWorker = {
+  runner: Runner;
+  drainer: RequestEventDrainer;
+  stop: () => Promise<void>;
+};
+
+/**
+ * Starts the outbox drainer that copies finalized request events to
+ * ClickHouse and the Graphile Worker runner for the reconcile cron. Stop
+ * both with `stop()`.
+ */
 export const startAnalyticsWorker = async (
   options: AnalyticsWorkerOptions,
-): Promise<Runner> => {
+): Promise<AnalyticsWorker> => {
   await migrateJobQueue(options.connectionString);
-  return run({
+  const sql = postgres(options.connectionString, { max: 1 });
+  const drainer = startRequestEventDrainer({
+    sql,
+    clickhouse: options.clickhouse,
+    intervalMs: options.drainIntervalMs,
+    onError: (error) =>
+      console.error("Failed to deliver request events to ClickHouse:", error),
+  });
+  const runner = await run({
     connectionString: options.connectionString,
     taskList: taskList({
-      clickhouse: options.clickhouse,
       reconciliation: options.reconciliation,
       log: options.log,
     }),
@@ -105,4 +118,13 @@ export const startAnalyticsWorker = async (
         : [],
     ),
   });
+  return {
+    runner,
+    drainer,
+    stop: async () => {
+      await drainer.stop();
+      await runner.stop();
+      await sql.end();
+    },
+  };
 };

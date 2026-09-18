@@ -20,6 +20,8 @@
     ["/activity", "Activity"],
     ["/replicate", "Replicate"],
     ["/jev", "Jev"],
+    ["/ocr", "OCR"],
+    ["/exa", "Exa"],
     ["/global", "Global stats"],
   ];
   const sectionTitle = $derived(

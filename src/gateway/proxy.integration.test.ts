@@ -109,10 +109,8 @@ describe("proxy routes with PostgreSQL", () => {
   afterAll(async () => {
     if (!sql) return;
     await sql`
-      SELECT graphile_worker.complete_jobs(ARRAY(
-        SELECT id FROM graphile_worker._private_jobs
-        WHERE payload->>'account_id' = ${accountId}
-      ))
+      DELETE FROM request_event_outbox
+      WHERE payload->>'account_id' = ${accountId}
     `;
     const reservations = sql`
       SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid

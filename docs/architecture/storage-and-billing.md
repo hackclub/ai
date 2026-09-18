@@ -13,10 +13,15 @@ remain to be validated.
   request and response bodies.
 - ClickHouse data is retained for 90 days.
 - Billing enforcement never queries ClickHouse.
-- Finalized usage reaches ClickHouse through a Graphile Worker job enqueued
-  in the finalization transaction (a transactional outbox). Delivery is at
-  least once with exponential-backoff retries; ClickHouse's
-  ReplacingMergeTree collapses duplicate event IDs.
+- Finalized usage reaches ClickHouse through the `request_event_outbox`
+  table, written in the finalization transaction. The analytics worker
+  drains it in batches and deletes delivered rows in the same transaction as
+  the ClickHouse insert, so delivery is at least once; ClickHouse's
+  ReplacingMergeTree collapses duplicate event IDs. A row that fails
+  repeatedly is left in place for inspection. The outbox deliberately avoids
+  NOTIFY: PostgreSQL serializes the commit of every notifying transaction
+  through one lock held across the WAL flush, which capped finalizations at
+  roughly 200 per second when each one enqueued a Graphile Worker job.
 - Authorization and provider credentials must be removed from headers before
   an event enters the job payload.
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { toClickHouseEvent } from "./request-event-task";
+import { toClickHouseEvent } from "./request-events";
 
 describe("toClickHouseEvent", () => {
   test("maps a finalization payload and defaults malformed fields", () => {

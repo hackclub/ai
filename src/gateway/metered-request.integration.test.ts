@@ -50,10 +50,8 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
       SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid
     `;
     await sql`
-      SELECT graphile_worker.complete_jobs(ARRAY(
-        SELECT id FROM graphile_worker._private_jobs
-        WHERE payload->>'account_id' = ${accountId}
-      ))
+      DELETE FROM request_event_outbox
+      WHERE payload->>'account_id' = ${accountId}
     `;
     await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid`;
     for (const table of [
@@ -73,7 +71,7 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
   });
 
   integrationTest(
-    "streams a completion and finalizes with the full body in the analytics job",
+    "streams a completion and finalizes with the full body in the outbox event",
     async () => {
       if (!sql || !engine) throw new Error("Missing database");
       const requestId = crypto.randomUUID();
@@ -116,7 +114,7 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
       expect(outcome.reservation.providerRequestId).toBe(`gen-int-${runId}`);
 
       const [event] = await sql<{ payload: Record<string, unknown> }[]>`
-        SELECT payload FROM graphile_worker._private_jobs
+        SELECT payload FROM request_event_outbox
         WHERE payload->>'reservation_id' = ${outcome.reservation.id}
       `;
       expect(event?.payload.outcome).toBe("completed");

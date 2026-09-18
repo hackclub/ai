@@ -72,10 +72,8 @@ describe("provider routes with PostgreSQL", () => {
   afterAll(async () => {
     if (!sql) return;
     await sql`
-      SELECT graphile_worker.complete_jobs(ARRAY(
-        SELECT id FROM graphile_worker._private_jobs
-        WHERE payload->>'account_id' = ${accountId}
-      ))
+      DELETE FROM request_event_outbox
+      WHERE payload->>'account_id' = ${accountId}
     `;
     const reservations = sql`
       SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid
@@ -118,6 +116,16 @@ describe("provider routes with PostgreSQL", () => {
     const row = await waitForState(requestId, "finalized");
     expect(row?.actual_cost_usd).toBe("0.005000000000");
 
+    // Exa's SDKs send the key as x-api-key; the proxy accepts it there too.
+    const viaApiKeyHeader = await app.handle(
+      new Request("http://gateway.test/proxy/v1/exa/search", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "content-type": "application/json" },
+        body: JSON.stringify({ query: "header check" }),
+      }),
+    );
+    expect(viaApiKeyHeader.status).toBe(200);
+    expect(upstream.at(-1)?.headers.get("x-api-key")).toBe("exa-key");
   });
 
   integrationTest("ocr: validates the document, redacts analytics, bills per page", async () => {
@@ -149,7 +157,7 @@ describe("provider routes with PostgreSQL", () => {
     let job: { payload: { response_body: string; billed_cost_usd: string } } | undefined;
     for (let attempt = 0; attempt < 50 && !job; attempt += 1) {
       [job] = await sql<{ payload: { response_body: string; billed_cost_usd: string } }[]>`
-        SELECT payload FROM graphile_worker._private_jobs
+        SELECT payload FROM request_event_outbox
         WHERE payload->>'account_id' = ${accountId} AND payload->>'endpoint' = 'ocr'
       `;
       if (!job) await Bun.sleep(20);

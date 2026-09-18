@@ -63,11 +63,8 @@ describe("BillingEngine with PostgreSQL", () => {
 
     for (const cleanupAccountId of createdAccountIds) {
       await sql`
-        SELECT graphile_worker.complete_jobs(ARRAY(
-          SELECT id
-          FROM graphile_worker._private_jobs
-          WHERE payload->>'account_id' = ${cleanupAccountId}
-        ))
+        DELETE FROM request_event_outbox
+        WHERE payload->>'account_id' = ${cleanupAccountId}
       `;
       await sql`
         DELETE FROM billing_ledger_entries
@@ -257,7 +254,7 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(limit?.overage_usd).toBe("0.100000000000");
   });
 
-  integrationTest("every finalization leaves a ledger entry and an analytics job", async () => {
+  integrationTest("every finalization leaves a ledger entry and an outbox event", async () => {
     if (!sql) throw new Error("Integration database unavailable");
 
     const [audit] = await sql<{ ledger_count: number; job_count: number }[]>`
@@ -269,7 +266,7 @@ describe("BillingEngine with PostgreSQL", () => {
         ) AS ledger_count,
         (
           SELECT count(*)::integer
-          FROM graphile_worker._private_jobs
+          FROM request_event_outbox
           WHERE payload->>'account_id' = ${accountId}::text
         ) AS job_count
     `;

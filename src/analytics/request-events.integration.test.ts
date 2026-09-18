@@ -1,10 +1,8 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { runOnce } from "graphile-worker";
 import postgres, { type Sql } from "postgres";
 
-import { REQUEST_EVENT_TASK } from "../billing/engine";
-import { migrateJobQueue, taskList } from "./worker";
+import { drainRequestEvents, MAX_DELIVERY_ATTEMPTS } from "./request-events";
 
 const databaseUrl = process.env.ANALYTICS_TEST_DATABASE_URL;
 const clickhouseUrl = process.env.ANALYTICS_TEST_CLICKHOUSE_URL;
@@ -14,6 +12,7 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
   let sql: Sql | undefined;
   let clickhouse: ClickHouseClient | undefined;
   let eventId: string;
+  let accountId: string;
 
   beforeAll(async () => {
     if (!databaseUrl || !clickhouseUrl) return;
@@ -25,16 +24,16 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
       password: process.env.CLICKHOUSE_PASSWORD ?? "hcai",
     });
     eventId = crypto.randomUUID();
-    await migrateJobQueue(databaseUrl);
+    accountId = crypto.randomUUID();
 
     await sql`
-      SELECT graphile_worker.add_job(
-        ${REQUEST_EVENT_TASK},
+      INSERT INTO request_event_outbox (payload)
+      VALUES (
         ${sql.json({
           event_id: eventId,
           occurred_at: new Date().toISOString(),
           request_id: crypto.randomUUID(),
-          account_id: crypto.randomUUID(),
+          account_id: accountId,
           provider: "openrouter",
           endpoint: "chat/completions",
           model: "test/model",
@@ -46,13 +45,20 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
           usage_source: "provider_reported",
           request_body: '{"prompt":"six seven mango"}',
           response_body: '{"answer":"six seven mango"}',
-        })}::json
-      )
+        })}::jsonb
+      ),
+      (${sql.json({ account_id: accountId, note: "no event id" })}::jsonb)
     `;
   });
 
   afterAll(async () => {
-    if (sql) await sql.end();
+    if (sql) {
+      await sql`
+        DELETE FROM request_event_outbox
+        WHERE payload->>'account_id' = ${accountId}
+      `;
+      await sql.end();
+    }
     if (clickhouse && eventId) {
       await clickhouse.command({
         query: `DELETE FROM hcai.request_events WHERE event_id = {event_id:UUID}`,
@@ -63,17 +69,14 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
   });
 
   integrationTest(
-    "delivers complete searchable bodies and completes the job",
+    "delivers complete searchable bodies, deletes the row, and parks an unmappable one",
     async () => {
-      if (!sql || !clickhouse || !databaseUrl) {
+      if (!sql || !clickhouse) {
         throw new Error("Integration datastores unavailable");
       }
 
-      await runOnce({
-        connectionString: databaseUrl,
-        taskList: taskList(clickhouse),
-        noHandleSignals: true,
-      });
+      // Every row the outbox holds is taken; other tests' rows are delivered too.
+      await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
 
       const result = await clickhouse.query({
         query: `
@@ -94,12 +97,17 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
         },
       ]);
 
-      const [remaining] = await sql<{ count: number }[]>`
-        SELECT count(*)::integer AS count
-        FROM graphile_worker._private_jobs
-        WHERE payload->>'event_id' = ${eventId}
+      const remaining = await sql<{ attempts: number; last_error: string | null }[]>`
+        SELECT attempts, last_error
+        FROM request_event_outbox
+        WHERE payload->>'account_id' = ${accountId}
       `;
-      expect(remaining?.count).toBe(0);
+      expect([...remaining]).toEqual([
+        {
+          attempts: MAX_DELIVERY_ATTEMPTS,
+          last_error: "request event payload has no event_id",
+        },
+      ]);
     },
   );
 });

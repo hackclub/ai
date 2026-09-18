@@ -45,7 +45,10 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
 
   const handle = async (endpoint: ExaEndpoint, request: Request) => {
     const rawBody = await request.text();
-    const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
+    // Exa's SDKs authenticate with `x-api-key`; accept it alongside bearer auth.
+    const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody, {
+      acceptApiKeyHeader: true,
+    });
     if (!deps.exaApiKey) throw new HttpError(503, "Exa is not configured");
 
     const body = parseJsonObject(rawBody);
