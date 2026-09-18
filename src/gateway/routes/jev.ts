@@ -1,7 +1,6 @@
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
-import type { FeatureFlags } from "../../features";
 import { executeJsonProvider } from "../../providers/json-provider";
 import type { MeteredRequestInput } from "../metered-request";
 import { HttpError } from "../http-error";
@@ -13,11 +12,9 @@ import {
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
-  requireFeature,
 } from "./shared";
 
 export type JevRouteDependencies = MeteredRouteDependencies & {
-  features: FeatureFlags;
   typesafeApiKey: string;
   /** Fixed hold per request; the actual charge comes from reported usage. */
   reservationUsd?: string;
@@ -30,7 +27,6 @@ export type JevRouteDependencies = MeteredRouteDependencies & {
   baseUrl?: string;
 };
 
-const FEATURE_DENIED = "Jev access is currently in closed beta. Contact support for access.";
 const DEFAULT_MODEL = "jev-latest";
 const TOKENS_PER_PRICE_UNIT = 1_000_000n;
 
@@ -86,7 +82,6 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
 
   const authorize = async (request: Request, rawBody: string) => {
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
-    await requireFeature(deps.sql, deps.features, principal.userId, "enable_jev", FEATURE_DENIED);
     return principal;
   };
 

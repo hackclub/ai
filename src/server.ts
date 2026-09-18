@@ -9,7 +9,6 @@ import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
 import { BillingEngine } from "./billing/engine";
 import type { Env } from "./env";
-import { createFeatureFlags, type FeatureFlags } from "./features";
 import { createHealthCheck } from "./gateway/health";
 import { keysApiRoutes } from "./gateway/keys-api";
 import { RateLimiter } from "./gateway/rate-limit";
@@ -30,7 +29,6 @@ export type Backend = {
   billing: BillingEngine;
   catalog: ModelCatalog;
   queries: AnalyticsQueries;
-  features: FeatureFlags;
   env: Env;
   /** Starts the job worker; idempotent. */
   start: () => Promise<void>;
@@ -67,7 +65,6 @@ export const createBackend = (env: Env): Backend => {
     sendDefaultPii: false,
     tracesSampleRate: env.nodeEnv === "production" ? 0.1 : 1.0,
   });
-  const features = createFeatureFlags({ enabled: env.enabledFeatures });
   const attributionHeaders = {
     "HTTP-Referer": `${env.baseUrl}/global?utm_source=openrouter`,
     "X-Title": "Hack Club AI",
@@ -89,14 +86,17 @@ export const createBackend = (env: Env): Backend => {
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
 
   const routes: AnyElysia[] = [
-    exaRoutes({ ...metered, features, exaApiKey: env.exaApiKey }),
+    exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
     ocrRoutes({
       ...metered,
-      features,
       mistralApiKey: env.mistralApiKey,
       perPagePriceUsd: env.mistralOcrPagePriceUsd,
     }),
-    jevRoutes({ ...metered, features, typesafeApiKey: env.typesafeApiKey }),
+    jevRoutes({
+      ...metered,
+      typesafeApiKey: env.typesafeApiKey,
+      inputPricePerMillionTokensUsd: env.typesafeInputPricePerMillionUsd,
+    }),
     moderationRoutes({
       sql,
       enforceIdv: env.enforceIdv,
@@ -117,7 +117,6 @@ export const createBackend = (env: Env): Backend => {
     routes.push(
       replicateRoutes({
         ...metered,
-        features,
         replicateApiKey: env.replicateApiKey,
       }),
     );
@@ -196,7 +195,6 @@ export const createBackend = (env: Env): Backend => {
     billing,
     catalog,
     queries,
-    features,
     env,
     start: async () => {
       // Also creates the job-queue schema, which finalization depends on.

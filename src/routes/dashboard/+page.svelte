@@ -28,9 +28,7 @@
     { href: "/keys", title: "API keys", description: "Create and manage the keys your apps authenticate with.", icon: KeyIcon },
     { href: "/models", title: "Models", description: "Browse the available language, image and embedding models.", icon: CpuIcon },
     { href: "/activity", title: "Activity", description: "See your recent requests, token usage and errors.", icon: PulseIcon },
-    ...(data.replicateEnabled
-      ? [{ href: "/replicate", title: "Replicate", description: "Background removal, speech, upscaling and more.", icon: FlaskIcon }]
-      : []),
+    { href: "/replicate", title: "Replicate", description: "Background removal, speech, upscaling and more.", icon: FlaskIcon },
   ]);
 
 

@@ -121,7 +121,7 @@ bun run check          # svelte-check
 
 Pages: `/` (marketing, redirects signed-in users), `/dashboard`, `/keys`,
 `/activity` (with cursor-paged "Load more"), `/models`, `/models/<id>`,
-`/global`, and `/replicate` (gated by the `enable_replicate` feature flag).
+`/global`, `/replicate`, and `/jev`.
 Sign-in uses Hack Club OAuth at `/auth/login`; without `HACK_CLUB_CLIENT_ID`
 and `HACK_CLUB_CLIENT_SECRET` the auth routes are not mounted.
 

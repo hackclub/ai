@@ -7,7 +7,6 @@ import { InsufficientFundsError, LimitExceededError } from "../../billing/errors
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
-import type { FeatureFlags } from "../../features";
 import {
   createReplicatePricingSource,
   estimatePredictionCost,
@@ -29,7 +28,6 @@ import { RateLimiter } from "../rate-limit";
 export type ReplicateRouteDependencies = {
   sql: postgres.Sql;
   billing: BillingEngine;
-  features: FeatureFlags;
   replicateApiKey: string;
   enforceIdv: boolean;
   fetch?: typeof fetch;
@@ -41,7 +39,6 @@ export type ReplicateRouteDependencies = {
   onSettlementError?: (error: unknown, requestId: string) => void;
 };
 
-const FEATURE_MESSAGE = "Replicate access is not enabled for your account";
 const PREDICTION_ID = /^[a-z0-9]+$/;
 
 /** Validates owner/name (ignoring any :version suffix) against the allowlist. */
@@ -361,9 +358,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       );
       rateLimiter.consume(principal.userId);
       touchApiKey(deps.sql, principal.apiKeyId);
-      if (!(await deps.features.isEnabled("enable_replicate", principal.userId))) {
-        throw new HttpError(403, FEATURE_MESSAGE);
-      }
       return { principal };
     })
     // Files

@@ -19,6 +19,7 @@
     ["/models", "Models"],
     ["/activity", "Activity"],
     ["/replicate", "Replicate"],
+    ["/jev", "Jev"],
     ["/global", "Global stats"],
   ];
   const sectionTitle = $derived(
@@ -42,7 +43,7 @@
 
 {#if showShell && data.user}
   <Sidebar.Provider>
-    <AppSidebar user={data.user} replicateEnabled={data.replicateEnabled} />
+    <AppSidebar user={data.user} />
     <main class="isolate flex min-w-0 flex-1 flex-col">
       {@render devBanner()}
       <header class="flex h-14 items-center gap-3 border-b px-4 sm:px-6">

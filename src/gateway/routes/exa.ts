@@ -1,7 +1,6 @@
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
-import type { FeatureFlags } from "../../features";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { HttpError } from "../http-error";
 import { runMeteredRequest } from "../metered-request";
@@ -12,11 +11,9 @@ import {
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
-  requireFeature,
 } from "./shared";
 
 export type ExaRouteDependencies = MeteredRouteDependencies & {
-  features: FeatureFlags;
   exaApiKey: string | null;
   /** Fixed hold per request; Exa reports actual cost afterwards. */
   reservationUsd?: string;
@@ -26,7 +23,6 @@ export type ExaRouteDependencies = MeteredRouteDependencies & {
 export const EXA_ENDPOINTS = ["search", "findSimilar", "contents", "answer"] as const;
 export type ExaEndpoint = (typeof EXA_ENDPOINTS)[number];
 
-const FEATURE_DENIED = "Exa access is currently in closed beta. Contact support for access.";
 
 /** `costDollars.total` from an Exa response, or null. */
 export const exaCost = (body: unknown): Usd | null => {
@@ -50,7 +46,6 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
   const handle = async (endpoint: ExaEndpoint, request: Request) => {
     const rawBody = await request.text();
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
-    await requireFeature(deps.sql, deps.features, principal.userId, "enable_exa", FEATURE_DENIED);
     if (!deps.exaApiKey) throw new HttpError(503, "Exa is not configured");
 
     const body = parseJsonObject(rawBody);

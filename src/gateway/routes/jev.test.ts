@@ -4,7 +4,6 @@ import type postgres from "postgres";
 
 import type { FinalizeInput, Reservation, ReserveInput } from "../../billing/engine";
 import { Usd } from "../../billing/money";
-import type { FeatureFlags } from "../../features";
 import type { Fetch } from "../../providers/openrouter/adapter";
 import { HttpError } from "../http-error";
 import type { BillingLifecycle } from "../metered-request";
@@ -59,7 +58,7 @@ const fakeBilling = () => {
   return { billing, calls, done };
 };
 
-/** Answers the three queries the route path issues: key lookup, feature-flag Slack ID, usage stamp. */
+/** Answers the queries the route path issues: key lookup and usage stamp. */
 const fakeSql = () =>
   (async (strings: TemplateStringsArray) => {
     const query = strings.join("?");
@@ -75,17 +74,8 @@ const fakeSql = () =>
         },
       ];
     }
-    if (query.includes("SELECT slack_id")) return [{ slack_id: "U123" }];
     return [];
   }) as unknown as postgres.Sql;
-
-/** Only `isEnabled` is exercised by the route, so the fake is typed against that alone. */
-const features = (enabled: string[]): FeatureFlags =>
-  ({
-    async isEnabled(flag: string) {
-      return enabled.includes(flag);
-    },
-  }) as FeatureFlags;
 
 const fakeFetch = (respond: () => Response) => {
   const upstream: Array<{ url: string; method: string; body: unknown; headers: Headers }> = [];
@@ -111,7 +101,6 @@ const build = (respond: () => Response, overrides: Overrides = {}) => {
     billing,
     enforceIdv: false,
     fetch,
-    features: features(["enable_jev"]),
     typesafeApiKey: "ts-key",
     ...overrides,
   });
@@ -170,17 +159,6 @@ describe("jev helpers", () => {
 });
 
 describe("jevRoutes", () => {
-  test("rejects users without the feature flag", async () => {
-    const { app, upstream, calls } = build(() => Response.json(successBody), { features: features([]) });
-    const response = await app.handle(post("/proxy/v1/jev/systemone", { state: "x" }));
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({
-      error: "Jev access is currently in closed beta. Contact support for access.",
-    });
-    expect(upstream).toHaveLength(0);
-    expect(calls).toHaveLength(0);
-  });
-
   test("requires authentication", async () => {
     const { app } = build(() => Response.json(successBody));
     const response = await app.handle(
@@ -305,10 +283,5 @@ describe("jevRoutes", () => {
     expect(upstream[0]?.method).toBe("GET");
     expect(upstream[0]?.headers.get("authorization")).toBe("Bearer ts-key");
     expect(calls).toHaveLength(0);
-  });
-
-  test("gates models behind the flag", async () => {
-    const denied = build(() => Response.json({}), { features: features([]) });
-    expect((await denied.app.handle(request("/proxy/v1/jev/models"))).status).toBe(403);
   });
 });

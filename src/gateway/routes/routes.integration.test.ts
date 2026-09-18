@@ -4,7 +4,6 @@ import postgres, { type Sql } from "postgres";
 import { migrateJobQueue } from "../../analytics/worker";
 import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
-import type { FeatureFlags } from "../../features";
 import { type Fetch, OpenRouterAdapter } from "../../providers/openrouter/adapter";
 import { exaRoutes } from "./exa";
 import { imagesRoutes } from "./images";
@@ -14,12 +13,6 @@ import { ocrRoutes } from "./ocr";
 const databaseUrl = process.env.BILLING_TEST_DATABASE_URL;
 const integrationTest = databaseUrl ? test : test.skip;
 const runId = crypto.randomUUID().slice(0, 8);
-
-const features = (enabled: string[]): FeatureFlags => ({
-  async isEnabled(flag) {
-    return enabled.includes(flag);
-  },
-});
 
 describe("provider routes with PostgreSQL", () => {
   let sql: Sql | undefined;
@@ -103,19 +96,11 @@ describe("provider routes with PostgreSQL", () => {
     await sql.end();
   });
 
-  integrationTest("exa: gated by feature flag, forwards, and bills reported cost", async () => {
+  integrationTest("exa: forwards and bills reported cost", async () => {
     if (!sql || !billing) throw new Error("Missing database");
     const base = { sql, billing, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" };
 
-    const denied = await post(exaRoutes({ ...base, features: features([]) }), "/proxy/v1/exa/search", {
-      query: "hi",
-    });
-    expect(denied.status).toBe(403);
-    expect(await denied.json()).toEqual({
-      error: "Exa access is currently in closed beta. Contact support for access.",
-    });
-
-    const app = exaRoutes({ ...base, features: features(["enable_exa"]) });
+    const app = exaRoutes(base);
     const streaming = await post(app, "/proxy/v1/exa/answer", { query: "hi", stream: true });
     expect(streaming.status).toBe(400);
 
@@ -142,7 +127,6 @@ describe("provider routes with PostgreSQL", () => {
       billing,
       enforceIdv: false,
       fetch: fakeFetch,
-      features: features(["enable_ocr"]),
       mistralApiKey: "mistral-key",
       perPagePriceUsd: "0.002",
     });

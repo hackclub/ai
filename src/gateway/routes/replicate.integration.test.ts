@@ -5,7 +5,6 @@ import { migrateJobQueue } from "../../analytics/worker";
 import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
-import { createFeatureFlags } from "../../features";
 import { Usd } from "../../billing/money";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import { replicateRoutes } from "./replicate";
@@ -48,12 +47,11 @@ describe("Replicate routes with PostgreSQL", () => {
     return Response.json({ id: "pred1", status: "starting" }, { status: nextStatus });
   }) as typeof fetch;
 
-  const app = (flags: string[] = ["enable_replicate"]) => {
+  const app = () => {
     if (!sql) throw new Error("Missing database");
     return replicateRoutes({
       sql,
       billing: new BillingEngine(sql),
-      features: createFeatureFlags({ enabled: flags }),
       replicateApiKey: "replicate-secret",
       enforceIdv: false,
       fetch: fakeFetch,
@@ -62,8 +60,8 @@ describe("Replicate routes with PostgreSQL", () => {
     });
   };
 
-  const call = (path: string, init: RequestInit = {}, flags?: string[]) =>
-    app(flags).handle(
+  const call = (path: string, init: RequestInit = {}) =>
+    app().handle(
       new Request(`http://gateway.test/proxy/v1/replicate${path}`, {
         ...init,
         headers: {
@@ -109,14 +107,6 @@ describe("Replicate routes with PostgreSQL", () => {
     await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
     await sql`DELETE FROM users WHERE id = ${userId}::uuid`;
     await sql.end();
-  });
-
-  integrationTest("requires the feature flag", async () => {
-    const flagged = await call("/predictions", { method: "GET" }, []);
-    expect(flagged.status).toBe(403);
-    expect(await flagged.json()).toEqual({
-      error: "Replicate access is not enabled for your account",
-    });
   });
 
   integrationTest("rejects unlisted models before any upstream call", async () => {

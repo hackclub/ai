@@ -3,7 +3,6 @@ import type postgres from "postgres";
 
 import { type AuthenticatedPrincipal, authenticateApiKey, touchApiKey } from "../../auth/api-keys";
 import { InsufficientFundsError, LimitExceededError } from "../../billing/errors";
-import type { FeatureFlags } from "../../features";
 import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
 import type { BillingLifecycle } from "../metered-request";
@@ -60,21 +59,6 @@ export const parseJsonObject = (raw: string): Record<string, unknown> => {
   }
   return body as Record<string, unknown>;
 };
-
-/** Feature flags are keyed by Slack ID, as in the previous gateway. */
-export async function requireFeature(
-  sql: postgres.Sql,
-  features: FeatureFlags,
-  userId: string,
-  flag: string,
-  deniedMessage: string,
-) {
-  const [row] = await sql<{ slack_id: string }[]>`
-    SELECT slack_id FROM users WHERE id = ${userId}::uuid
-  `;
-  const enabled = await features.isEnabled(flag, row?.slack_id ?? userId);
-  if (!enabled) throw new HttpError(403, deniedMessage);
-}
 
 export const billingErrorToHttp = (error: unknown) => {
   if (error instanceof InsufficientFundsError) {

@@ -1,7 +1,6 @@
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
-import type { FeatureFlags } from "../../features";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { HttpError } from "../http-error";
 import { runMeteredRequest } from "../metered-request";
@@ -12,11 +11,9 @@ import {
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
-  requireFeature,
 } from "./shared";
 
 export type OcrRouteDependencies = MeteredRouteDependencies & {
-  features: FeatureFlags;
   mistralApiKey: string | null;
   /** Fixed hold per request. */
   reservationUsd?: string;
@@ -25,7 +22,6 @@ export type OcrRouteDependencies = MeteredRouteDependencies & {
   baseUrl?: string;
 };
 
-const FEATURE_DENIED = "OCR is currently in closed beta. Contact support for access.";
 const INVALID_DOCUMENT =
   "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'file'. URLs must use HTTPS or be valid base64-encoded data URIs.";
 
@@ -82,7 +78,6 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
   return new Elysia({ prefix: "/proxy/v1" }).post("/ocr", async ({ request }) => {
     const rawBody = await request.text();
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
-    await requireFeature(deps.sql, deps.features, principal.userId, "enable_ocr", FEATURE_DENIED);
     if (!deps.mistralApiKey) throw new HttpError(503, "OCR is not configured");
 
     const body = parseJsonObject(rawBody);

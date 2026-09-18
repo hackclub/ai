@@ -6,12 +6,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   const { backend, user } = locals;
   const env = backend.env;
 
-  const [spending, replicateEnabled] = user
-    ? await Promise.all([
-        dailySpending(backend.sql, user.billingAccountId),
-        backend.features.isEnabled("enable_replicate", user.slackId),
-      ])
-    : [null, false];
+  const spending = user ? await dailySpending(backend.sql, user.billingAccountId) : null;
 
   return {
     user: user
@@ -27,7 +22,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         }
       : null,
     spending,
-    replicateEnabled,
     devMode: env.nodeEnv === "development",
     baseUrl: env.baseUrl,
     enforceIdv: env.enforceIdv,

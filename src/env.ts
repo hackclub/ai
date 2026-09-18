@@ -23,8 +23,6 @@ export type Env = {
   slackGeoblockWebhookUrl: string | null;
   /** Sentry error reporting; disabled when unset. */
   sentryDsn: string | null;
-  /** Gated providers enabled for every user, e.g. enable_exa. */
-  enabledFeatures: string[];
   openAiModerationApiUrl: string;
   openAiModerationApiKey: string | null;
   mistralApiKey: string | null;
@@ -36,6 +34,8 @@ export type Env = {
   replicateUsername: string | null;
   replicateSessionId: string | null;
   typesafeApiKey: string;
+  /** Jev price per million input tokens in USD; TypeSafe reports no cost. Output is free. */
+  typesafeInputPricePerMillionUsd: string;
   allowedImageModels: string[];
   /**
    * Output tokens reserved when a model exposes no maximum completion length
@@ -99,7 +99,6 @@ export const loadEnv = (
     hackClubClientSecret: source.HACK_CLUB_CLIENT_SECRET || null,
     slackGeoblockWebhookUrl: source.SLACK_GEOBLOCK_WEBHOOK_URL || null,
     sentryDsn: source.SENTRY_DSN || null,
-    enabledFeatures: list(source.ENABLED_FEATURES ?? source.FEATURE_FLAGS_ALWAYS_ENABLED),
     openAiModerationApiUrl:
       source.OPENAI_MODERATION_API_URL || "https://api.openai.com/v1/moderations",
     openAiModerationApiKey: source.OPENAI_MODERATION_API_KEY || null,
@@ -110,6 +109,7 @@ export const loadEnv = (
     replicateUsername: source.REPLICATE_USERNAME || null,
     replicateSessionId: source.REPLICATE_SESSION_ID || null,
     typesafeApiKey: required(source, "TYPESAFE_API_KEY"),
+    typesafeInputPricePerMillionUsd: source.TYPESAFE_INPUT_PRICE_PER_MILLION_USD || "0.042",
     allowedImageModels: list(source.ALLOWED_IMAGE_MODELS),
     reservationFallbackOutputTokens: integer(
       source,

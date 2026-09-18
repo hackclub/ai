@@ -6,21 +6,23 @@
   import GlobeIcon from "remixicon-svelte/icons/earth-line";
   import BookIcon from "remixicon-svelte/icons/book-open-line";
   import FlaskIcon from "remixicon-svelte/icons/flask-line";
+  import BrainIcon from "remixicon-svelte/icons/brain-line";
   import { page } from "$app/state";
   import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
   import SidebarUser from "#lib/components/layout/sidebar-user.svelte";
 
   type SidebarUserData = { name: string | null; email: string | null; avatar: string | null };
-  let { user, replicateEnabled = false }: { user: SidebarUserData; replicateEnabled?: boolean } = $props();
+  let { user }: { user: SidebarUserData } = $props();
 
-  const items = $derived([
+  const items = [
     { title: "Dashboard", url: "/dashboard", icon: DashboardIcon },
     { title: "API keys", url: "/keys", icon: KeyIcon },
     { title: "Models", url: "/models", icon: CpuIcon },
     { title: "Activity", url: "/activity", icon: PulseIcon },
-    ...(replicateEnabled ? [{ title: "Replicate", url: "/replicate", icon: FlaskIcon }] : []),
+    { title: "Replicate", url: "/replicate", icon: FlaskIcon },
+    { title: "Jev", url: "/jev", icon: BrainIcon },
     { title: "Global stats", url: "/global", icon: GlobeIcon },
-  ]);
+  ];
 
   const isActive = (url: string) => page.url.pathname === url || page.url.pathname.startsWith(`${url}/`);
 </script>
