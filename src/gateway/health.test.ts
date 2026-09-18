@@ -82,6 +82,7 @@ describe("createHealthCheck", () => {
     expect(body.keyUsage).toBe(3);
     expect(body.balanceRemaining).toBe(59.5);
     expect(body.replicateUnusedCredit).toBe(7.25);
+    expect(body.startup).toBeTrue();
 
     state.postgres = false;
     clock = 10_000;
@@ -138,6 +139,24 @@ describe("createHealthCheck", () => {
     const body = (await response.json()) as HealthReport;
     expect(body.mistral).toBeUndefined();
     expect(body.exa).toBeUndefined();
+  });
+
+  test("is down while background services failed to start", async () => {
+    const d = deps({
+      postgres: true,
+      clickhouse: true,
+      key: Response.json({ data: { limit_remaining: 1, usage: 0 } }),
+    });
+    let failure: Error | null = new Error("graphile migration failed");
+    const health = createHealthCheck({ ...d, cacheMs: 0, startupError: () => failure });
+    const down = await health();
+    expect(down.status).toBe(503);
+    expect(((await down.json()) as HealthReport).startup).toBeFalse();
+
+    failure = null;
+    const up = await health();
+    expect(up.status).toBe(200);
+    expect(((await up.json()) as HealthReport).startup).toBeTrue();
   });
 
   test("treats an accepted Mistral key and Exa's body rejection as up", async () => {

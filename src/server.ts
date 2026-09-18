@@ -34,6 +34,9 @@ export type Backend = {
   /** Starts the job worker; idempotent. */
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
+  /** Set by the lifecycle when background services fail to start; read by /up. */
+  startupError: () => Error | null;
+  setStartupError: (error: Error | null) => void;
 };
 
 const notifySlack = (webhookUrl: string) => async (payload: unknown) => {
@@ -164,6 +167,8 @@ export const createBackend = (env: Env): Backend => {
     );
   }
 
+  let startupError: Error | null = null;
+
   const app = createApp({
     onError: (error) => {
       console.error("Unhandled request error:", error);
@@ -179,6 +184,7 @@ export const createBackend = (env: Env): Backend => {
           : null,
       mistral: env.mistralApiKey ? { apiKey: env.mistralApiKey } : null,
       exa: env.exaApiKey ? { apiKey: env.exaApiKey } : null,
+      startupError: () => startupError,
     }),
     proxy: {
       sql,
@@ -226,6 +232,10 @@ export const createBackend = (env: Env): Backend => {
       await Sentry.flush(2_000).catch(() => {});
       await sql.end();
       await clickhouse.close();
+    },
+    startupError: () => startupError,
+    setStartupError: (error) => {
+      startupError = error;
     },
   };
 };
