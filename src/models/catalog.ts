@@ -29,8 +29,6 @@ export type ModelPricing = {
 export type ModelCatalogOptions = {
   baseUrl: string;
   apiKey: string;
-  allowedLanguageModels: string[];
-  allowedEmbeddingModels: string[];
   fetch?: typeof fetch;
   ttlMs?: number;
   headers?: Record<string, string>;
@@ -74,7 +72,8 @@ export const modelPricing = (model: OpenRouterModel): ModelPricing | null => {
 };
 
 /**
- * Caches OpenRouter's model listings and applies the configured allowlists.
+ * Caches OpenRouter's model listings. Every model OpenRouter lists is
+ * available through the gateway; there is deliberately no allowlist.
  * Fetches are single-flight per kind; a failed refresh serves the previous
  * listing when one exists so a transient upstream error does not take the
  * gateway down.
@@ -138,14 +137,8 @@ export class ModelCatalog {
       throw new Error("OpenRouter model listing did not contain a data array");
     }
 
-    const allowed =
-      kind === "embedding"
-        ? this.options.allowedEmbeddingModels
-        : this.options.allowedLanguageModels;
     const models = (listing.data as OpenRouterModel[]).filter(
-      (model) =>
-        typeof model?.id === "string" &&
-        (allowed.length === 0 || allowed.includes(model.id)),
+      (model) => typeof model?.id === "string",
     );
 
     this.cache.set(kind, { models, fetchedAt: this.now() });

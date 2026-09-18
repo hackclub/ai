@@ -4,7 +4,15 @@ import type postgres from "postgres";
 
 import { createHealthCheck, type HealthReport } from "./health";
 
-const deps = (state: { postgres: boolean; clickhouse: boolean; key: Response }) => {
+type State = {
+  postgres: boolean;
+  clickhouse: boolean;
+  key: Response;
+  credits?: Response;
+  replicate?: Response;
+};
+
+const deps = (state: State) => {
   let fetches = 0;
   return {
     fetches: () => fetches,
@@ -22,9 +30,18 @@ const deps = (state: { postgres: boolean; clickhouse: boolean; key: Response }) 
       apiKey: "k",
       baseUrl: "https://upstream.test/api",
       fetch: (async (input) => {
-        fetches += 1;
-        expect(String(input)).toBe("https://upstream.test/api/v1/key");
-        return state.key.clone();
+        const url = String(input);
+        if (url === "https://upstream.test/api/v1/key") {
+          fetches += 1;
+          return state.key.clone();
+        }
+        if (url === "https://upstream.test/api/v1/credits") {
+          return state.credits?.clone() ?? new Response("", { status: 404 });
+        }
+        if (url === "https://replicate.com/api/users/hc/unused-credit") {
+          return state.replicate?.clone() ?? new Response("", { status: 404 });
+        }
+        throw new Error(`Unexpected fetch ${url}`);
       }) as typeof fetch,
     },
   };
@@ -37,16 +54,26 @@ describe("createHealthCheck", () => {
       postgres: true,
       clickhouse: true,
       key: Response.json({ data: { limit_remaining: 12.5, usage: 3 } }),
+      credits: Response.json({ data: { total_credits: 100, total_usage: 40.5 } }),
+      replicate: Response.json({ unused_credit: "7.25" }),
     };
     const d = deps(state);
-    const health = createHealthCheck({ ...d, cacheMs: 30_000, now: () => clock });
+    const health = createHealthCheck({
+      ...d,
+      replicate: { username: "hc", sessionId: "s" },
+      cacheMs: 30_000,
+      now: () => clock,
+    });
 
     const first = await health();
     expect(first.status).toBe(200);
     const body = (await first.json()) as HealthReport;
     expect(body.status).toBe("up");
     expect(body.keyLimitRemaining).toBe(12.5);
+    expect(body.dailyKeyUsageRemaining).toBe(12.5);
     expect(body.keyUsage).toBe(3);
+    expect(body.balanceRemaining).toBe(59.5);
+    expect(body.replicateUnusedCredit).toBe(7.25);
 
     state.postgres = false;
     clock = 10_000;
@@ -71,5 +98,24 @@ describe("createHealthCheck", () => {
     const body = (await response.json()) as HealthReport;
     expect(body.openRouter).toBeFalse();
     expect(body.keyLimitRemaining).toBeUndefined();
+    expect(body.balanceRemaining).toBeUndefined();
+  });
+
+  test("is down when Replicate credit is exhausted", async () => {
+    const d = deps({
+      postgres: true,
+      clickhouse: true,
+      key: Response.json({ data: { limit_remaining: 1, usage: 0 } }),
+      replicate: Response.json({ unused_credit: "0.10" }),
+    });
+    const response = await createHealthCheck({
+      ...d,
+      replicate: { username: "hc", sessionId: "s" },
+      cacheMs: 0,
+    })();
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as HealthReport;
+    expect(body.replicateUnusedCredit).toBe(0.1);
+    expect(body.openRouter).toBeTrue();
   });
 });

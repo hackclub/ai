@@ -10,23 +10,15 @@
   let { user }: { user: { name: string | null; email: string | null; avatar: string | null } } = $props();
 
   const sidebar = useSidebar();
-  const name = $derived(user.name || "Hack Clubber");
-  const initials = $derived(
-    name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "HC",
-  );
 </script>
 
 {#snippet identity()}
   <Avatar.Root class="size-8 rounded-lg">
-    {#if user.avatar}<Avatar.Image src={user.avatar} alt={name} />{/if}
-    <Avatar.Fallback class="rounded-lg">{initials}</Avatar.Fallback>
+    {#if user.avatar}<Avatar.Image src={user.avatar} alt={user.name} />{/if}
+    <Avatar.Fallback class="rounded-lg" />
   </Avatar.Root>
   <div class="grid flex-1 text-start text-sm leading-tight">
-    <span class="truncate font-medium">{name}</span>
+    <span class="truncate font-medium">{user.name}</span>
     {#if user.email}<span class="text-muted-foreground truncate text-xs">{user.email}</span>{/if}
   </div>
 {/snippet}

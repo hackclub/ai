@@ -4,6 +4,7 @@ import type postgres from "postgres";
 import { authenticateApiKey, touchApiKey } from "../auth/api-keys";
 import type { BillingEngine } from "../billing/engine";
 import { InsufficientFundsError, LimitExceededError } from "../billing/errors";
+import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
@@ -20,6 +21,12 @@ export type ProxyDependencies = {
   openRouterApiKey: string;
   enforceIdv: boolean;
   reservationFallbackOutputTokens: number;
+  /**
+   * Hold placed when OpenRouter's listing has no usable pricing for the
+   * requested model (unlisted or dynamically priced). The real cost replaces
+   * it on finalization. Defaults to 0.05 USD, as in the previous gateway.
+   */
+  unknownModelReservationUsd?: string;
   /** Attribution headers OpenRouter shows in its app rankings. */
   attributionHeaders?: Record<string, string>;
   onSettlementError?: (error: unknown, requestId: string) => void;
@@ -150,14 +157,15 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
   const rateLimiter =
     deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const keepAliveMs = deps.keepAliveMs ?? 10_000;
+  const unknownModelReservation = Usd.parse(deps.unknownModelReservationUsd ?? "0.05");
 
   const estimateFor = (
     kind: ModelKind,
-    model: Parameters<typeof modelPricing>[0],
+    model: Parameters<typeof modelPricing>[0] | null,
     body: Record<string, unknown>,
   ) => {
-    const pricing = modelPricing(model);
-    if (!pricing) throw new HttpError(400, "Model pricing is unavailable");
+    const pricing = model ? modelPricing(model) : null;
+    if (!pricing) return unknownModelReservation;
 
     const billable = body.messages ?? body.input ?? body.prompt ?? body;
     const requestedMaxOutputTokens =
@@ -194,8 +202,9 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     touchApiKey(deps.sql, principal.apiKeyId);
 
     const body = parseBody(rawBody);
-    const model = await deps.catalog.find(kind, body.model);
-    if (!model) throw new HttpError(400, `Unknown model: ${body.model}`);
+    // Any model OpenRouter serves is allowed; the listing is only consulted
+    // for the reservation estimate. OpenRouter rejects ids it does not know.
+    const model = await deps.catalog.find(kind, body.model).catch(() => null);
 
     // Attribution for abuse handling and authoritative usage in streams. No
     // sampling parameter is touched; see the architecture doc.

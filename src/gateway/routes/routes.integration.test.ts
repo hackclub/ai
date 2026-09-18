@@ -19,9 +19,6 @@ const features = (enabled: string[]): FeatureFlags => ({
   async isEnabled(flag) {
     return enabled.includes(flag);
   },
-  capture() {},
-  identify() {},
-  async shutdown() {},
 });
 
 describe("provider routes with PostgreSQL", () => {

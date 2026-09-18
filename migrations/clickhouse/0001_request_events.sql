@@ -1,9 +1,5 @@
 CREATE DATABASE IF NOT EXISTS hcai;
 
--- This table contains the complete searchable request and response bodies.
--- Common analytics queries remain cheap because ClickHouse only reads selected
--- columns. ReplacingMergeTree makes retried outbox delivery converge on one
--- event row after merges.
 CREATE TABLE IF NOT EXISTS hcai.request_events
 (
     event_id UUID,
@@ -36,8 +32,8 @@ CREATE TABLE IF NOT EXISTS hcai.request_events
     request_headers Map(LowCardinality(String), String),
     response_headers Map(LowCardinality(String), String),
     attributes Map(LowCardinality(String), String),
-    request_body String CODEC(ZSTD(3)),
-    response_body String CODEC(ZSTD(3)),
+    request_body String CODEC(ZSTD(3)) TTL toDateTime(occurred_at) + INTERVAL 90 DAY,
+    response_body String CODEC(ZSTD(3)) TTL toDateTime(occurred_at) + INTERVAL 90 DAY,
 
     INDEX request_body_text request_body
         TYPE text(tokenizer = splitByNonAlpha) GRANULARITY 1,
@@ -46,8 +42,7 @@ CREATE TABLE IF NOT EXISTS hcai.request_events
 )
 ENGINE = ReplacingMergeTree(event_version)
 PARTITION BY toYYYYMM(occurred_at)
-ORDER BY (account_id, toDate(occurred_at), occurred_at, event_id)
-TTL occurred_at + INTERVAL 90 DAY DELETE;
+ORDER BY (account_id, toDate(occurred_at), occurred_at, event_id);
 
 -- Fast phrase investigations should first use the text index to narrow rows,
 -- then verify exact adjacency against the original body:

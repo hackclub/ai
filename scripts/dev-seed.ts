@@ -48,7 +48,7 @@ Try it:
   curl ${env.baseUrl}/proxy/v1/chat/completions \\
     -H "Authorization: Bearer ${key.key}" \\
     -H "Content-Type: application/json" \\
-    -d '{"model": "${env.allowedLanguageModels[0] ?? "openai/gpt-4o-mini"}", "messages": [{"role": "user", "content": "Hi"}]}'
+    -d '{"model": "${env.featuredModels[0] ?? "openai/gpt-4o-mini"}", "messages": [{"role": "user", "content": "Hi"}]}'
 
 Dashboard without sign-in: set this cookie for ${env.baseUrl} in your browser
 (DevTools > Application > Cookies, or paste in the console):

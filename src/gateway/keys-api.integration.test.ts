@@ -70,20 +70,11 @@ describe("keys API and revoke webhooks with PostgreSQL", () => {
     expect(listed.keys.map((item) => item.id)).toEqual([key.id]);
     expect(key.key.startsWith(listed.keys[0]?.keyPrefix ?? "!")).toBeTrue();
 
-    const webhooks = webhookRoutes({ sql, internalRevokeKey: "hook-secret" });
-    const forbidden = await webhooks.handle(
-      new Request("http://gateway.test/internal/revoke", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: key.key }),
-      }),
-    );
-    expect(forbidden.status).toBe(403);
-
+    const webhooks = webhookRoutes({ sql });
     const revoked = await webhooks.handle(
       new Request("http://gateway.test/internal/revoke", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer hook-secret" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: key.key }),
       }),
     );

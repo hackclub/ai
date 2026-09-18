@@ -17,8 +17,6 @@ type SecretMatch = { token: string; type: string; url: string; source: string };
 export type WebhookOptions = {
   sql: Sql;
   fetch?: typeof fetch;
-  /** Shared secret for POST /internal/revoke; disabled when absent. */
-  internalRevokeKey?: string;
 };
 
 const pemToBytes = (pem: string) =>
@@ -52,7 +50,8 @@ export const verifyGitHubSignature = async (
 
 /**
  * Inbound webhooks that revoke leaked keys: GitHub secret scanning at
- * `/api/ghss` and the shared-secret `/internal/revoke` endpoint.
+ * `/api/ghss` and `/internal/revoke`. Neither carries a secret, as in the
+ * previous gateway: revoking a key needs the key itself.
  */
 export const webhookRoutes = (options: WebhookOptions) => {
   const fetchImplementation = options.fetch ?? fetch;
@@ -111,10 +110,6 @@ export const webhookRoutes = (options: WebhookOptions) => {
       return results;
     })
     .post("/internal/revoke", async ({ request }) => {
-      const provided = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-      if (!options.internalRevokeKey || provided !== options.internalRevokeKey) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
-      }
       const body = (await request.json().catch(() => ({}))) as { token?: unknown };
       if (typeof body.token !== "string") {
         return Response.json({ success: false }, { status: 400 });

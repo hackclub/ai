@@ -11,18 +11,13 @@ const listing = (ids: string[]) =>
     })),
   });
 
-const catalogWith = (
-  responses: Array<() => Response>,
-  allowed: string[] = [],
-) => {
+const catalogWith = (responses: Array<() => Response>) => {
   let calls = 0;
   const clock = { now: 0 };
   const catalog = new ModelCatalog({
     now: () => clock.now,
     baseUrl: "https://example.test/api/",
     apiKey: "k",
-    allowedLanguageModels: allowed,
-    allowedEmbeddingModels: [],
     ttlMs: 60_000,
     fetch: (async (url, init) => {
       calls += 1;
@@ -37,15 +32,13 @@ const catalogWith = (
 };
 
 describe("ModelCatalog", () => {
-  test("applies the allowlist and caches the listing", async () => {
-    const { catalog, calls } = catalogWith(
-      [() => listing(["a/one", "b/two"])],
-      ["b/two"],
-    );
+  test("lists every model and caches the listing", async () => {
+    const { catalog, calls } = catalogWith([() => listing(["a/one", "b/two"])]);
     expect((await catalog.list("language")).map((m) => m.id)).toEqual([
+      "a/one",
       "b/two",
     ]);
-    expect(await catalog.find("language", "a/one")).toBeNull();
+    expect(await catalog.find("language", "c/three")).toBeNull();
     expect((await catalog.find("language", "b/two"))?.id).toBe("b/two");
     expect(calls()).toBe(1);
   });

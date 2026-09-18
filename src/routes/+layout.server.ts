@@ -31,9 +31,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     devMode: env.nodeEnv === "development",
     baseUrl: env.baseUrl,
     enforceIdv: env.enforceIdv,
-    featuredModel: env.allowedLanguageModels[0] ?? "openai/gpt-4o-mini",
-    posthog: env.posthogApiKey
-      ? { apiKey: env.posthogApiKey, apiHost: env.posthogApiHost, uiHost: env.posthogUiHost }
-      : null,
+    featuredModel: env.featuredModels[0] ?? "openai/gpt-4o-mini",
   };
 };

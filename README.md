@@ -60,7 +60,7 @@ bun run dev            # http://localhost:3000
 ```
 
 `dev:seed` prints an API key for the proxy and a cookie that signs you into
-the dashboard without Hack Club OAuth. Set `FEATURE_FLAGS_ALWAYS_ENABLED` in
+the dashboard without Hack Club OAuth. Set `ENABLED_FEATURES` in
 `.env` to turn on gated providers locally (the generated dev `.env` enables
 `enable_exa,enable_ocr,enable_replicate`). `bun run dev:reset-db` wipes the
 local databases and re-applies the migrations.

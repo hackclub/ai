@@ -53,7 +53,7 @@ describe("Replicate routes with PostgreSQL", () => {
     return replicateRoutes({
       sql,
       billing: new BillingEngine(sql),
-      features: createFeatureFlags({ alwaysEnabled: flags }),
+      features: createFeatureFlags({ enabled: flags }),
       replicateApiKey: "replicate-secret",
       enforceIdv: false,
       fetch: fakeFetch,

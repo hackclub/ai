@@ -13,21 +13,18 @@ export type Env = {
   clickhousePassword: string;
   openRouterApiKey: string;
   openRouterBaseUrl: string;
-  allowedLanguageModels: string[];
-  allowedEmbeddingModels: string[];
+  /** Models shown on the landing page and in quickstart snippets. */
+  featuredModels: string[];
   enforceIdv: boolean;
   /** Hack Club OAuth; sign-in routes are disabled when either is missing. */
   hackClubClientId: string | null;
   hackClubClientSecret: string | null;
   /** Slack incoming webhook notified when a flagged-country address signs in. */
   slackGeoblockWebhookUrl: string | null;
-  posthogApiKey: string | null;
-  posthogApiHost: string;
-  posthogUiHost: string;
-  /** Feature flags forced on without PostHog, e.g. enable_exa. */
-  featureFlagsAlwaysEnabled: string[];
-  /** Shared secret for POST /internal/revoke. */
-  internalRevokeKey: string | null;
+  /** Sentry error reporting; disabled when unset. */
+  sentryDsn: string | null;
+  /** Gated providers enabled for every user, e.g. enable_exa. */
+  enabledFeatures: string[];
   openAiModerationApiUrl: string;
   openAiModerationApiKey: string | null;
   mistralApiKey: string | null;
@@ -35,6 +32,10 @@ export type Env = {
   mistralOcrPagePriceUsd: string;
   exaApiKey: string | null;
   replicateApiKey: string | null;
+  /** Browser session used by GET /up to read Replicate's unused credit. */
+  replicateUsername: string | null;
+  replicateSessionId: string | null;
+  typesafeApiKey: string;
   allowedImageModels: string[];
   /**
    * Output tokens reserved when a model exposes no maximum completion length
@@ -92,17 +93,13 @@ export const loadEnv = (
     clickhousePassword: source.CLICKHOUSE_PASSWORD ?? "hcai",
     openRouterApiKey: required(source, "OPENROUTER_API_KEY"),
     openRouterBaseUrl: source.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api",
-    allowedLanguageModels: list(source.ALLOWED_LANGUAGE_MODELS),
-    allowedEmbeddingModels: list(source.ALLOWED_EMBEDDING_MODELS),
+    featuredModels: list(source.FEATURED_MODELS),
     enforceIdv: source.ENFORCE_IDV === "true",
     hackClubClientId: source.HACK_CLUB_CLIENT_ID || null,
     hackClubClientSecret: source.HACK_CLUB_CLIENT_SECRET || null,
     slackGeoblockWebhookUrl: source.SLACK_GEOBLOCK_WEBHOOK_URL || null,
-    posthogApiKey: source.POSTHOG_API_KEY || null,
-    posthogApiHost: source.POSTHOG_API_HOST || "https://us.i.posthog.com",
-    posthogUiHost: source.POSTHOG_UI_HOST || "https://us.posthog.com",
-    featureFlagsAlwaysEnabled: list(source.FEATURE_FLAGS_ALWAYS_ENABLED),
-    internalRevokeKey: source.HCAI_REVOKER_KEY || null,
+    sentryDsn: source.SENTRY_DSN || null,
+    enabledFeatures: list(source.ENABLED_FEATURES ?? source.FEATURE_FLAGS_ALWAYS_ENABLED),
     openAiModerationApiUrl:
       source.OPENAI_MODERATION_API_URL || "https://api.openai.com/v1/moderations",
     openAiModerationApiKey: source.OPENAI_MODERATION_API_KEY || null,
@@ -110,6 +107,9 @@ export const loadEnv = (
     mistralOcrPagePriceUsd: source.MISTRAL_OCR_PAGE_PRICE_USD || "0.001",
     exaApiKey: source.EXA_API_KEY || null,
     replicateApiKey: source.REPLICATE_API_KEY || null,
+    replicateUsername: source.REPLICATE_USERNAME || null,
+    replicateSessionId: source.REPLICATE_SESSION_ID || null,
+    typesafeApiKey: required(source, "TYPESAFE_API_KEY"),
     allowedImageModels: list(source.ALLOWED_IMAGE_MODELS),
     reservationFallbackOutputTokens: integer(
       source,

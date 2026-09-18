@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const env = locals.backend.env;
   const [keys, exampleTemplate] = await Promise.all([
     listApiKeys(locals.backend.sql, user.id),
-    quickstartCurl(env.baseUrl, env.allowedLanguageModels[0]),
+    quickstartCurl(env.baseUrl, env.featuredModels[0] ?? "openai/gpt-4o-mini"),
   ]);
   return {
     exampleTemplate,

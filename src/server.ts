@@ -1,4 +1,5 @@
 import { type ClickHouseClient, createClient } from "@clickhouse/client";
+import * as Sentry from "@sentry/bun";
 import type { AnyElysia } from "elysia";
 import postgres from "postgres";
 
@@ -14,6 +15,7 @@ import { keysApiRoutes } from "./gateway/keys-api";
 import { RateLimiter } from "./gateway/rate-limit";
 import { exaRoutes } from "./gateway/routes/exa";
 import { imagesRoutes } from "./gateway/routes/images";
+import { jevRoutes } from "./gateway/routes/jev";
 import { moderationRoutes } from "./gateway/routes/moderations";
 import { ocrRoutes } from "./gateway/routes/ocr";
 import { replicateRoutes } from "./gateway/routes/replicate";
@@ -57,11 +59,15 @@ export const createBackend = (env: Env): Backend => {
     password: env.clickhousePassword,
   });
   const billing = new BillingEngine(sql);
-  const features = createFeatureFlags({
-    posthogApiKey: env.posthogApiKey ?? undefined,
-    posthogHost: env.posthogApiHost,
-    alwaysEnabled: env.featureFlagsAlwaysEnabled,
+  Sentry.init({
+    dsn: env.sentryDsn ?? undefined,
+    enabled: env.sentryDsn !== null,
+    environment: env.nodeEnv,
+    // Requests carry bearer API keys and session cookies; never ship those.
+    sendDefaultPii: false,
+    tracesSampleRate: env.nodeEnv === "production" ? 0.1 : 1.0,
   });
+  const features = createFeatureFlags({ enabled: env.enabledFeatures });
   const attributionHeaders = {
     "HTTP-Referer": `${env.baseUrl}/global?utm_source=openrouter`,
     "X-Title": "Hack Club AI",
@@ -69,8 +75,6 @@ export const createBackend = (env: Env): Backend => {
   const catalog = new ModelCatalog({
     baseUrl: env.openRouterBaseUrl,
     apiKey: env.openRouterApiKey,
-    allowedLanguageModels: env.allowedLanguageModels,
-    allowedEmbeddingModels: env.allowedEmbeddingModels,
     headers: attributionHeaders,
   });
   const queries = new AnalyticsQueries(clickhouse);
@@ -78,8 +82,10 @@ export const createBackend = (env: Env): Backend => {
   const openRouter = { apiKey: env.openRouterApiKey, baseUrl: env.openRouterBaseUrl };
   // One counter shared by every proxy route group, keyed by user.
   const rateLimiter = new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
-  const onSettlementError = (error: unknown, requestId: string) =>
+  const onSettlementError = (error: unknown, requestId: string) => {
     console.error(`Billing settlement failed for request ${requestId}:`, error);
+    Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
+  };
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
 
   const routes: AnyElysia[] = [
@@ -90,6 +96,7 @@ export const createBackend = (env: Env): Backend => {
       mistralApiKey: env.mistralApiKey,
       perPagePriceUsd: env.mistralOcrPagePriceUsd,
     }),
+    jevRoutes({ ...metered, features, typesafeApiKey: env.typesafeApiKey }),
     moderationRoutes({
       sql,
       enforceIdv: env.enforceIdv,
@@ -103,12 +110,8 @@ export const createBackend = (env: Env): Backend => {
       allowedImageModels: env.allowedImageModels,
       attributionHeaders,
     }),
-    keysApiRoutes({
-      sql,
-      onKeyCreated: (userId, keyId, name) =>
-        features.capture(userId, "api_key_created", { keyId, keyName: name }),
-    }),
-    webhookRoutes({ sql, internalRevokeKey: env.internalRevokeKey ?? undefined }),
+    keysApiRoutes({ sql }),
+    webhookRoutes({ sql }),
   ];
   if (env.replicateApiKey) {
     routes.push(
@@ -152,21 +155,24 @@ export const createBackend = (env: Env): Backend => {
             ],
           });
         },
-        onSignedIn: (userId, identity) => {
-          features.identify(identity.slack_id ?? userId, {
-            userId,
-            email: identity.primary_email,
-            isIdvVerified: identity.ysws_eligible,
-          });
-          features.capture(identity.slack_id ?? userId, "user_signed_in");
-        },
       }),
     );
   }
 
   const app = createApp({
-    onError: (error) => console.error("Unhandled request error:", error),
-    health: createHealthCheck({ sql, clickhouse, openRouter }),
+    onError: (error) => {
+      console.error("Unhandled request error:", error);
+      Sentry.captureException(error);
+    },
+    health: createHealthCheck({
+      sql,
+      clickhouse,
+      openRouter,
+      replicate:
+        env.replicateUsername && env.replicateSessionId
+          ? { username: env.replicateUsername, sessionId: env.replicateSessionId }
+          : null,
+    }),
     proxy: {
       sql,
       billing,
@@ -203,7 +209,7 @@ export const createBackend = (env: Env): Backend => {
     },
     shutdown: async () => {
       await worker?.stop();
-      await features.shutdown();
+      await Sentry.flush(2_000).catch(() => {});
       await sql.end();
       await clickhouse.close();
     },

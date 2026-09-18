@@ -66,8 +66,6 @@ describe("proxy routes with PostgreSQL", () => {
         catalog: new ModelCatalog({
           baseUrl: "https://upstream.test/api",
           apiKey: "upstream-key",
-          allowedLanguageModels: [],
-          allowedEmbeddingModels: [],
           fetch: fakeFetch,
         }),
         adapter: new OpenRouterAdapter({
@@ -77,6 +75,8 @@ describe("proxy routes with PostgreSQL", () => {
         openRouterApiKey: "upstream-key",
         enforceIdv: false,
         reservationFallbackOutputTokens: 8192,
+        // Small enough to fit the 0.01 USD test allowance.
+        unknownModelReservationUsd: "0.001",
         attributionHeaders: { "X-Title": "Test" },
       },
     });
@@ -153,20 +153,22 @@ describe("proxy routes with PostgreSQL", () => {
     expect(await unknown.json()).toEqual({ error: "Authentication failed" });
   });
 
-  integrationTest("rejects malformed bodies and unknown models", async () => {
+  integrationTest("rejects malformed bodies but forwards unlisted models", async () => {
     const notJson = await call("/proxy/v1/chat/completions", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}` },
       body: "nope",
     });
     expect(notJson.status).toBe(400);
-
-    const unknownModel = await chat({ model: "test/missing" });
-    expect(unknownModel.status).toBe(400);
-    expect(await unknownModel.json()).toEqual({
-      error: "Unknown model: test/missing",
-    });
     expect(upstreamCalls.length).toBe(0);
+
+    // There is no allowlist: a model missing from the listing still reaches
+    // OpenRouter, which is the authority on whether it exists.
+    nextUpstream = () =>
+      Response.json({ error: { message: "no such model" } }, { status: 400 });
+    const unlisted = await chat({ model: "test/missing" });
+    expect(unlisted.status).toBe(400);
+    expect(upstreamCalls.at(-1)?.body.model).toBe("test/missing");
   });
 
   integrationTest(
