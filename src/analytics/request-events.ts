@@ -87,9 +87,10 @@ export const toClickHouseEvent = (payload: RequestEventPayload) => {
 };
 
 /**
- * Rows ClickHouse rejected this many times stay in the outbox for
- * inspection. Only rejections count: a failure to reach ClickHouse at all
- * says nothing about the rows, so an outage never parks them.
+ * Rows that reach this many attempts stay in the outbox for inspection.
+ * Every failed hand-off to ClickHouse counts, so a persistently failing
+ * batch is eventually parked. A short outage costs at most a few attempts
+ * out of 25 because the loop backs off to a minute between passes.
  */
 export const MAX_DELIVERY_ATTEMPTS = 25;
 
@@ -108,78 +109,87 @@ type OutboxRow = { id: string; payload: RequestEventPayload };
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
+/** A claim older than this is treated as abandoned and the row is retried. */
+export const CLAIM_LEASE_MS = 5 * 60 * 1_000;
+
 /**
  * Delivers one batch of finalized request events from request_event_outbox
- * to ClickHouse and returns how many rows it took. Rows are locked with SKIP
- * LOCKED, so several drainers can run at once, and deleted in the same
- * transaction as the insert: a crash after the insert redelivers the batch,
- * which ReplacingMergeTree collapses by event_id. A batch ClickHouse rejects
- * is released with its attempt count raised and sinks behind fresh rows; a
- * batch that never reached ClickHouse is released with only the error
- * recorded; a payload that cannot be mapped at all is parked immediately.
+ * to ClickHouse and returns how many rows it took. Three short statements:
+ * claim rows by stamping claimed_at (SKIP LOCKED so drainers never contend),
+ * insert into ClickHouse with no Postgres transaction open, then delete the
+ * delivered ids. A crash between insert and delete leaves the claim to expire
+ * and the batch is redelivered, which ReplacingMergeTree collapses by
+ * event_id. Any failure after the batch was handed to the ClickHouse client
+ * counts against every row's attempt budget; a payload that cannot be mapped
+ * at all is parked immediately.
  */
 export const drainRequestEvents = async ({
   sql,
   clickhouse,
   batchSize = 500,
 }: DrainOptions): Promise<number> => {
-  let taken: string[] = [];
-  try {
-    return await sql.begin(async (tx) => {
-      const rows = await tx<OutboxRow[]>`
-        SELECT id::text, payload
-        FROM request_event_outbox
-        WHERE attempts < ${MAX_DELIVERY_ATTEMPTS}
-        ORDER BY attempts, id
-        LIMIT ${batchSize}
-        FOR UPDATE SKIP LOCKED
-      `;
-      if (rows.length === 0) return 0;
-      taken = rows.map((row) => row.id);
+  const rows = await sql<OutboxRow[]>`
+    UPDATE request_event_outbox
+    SET claimed_at = now()
+    WHERE id IN (
+      SELECT id
+      FROM request_event_outbox
+      WHERE
+        attempts < ${MAX_DELIVERY_ATTEMPTS}
+        AND (claimed_at IS NULL OR claimed_at < now() - make_interval(secs => ${CLAIM_LEASE_MS / 1_000}))
+      ORDER BY attempts, id
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id::text, payload
+  `;
+  if (rows.length === 0) return 0;
 
-      const delivered: string[] = [];
-      const unmappable: { id: string; error: string }[] = [];
-      const events: ReturnType<typeof toClickHouseEvent>[] = [];
-      for (const row of rows) {
-        try {
-          events.push(toClickHouseEvent(row.payload));
-          delivered.push(row.id);
-        } catch (error) {
-          unmappable.push({ id: row.id, error: errorMessage(error) });
-        }
-      }
+  const delivered: string[] = [];
+  const unmappable: string[] = [];
+  const unmappableErrors: string[] = [];
+  const events: ReturnType<typeof toClickHouseEvent>[] = [];
+  for (const row of rows) {
+    try {
+      events.push(toClickHouseEvent(row.payload));
+      delivered.push(row.id);
+    } catch (error) {
+      unmappable.push(row.id);
+      unmappableErrors.push(errorMessage(error));
+    }
+  }
 
-      if (events.length > 0) {
-        await clickhouse.insert({
-          table: "hcai.request_events",
-          values: events,
-          format: "JSONEachRow",
-        });
-        await tx`
-          DELETE FROM request_event_outbox
-          WHERE id = ANY(${delivered}::bigint[])
-        `;
-      }
-      for (const row of unmappable) {
-        await tx`
-          UPDATE request_event_outbox
-          SET attempts = ${MAX_DELIVERY_ATTEMPTS}, last_error = ${row.error}
-          WHERE id = ${row.id}::bigint
-        `;
-      }
-      return rows.length;
-    });
-  } catch (error) {
-    if (taken.length > 0) {
-      const rejected = error instanceof ClickHouseError ? 1 : 0;
+  if (unmappable.length > 0) {
+    // One statement: unnest pairs ids with their errors.
+    await sql`
+      UPDATE request_event_outbox AS outbox
+      SET attempts = ${MAX_DELIVERY_ATTEMPTS}, last_error = parked.error, claimed_at = NULL
+      FROM unnest(${unmappable}::bigint[], ${unmappableErrors}::text[]) AS parked(id, error)
+      WHERE outbox.id = parked.id
+    `;
+  }
+
+  if (events.length > 0) {
+    try {
+      await clickhouse.insert({
+        table: "hcai.request_events",
+        values: events,
+        format: "JSONEachRow",
+      });
+    } catch (error) {
       await sql`
         UPDATE request_event_outbox
-        SET attempts = attempts + ${rejected}, last_error = ${errorMessage(error)}
-        WHERE id = ANY(${taken}::bigint[])
+        SET attempts = attempts + 1, last_error = ${errorMessage(error)}, claimed_at = NULL
+        WHERE id = ANY(${delivered}::bigint[])
       `;
+      throw error;
     }
-    throw error;
+    await sql`
+      DELETE FROM request_event_outbox
+      WHERE id = ANY(${delivered}::bigint[])
+    `;
   }
+  return rows.length;
 };
 
 /** Whether ClickHouse itself refused the batch, as opposed to being unreachable. */
