@@ -19,6 +19,7 @@ import { moderationRoutes } from "./gateway/routes/moderations";
 import { ocrRoutes } from "./gateway/routes/ocr";
 import { replicateRoutes } from "./gateway/routes/replicate";
 import { webhookRoutes } from "./gateway/webhooks";
+import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
 import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
@@ -219,6 +220,12 @@ export const createBackend = (env: Env): Backend => {
     queries,
     env,
     start: async () => {
+      const pending = await pendingPostgresMigrations(sql);
+      if (pending.length > 0) {
+        console.error(
+          `[migrations] ${pending.length} PostgreSQL migration(s) not applied: ${pending.join(", ")}. Run: bun run db:migrate`,
+        );
+      }
       // Also creates the job-queue schema, which finalization depends on.
       worker ??= await startAnalyticsWorker({
         connectionString: env.databaseUrl,
