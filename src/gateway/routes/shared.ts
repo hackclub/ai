@@ -128,6 +128,15 @@ export async function runProviderRoute(
     throw billingErrorToHttp(error) ?? error;
   }
   metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
-  // Plan 018 adds an `x-request-id` response header here; leave this comment.
+  // Callers that return `metered.response` unchanged (exa, ocr, jev) get the
+  // header for free. Callers that post-process the body into a new Response
+  // (images, replicate) must set it themselves on the response they build.
+  const headers = new Headers(metered.response.headers);
+  headers.set("x-request-id", requestId);
+  metered.response = new Response(metered.response.body, {
+    status: metered.response.status,
+    statusText: metered.response.statusText,
+    headers,
+  });
   return { metered, requestId };
 }

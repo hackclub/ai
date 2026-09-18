@@ -93,13 +93,13 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
   const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();
   const reservation = Usd.parse(deps.reservationUsd ?? "0.25");
 
-  return new Elysia({ prefix: "/proxy/v1" }).post("/images/generations", async ({ request }) => {
+  return new Elysia({ prefix: "/proxy/v1" }).post("/images/generations", async ({ request, set }) => {
     const rawBody = await request.text();
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
     const input = parseImageGenerationRequest(parseJsonObject(rawBody), deps.allowedImageModels);
     const chatBody = buildImageChatRequest(input, principal.userId);
 
-    const { metered } = await runProviderRoute(deps, request, principal, {
+    const { metered, requestId } = await runProviderRoute(deps, request, principal, {
       provider: "openrouter",
       endpoint: "images/generations",
       model: input.model,
@@ -113,6 +113,7 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
           signal: request.signal,
         }),
     });
+    set.headers["x-request-id"] = requestId;
 
     // Reading the body settles billing through the adapter's capture.
     const text = await metered.response.text();
@@ -125,7 +126,7 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
     if (!metered.response.ok) {
       return new Response(text, {
         status: metered.response.status,
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-request-id": requestId },
       });
     }
     return {

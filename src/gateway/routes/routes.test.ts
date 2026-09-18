@@ -176,6 +176,8 @@ describe("runProviderRoute", () => {
       }),
     });
     expect(metered.response.status).toBe(200);
+    expect(metered.response.headers.get("x-request-id")).toBe(requestId);
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
     await done;
 
     const reserveCall = calls.find((call) => call.method === "reserve");

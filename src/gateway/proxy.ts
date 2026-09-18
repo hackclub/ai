@@ -232,11 +232,13 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       deps.onSettlementError?.(error, requestId),
     );
 
+    const headers = forwardableHeaders(metered.response.headers);
+    headers.set("x-request-id", requestId);
     return withKeepAlive(
       new Response(metered.response.body, {
         status: metered.response.status,
         statusText: metered.response.statusText,
-        headers: forwardableHeaders(metered.response.headers),
+        headers,
       }),
       keepAliveMs,
     );
