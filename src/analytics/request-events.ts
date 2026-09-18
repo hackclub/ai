@@ -97,6 +97,9 @@ export const MAX_DELIVERY_ATTEMPTS = 25;
 /** Longest pause between passes while ClickHouse keeps failing. */
 const MAX_BACKOFF_MS = 60_000;
 
+/** A single-row batch that fails this many times in a row is parked regardless of error class. */
+export const POISON_ROW_FAILURES = 5;
+
 export type DrainOptions = {
   sql: postgres.Sql;
   clickhouse: ClickHouseClient;
@@ -195,6 +198,23 @@ export const drainRequestEvents = async ({
 /** Whether ClickHouse itself refused the batch, as opposed to being unreachable. */
 export const isClickHouseRejection = (error: unknown) => error instanceof ClickHouseError;
 
+/**
+ * Parks the next row the drainer would pick, after a batch of one failed
+ * repeatedly: whatever the error class, that row is not going to deliver.
+ */
+const parkNextRow = async (sql: postgres.Sql, error: string) => {
+  await sql`
+    UPDATE request_event_outbox
+    SET attempts = ${MAX_DELIVERY_ATTEMPTS}, last_error = ${`parked after repeated failures: ${error}`}, claimed_at = NULL
+    WHERE id = (
+      SELECT id FROM request_event_outbox
+      WHERE attempts < ${MAX_DELIVERY_ATTEMPTS}
+      ORDER BY attempts, id
+      LIMIT 1
+    )
+  `;
+};
+
 export type DrainerOptions = DrainOptions & {
   /** Pause between passes once the outbox is empty. */
   intervalMs?: number;
@@ -206,10 +226,11 @@ export type RequestEventDrainer = { stop: () => Promise<void> };
 /**
  * Runs drainRequestEvents continuously: back to back while a backlog
  * exists, then once per interval. Consecutive failures back off
- * exponentially (up to a minute), and a rejected batch is retried at half
- * the size until a single poison row is isolated, so one bad payload
- * cannot drag its neighbours over the attempt limit. `stop` resolves after
- * the pass in flight finishes.
+ * exponentially (up to a minute); after the first failure (which keeps the
+ * full batch, since an outage should not shrink throughput) any repeated
+ * failure halves the batch, until a single poison row is isolated and, after
+ * POISON_ROW_FAILURES in a row, parked regardless of error class. `stop`
+ * resolves after the pass in flight finishes.
  */
 export const startRequestEventDrainer = (
   options: DrainerOptions,
@@ -236,8 +257,12 @@ export const startRequestEventDrainer = (
         currentBatch = batchSize;
       } catch (error) {
         failures += 1;
-        if (isClickHouseRejection(error)) {
+        if (failures > 1) {
           currentBatch = Math.max(1, Math.floor(currentBatch / 2));
+        }
+        if (currentBatch === 1 && failures >= POISON_ROW_FAILURES) {
+          await parkNextRow(options.sql, errorMessage(error)).catch(options.onError);
+          failures = 0;
         }
         options.onError?.(error);
       }
