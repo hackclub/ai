@@ -67,16 +67,18 @@ describe("migratePostgres against a scratch database", () => {
     await adminSql.end();
   });
 
-  integrationTest("applies all five files, then applies nothing on a second run", async () => {
+  integrationTest("applies every file, then applies nothing on a second run", async () => {
     if (!scratchUrl) throw new Error("scratch database was not created");
 
+    const expected = (await listMigrationFiles("migrations/postgres")).length;
+
     const first = await migratePostgres(scratchUrl, { log: () => {} });
-    expect(first).toEqual({ applied: 5, skipped: 0 });
+    expect(first).toEqual({ applied: expected, skipped: 0 });
 
     const sql = postgres(scratchUrl, { max: 2 });
     try {
       const rows = await sql<{ version: string }[]>`SELECT version FROM schema_migrations`;
-      expect(rows).toHaveLength(5);
+      expect(rows).toHaveLength(expected);
 
       const [outbox] = await sql<{ to_regclass: string | null }[]>`
         SELECT to_regclass('public.request_event_outbox') AS to_regclass
@@ -87,6 +89,6 @@ describe("migratePostgres against a scratch database", () => {
     }
 
     const second = await migratePostgres(scratchUrl, { log: () => {} });
-    expect(second).toEqual({ applied: 0, skipped: 5 });
+    expect(second).toEqual({ applied: 0, skipped: expected });
   });
 });
