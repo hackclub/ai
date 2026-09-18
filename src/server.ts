@@ -21,6 +21,7 @@ import { replicateRoutes } from "./gateway/routes/replicate";
 import { webhookRoutes } from "./gateway/webhooks";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
+import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
 export type Backend = {
@@ -29,11 +30,16 @@ export type Backend = {
   clickhouse: ClickHouseClient;
   billing: BillingEngine;
   catalog: ModelCatalog;
+  /** Replicate model listing for the dashboard; null when REPLICATE_API_KEY is unset. */
+  replicateCatalog: ReplicateCatalog | null;
   queries: AnalyticsQueries;
   env: Env;
   /** Starts the job worker; idempotent. */
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
+  /** Set by the lifecycle when background services fail to start; read by /up. */
+  startupError: () => Error | null;
+  setStartupError: (error: Error | null) => void;
 };
 
 const notifySlack = (webhookUrl: string) => async (payload: unknown) => {
@@ -87,6 +93,10 @@ export const createBackend = (env: Env): Backend => {
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
   const replicatePricing = env.replicateApiKey ? createReplicatePricingSource({}) : null;
+  const replicateCatalog =
+    env.replicateApiKey && replicatePricing
+      ? createReplicateCatalog({ apiKey: env.replicateApiKey, pricing: replicatePricing })
+      : null;
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -114,7 +124,7 @@ export const createBackend = (env: Env): Backend => {
       allowedImageModels: env.allowedImageModels,
       attributionHeaders,
     }),
-    keysApiRoutes({ sql }),
+    keysApiRoutes({ sql, baseUrl: env.baseUrl }),
     webhookRoutes({ sql }),
   ];
   if (env.replicateApiKey && replicatePricing) {
@@ -164,6 +174,8 @@ export const createBackend = (env: Env): Backend => {
     );
   }
 
+  let startupError: Error | null = null;
+
   const app = createApp({
     onError: (error) => {
       console.error("Unhandled request error:", error);
@@ -179,6 +191,7 @@ export const createBackend = (env: Env): Backend => {
           : null,
       mistral: env.mistralApiKey ? { apiKey: env.mistralApiKey } : null,
       exa: env.exaApiKey ? { apiKey: env.exaApiKey } : null,
+      startupError: () => startupError,
     }),
     proxy: {
       sql,
@@ -202,6 +215,7 @@ export const createBackend = (env: Env): Backend => {
     clickhouse,
     billing,
     catalog,
+    replicateCatalog,
     queries,
     env,
     start: async () => {
@@ -226,6 +240,10 @@ export const createBackend = (env: Env): Backend => {
       await Sentry.flush(2_000).catch(() => {});
       await sql.end();
       await clickhouse.close();
+    },
+    startupError: () => startupError,
+    setStartupError: (error) => {
+      startupError = error;
     },
   };
 };

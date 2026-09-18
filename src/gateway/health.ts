@@ -16,6 +16,8 @@ export type HealthOptions = {
   exa?: { apiKey: string; baseUrl?: string } | null;
   cacheMs?: number;
   now?: () => number;
+  /** Returns the error that stopped background services from starting, or null. */
+  startupError?: () => Error | null;
 };
 
 export type HealthReport = {
@@ -23,6 +25,8 @@ export type HealthReport = {
   postgres: boolean;
   clickhouse: boolean;
   openRouter: boolean;
+  /** False when the job worker or outbox drainer failed to start. */
+  startup: boolean;
   /** Present only when the provider is configured. */
   mistral?: boolean;
   exa?: boolean;
@@ -147,15 +151,17 @@ export const createHealthCheck = (options: HealthOptions) => {
       (replicateUnusedCredit !== undefined && replicateUnusedCredit > REPLICATE_MIN_CREDIT);
 
     const providersOk = mistral !== false && exa !== false;
+    const startupOk = (options.startupError?.() ?? null) === null;
 
     return {
       status:
-        postgresOk && clickhouseOk && openRouterOk && replicateOk && providersOk
+        postgresOk && clickhouseOk && openRouterOk && replicateOk && providersOk && startupOk
           ? "up"
           : "down",
       postgres: postgresOk,
       clickhouse: clickhouseOk,
       openRouter: openRouterOk,
+      startup: startupOk,
       ...(mistral !== undefined ? { mistral } : {}),
       ...(exa !== undefined ? { exa } : {}),
       ...(balanceRemaining !== undefined ? { balanceRemaining } : {}),

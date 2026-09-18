@@ -13,10 +13,12 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       sveltekit({
         adapter: adapter({ serverOptions: { idleTimeout: 0 } }),
-        // The proxy API is called by SDKs with no Origin header and includes a
-        // multipart upload, so SvelteKit's global check cannot apply to it.
-        // src/hooks.server.ts re-applies the same-origin rule to page routes,
-        // and dashboard mutations use JSON bodies with SameSite=Lax cookies.
+        // SvelteKit's global same-origin check is disabled because SDK clients
+        // call /proxy with no Origin header (and with multipart uploads).
+        // Cookie-authenticated Elysia routes (/api/keys*, /api/dismiss-agent-banner,
+        // /auth/logout) enforce their own origin check via
+        // src/gateway/origin-check.ts; src/hooks.server.ts covers page routes.
+        // Bearer-key and signature-verified routes are intentionally exempt.
         csrf: { trustedOrigins: ["*"] },
       }),
     ],

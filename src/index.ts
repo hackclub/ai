@@ -1,4 +1,5 @@
 import { loadEnv } from "./env";
+import { installShutdownHandlers, startBackend } from "./lifecycle";
 import { createBackend } from "./server";
 
 /**
@@ -7,15 +8,14 @@ import { createBackend } from "./server";
  */
 const env = loadEnv();
 const backend = createBackend(env);
-await backend.start();
+await startBackend(backend).started;
+const failure = backend.startupError();
+if (failure) {
+  // The API is useless without billing reconciliation; do not listen.
+  await backend.shutdown();
+  process.exit(1);
+}
 
 backend.app.listen({ port: env.port, idleTimeout: 0 });
 console.log(`Hack Club AI gateway listening on http://localhost:${env.port}`);
-
-const shutdown = async () => {
-  backend.app.stop();
-  await backend.shutdown();
-  process.exit(0);
-};
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+installShutdownHandlers(backend, { stopServer: () => backend.app.stop() });

@@ -2,6 +2,7 @@ import type { Handle } from "@sveltejs/kit/hooks";
 
 import { SESSION_COOKIE, cookieValue, sessionUser } from "./auth/sessions";
 import { loadEnv } from "./env";
+import { installShutdownHandlers, startBackend } from "./lifecycle";
 import { type Backend, createBackend } from "./server";
 
 /**
@@ -14,9 +15,10 @@ const registry = globalThis as typeof globalThis & {
 };
 
 const backend = (registry.__hcaiBackend ??= createBackend(loadEnv()));
-registry.__hcaiBackendStarted ??= backend.start().catch((error) => {
-  console.error("Failed to start the analytics worker:", error);
-});
+// A start failure is not fatal here: pages still work, /up answers 503, and
+// the error is logged and reported. See src/lifecycle.ts.
+registry.__hcaiBackendStarted ??= startBackend(backend).started;
+installShutdownHandlers(backend);
 
 
 /**
