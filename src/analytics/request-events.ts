@@ -283,3 +283,25 @@ export const startRequestEventDrainer = (
     },
   };
 };
+
+/** Parked rows older than this lose their request and response bodies. */
+export const PARKED_BODY_RETENTION_DAYS = 7;
+
+/**
+ * Strips prompt and completion bodies from rows that will never be
+ * delivered, so a parked row does not keep them past the 90-day ClickHouse
+ * TTL. Identifiers, headers, and last_error stay for inspection. Returns
+ * how many rows were stripped.
+ */
+export const stripParkedBodies = async (sql: postgres.Sql): Promise<number> => {
+  const rows = await sql<{ id: string }[]>`
+    UPDATE request_event_outbox
+    SET payload = payload - 'request_body' - 'response_body'
+    WHERE
+      attempts >= ${MAX_DELIVERY_ATTEMPTS}
+      AND created_at < now() - make_interval(days => ${PARKED_BODY_RETENTION_DAYS})
+      AND (payload ? 'request_body' OR payload ? 'response_body')
+    RETURNING id::text
+  `;
+  return rows.length;
+};
