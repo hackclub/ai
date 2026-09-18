@@ -17,13 +17,17 @@ remain to be validated.
 - Billing enforcement never queries ClickHouse.
 - Finalized usage reaches ClickHouse through the `request_event_outbox`
   table, written in the finalization transaction. The analytics worker
-  drains it in batches and deletes delivered rows in the same transaction as
-  the ClickHouse insert, so delivery is at least once; ClickHouse's
-  ReplacingMergeTree collapses duplicate event IDs. A row that fails
-  repeatedly is left in place for inspection. The outbox deliberately avoids
-  NOTIFY: PostgreSQL serializes the commit of every notifying transaction
-  through one lock held across the WAL flush, which capped finalizations at
-  roughly 200 per second when each one enqueued a Graphile Worker job.
+  drains it in batches: it claims rows with a time-boxed lease (stamping
+  `claimed_at`, so no Postgres transaction stays open across the ClickHouse
+  round trip), inserts into ClickHouse, then deletes the delivered rows. A
+  crash between insert and delete lets the claim expire and the batch is
+  redelivered, which ClickHouse's ReplacingMergeTree collapses by event ID,
+  so delivery is at least once. Rows that exhaust their attempts stay for
+  inspection, but their request and response bodies are stripped after 7
+  days. The outbox deliberately avoids NOTIFY: PostgreSQL serializes the
+  commit of every notifying transaction through one lock held across the WAL
+  flush, which capped finalizations at roughly 200 per second when each one
+  enqueued a Graphile Worker job.
 - Authorization and provider credentials must be removed from headers before
   an event enters the job payload.
 
