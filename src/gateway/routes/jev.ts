@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
+import { forwardableHeaders } from "../../providers/response-headers";
 import type { MeteredRequestInput } from "../metered-request";
 import { HttpError } from "../http-error";
 import { runMeteredRequest } from "../metered-request";
@@ -34,8 +35,6 @@ const TOKENS_PER_PRICE_UNIT = 1_000_000n;
  * is priced differently, so only the Jev family is forwarded.
  */
 const JEV_MODEL = /^jev(-[a-z0-9.]+)?$/i;
-
-const HOP_BY_HOP_HEADERS = ["content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"];
 
 const nonNegativeInteger = (value: unknown): number | null =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -160,8 +159,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
       headers: upstreamHeaders(),
       signal: request.signal,
     });
-    const headers = new Headers(upstream.headers);
-    for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
+    const headers = forwardableHeaders(upstream.headers);
     return new Response(await upstream.text(), {
       status: upstream.status,
       statusText: upstream.statusText,

@@ -1,5 +1,6 @@
 import type { Fetch } from "./openrouter/adapter";
 import type { Usd } from "../billing/money";
+import { forwardableHeaders } from "./response-headers";
 import type { MeteredProviderResponse, ProviderCompletion } from "./types";
 
 export type JsonProviderOptions = {
@@ -16,15 +17,6 @@ export type JsonProviderOptions = {
    */
   redactResponseBody?: (body: unknown, raw: string) => string;
 };
-
-/** Headers describing the upstream connection rather than the payload. */
-const HOP_BY_HOP_HEADERS = [
-  "content-encoding",
-  "content-length",
-  "transfer-encoding",
-  "connection",
-  "keep-alive",
-];
 
 /**
  * Executes a request-response (non-streaming) JSON provider call and derives
@@ -96,8 +88,7 @@ export async function executeJsonProvider(
     };
   }
 
-  const headers = new Headers(upstream.headers);
-  for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
+  const headers = forwardableHeaders(upstream.headers);
 
   return {
     response: new Response(raw, {

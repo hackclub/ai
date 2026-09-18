@@ -281,7 +281,8 @@ describe("jevRoutes", () => {
       const response = await app.handle(request(path));
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(listing);
-      expect(response.headers.get("x-upstream")).toBe("1");
+      expect(response.headers.get("x-upstream")).toBeNull();
+      expect(response.headers.get("content-type")).toContain("application/json");
       expect(response.headers.get("content-encoding")).toBeNull();
     }
     expect(upstream.map((call) => call.url)).toEqual([

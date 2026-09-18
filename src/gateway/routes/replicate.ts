@@ -26,6 +26,7 @@ import {
   recordReplicateResource,
   type ReplicateResourceKind,
 } from "../../providers/replicate/resources";
+import { forwardableHeaders } from "../../providers/response-headers";
 import type {
   MeteredProviderResponse,
   ProviderCompletion,
@@ -323,13 +324,8 @@ export const rewriteUpstreamLinks = (value: unknown, from: string, to: string): 
   return result;
 };
 
-const passthrough = (upstream: Response) => {
-  const headers = new Headers(upstream.headers);
-  for (const name of ["content-encoding", "content-length", "transfer-encoding", "connection"]) {
-    headers.delete(name);
-  }
-  return new Response(upstream.body, { status: upstream.status, headers });
-};
+const passthrough = (upstream: Response) =>
+  new Response(upstream.body, { status: upstream.status, headers: forwardableHeaders(upstream.headers) });
 
 const readJson = async (request: Request) => {
   const raw = await request.text();
@@ -402,10 +398,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
    */
   const rewrittenJson = async (upstream: Response) => {
     const text = await upstream.text();
-    const headers = new Headers(upstream.headers);
-    for (const name of ["content-encoding", "content-length", "transfer-encoding", "connection"]) {
-      headers.delete(name);
-    }
+    const headers = forwardableHeaders(upstream.headers);
     let parsed: unknown = null;
     try {
       parsed = JSON.parse(text) as unknown;

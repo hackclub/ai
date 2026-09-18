@@ -8,6 +8,7 @@ import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
+import { forwardableHeaders } from "../providers/response-headers";
 import { assertNotBlockedClient } from "./abuse";
 import { HttpError } from "./http-error";
 import { runMeteredRequest } from "./metered-request";
@@ -120,15 +121,6 @@ const ENDPOINTS: Record<ProxyEndpoint, ModelKind> = {
   embeddings: "embedding",
 };
 
-/** Headers that describe the upstream connection rather than the payload. */
-const HOP_BY_HOP_HEADERS = [
-  "content-encoding",
-  "content-length",
-  "transfer-encoding",
-  "connection",
-  "keep-alive",
-];
-
 const optionalInteger = (value: unknown) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -162,12 +154,6 @@ const billingErrorToResponse = (error: unknown) => {
     return new HttpError(429, error.message);
   }
   return null;
-};
-
-const passthroughHeaders = (upstream: Headers) => {
-  const headers = new Headers(upstream);
-  for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
-  return headers;
 };
 
 /**
@@ -278,7 +264,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       new Response(metered.response.body, {
         status: metered.response.status,
         statusText: metered.response.statusText,
-        headers: passthroughHeaders(metered.response.headers),
+        headers: forwardableHeaders(metered.response.headers),
       }),
       keepAliveMs,
     );
