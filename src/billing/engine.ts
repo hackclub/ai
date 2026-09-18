@@ -1,6 +1,14 @@
 import type postgres from "postgres";
 
 import {
+  allocate,
+  type ExistingHold,
+  type FundingSource,
+  minAtoms,
+  toExistingHolds,
+  toFundingSources,
+} from "./allocation";
+import {
   BillingAccountNotFoundError,
   InsufficientFundsError,
   InvalidReservationStateError,
@@ -94,36 +102,12 @@ type ExistingHoldRow = {
   expires_at: Date | null;
 };
 
-type FundingSource = {
-  kind: "window" | "credit";
-  id: string;
-  priority: number;
-  availableAtoms: bigint;
-  expiresAt: Date | null;
-};
-
-type ExistingHold = FundingSource & {
-  reservedAtoms: bigint;
-};
-
 /** A statement queued for one pipelined round trip. */
 type Statement = postgres.PendingQuery<postgres.Row[]>;
 
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1_000;
 
 const UNIQUE_VIOLATION = "23505";
-
-const compareSources = (left: FundingSource, right: FundingSource) => {
-  if (left.priority !== right.priority) {
-    return left.priority - right.priority;
-  }
-
-  const leftExpiry = left.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  const rightExpiry = right.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  if (leftExpiry !== rightExpiry) return leftExpiry - rightExpiry;
-
-  return left.id.localeCompare(right.id);
-};
 
 const toReservation = (row: ReservationRow): Reservation => ({
   id: row.id,
@@ -140,9 +124,6 @@ const toReservation = (row: ReservationRow): Reservation => ({
   unfundedCostUsd: Usd.parse(row.unfunded_cost_usd).toString(),
   expiresAt: row.expires_at,
 });
-
-const minAtoms = (left: bigint, right: bigint) =>
-  left < right ? left : right;
 
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" &&
@@ -216,8 +197,8 @@ export class BillingEngine {
         }
       }
 
-      const sources = this.toFundingSources(windowRows, creditRows);
-      const allocations = this.allocate(estimateAtoms, sources);
+      const sources = toFundingSources(windowRows, creditRows);
+      const allocations = allocate(estimateAtoms, sources);
       if (allocations.remainingAtoms > 0n) {
         throw new InsufficientFundsError();
       }
@@ -377,7 +358,7 @@ export class BillingEngine {
       const writes: Statement[] = [];
       let remainingAtoms = input.actualCostUsd.toAtoms();
 
-      for (const hold of this.toExistingHolds(windowHoldRows, creditHoldRows)) {
+      for (const hold of toExistingHolds(windowHoldRows, creditHoldRows)) {
         const committedAtoms = minAtoms(remainingAtoms, hold.reservedAtoms);
         writes.push(
           ...this.commitExistingHold(
@@ -392,9 +373,9 @@ export class BillingEngine {
       }
 
       if (remainingAtoms > 0n) {
-        const additional = this.allocate(
+        const additional = allocate(
           remainingAtoms,
-          this.toFundingSources(windowRows, creditRows),
+          toFundingSources(windowRows, creditRows),
         );
         for (const allocation of additional.items) {
           writes.push(
@@ -983,46 +964,6 @@ export class BillingEngine {
     `;
   }
 
-  private toFundingSources(
-    windows: AvailableSourceRow[],
-    credits: AvailableSourceRow[],
-  ): FundingSource[] {
-    return [
-      ...windows.map((row) => ({
-        kind: "window" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: Usd.parse(row.available_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-      ...credits.map((row) => ({
-        kind: "credit" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: Usd.parse(row.available_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-    ].sort(compareSources);
-  }
-
-  private allocate(amountAtoms: bigint, sources: FundingSource[]) {
-    let remainingAtoms = amountAtoms;
-    const items: {
-      source: FundingSource;
-      amountAtoms: bigint;
-    }[] = [];
-
-    for (const source of sources) {
-      if (remainingAtoms === 0n) break;
-      const amount = minAtoms(remainingAtoms, source.availableAtoms);
-      if (amount <= 0n) continue;
-      items.push({ source, amountAtoms: amount });
-      remainingAtoms -= amount;
-    }
-
-    return { items, remainingAtoms };
-  }
-
   private reserveFunding(
     tx: TransactionSql,
     reservationId: string,
@@ -1130,30 +1071,6 @@ export class BillingEngine {
       ORDER BY limit_window.id
       FOR UPDATE OF hold, limit_window
     `;
-  }
-
-  private toExistingHolds(
-    windows: ExistingHoldRow[],
-    credits: ExistingHoldRow[],
-  ): ExistingHold[] {
-    return [
-      ...windows.map((row) => ({
-        kind: "window" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: 0n,
-        reservedAtoms: Usd.parse(row.reserved_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-      ...credits.map((row) => ({
-        kind: "credit" as const,
-        id: row.id,
-        priority: row.priority,
-        availableAtoms: 0n,
-        reservedAtoms: Usd.parse(row.reserved_usd).toAtoms(),
-        expiresAt: row.expires_at,
-      })),
-    ].sort(compareSources);
   }
 
   private commitExistingHold(
