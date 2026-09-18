@@ -18,6 +18,11 @@ The default endpoints are:
 - ClickHouse HTTP: `http://localhost:8123`
 - ClickHouse native protocol: `localhost:9000`
 
+In production the server refuses to start unless `CLICKHOUSE_URL`,
+`CLICKHOUSE_USER`, and `CLICKHOUSE_PASSWORD` are set explicitly; the
+compose defaults above are for local development only, and compose binds
+both datastores to `127.0.0.1`.
+
 The containers apply SQL in `migrations/postgres` and
 `migrations/clickhouse` when their volumes are first created.
 
