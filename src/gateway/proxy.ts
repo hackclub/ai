@@ -3,7 +3,6 @@ import type postgres from "postgres";
 
 import { authenticateApiKey, touchApiKey } from "../auth/api-keys";
 import type { BillingEngine } from "../billing/engine";
-import { InsufficientFundsError, LimitExceededError } from "../billing/errors";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
@@ -13,6 +12,7 @@ import { assertNotBlockedClient } from "./abuse";
 import { HttpError } from "./http-error";
 import { runMeteredRequest } from "./metered-request";
 import { RateLimiter } from "./rate-limit";
+import { billingErrorToHttp, clientIp, parseJsonObject } from "./routes/shared";
 
 export type ProxyDependencies = {
   sql: postgres.Sql;
@@ -57,12 +57,6 @@ const BILLABLE_INPUT_FIELDS = [
 
 const isEventStream = (response: Response) =>
   response.headers.get("content-type")?.includes("text/event-stream") ?? false;
-
-/** Client address as seen behind Cloudflare, else the proxy header, else empty. */
-export const clientIp = (headers: Headers) =>
-  headers.get("cf-connecting-ip") ??
-  headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-  "";
 
 /**
  * Cloudflare closes idle responses after about 100 seconds. A non-streaming
@@ -127,33 +121,11 @@ const optionalInteger = (value: unknown) =>
     : undefined;
 
 const parseBody = (raw: string) => {
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    throw new HttpError(400, "Request body must be valid JSON");
-  }
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new HttpError(400, "Request body must be a JSON object");
-  }
-  const record = body as Record<string, unknown>;
+  const record = parseJsonObject(raw);
   if (typeof record.model !== "string" || record.model.length === 0) {
     throw new HttpError(400, "A model must be specified");
   }
   return record as Record<string, unknown> & { model: string };
-};
-
-const billingErrorToResponse = (error: unknown) => {
-  if (error instanceof InsufficientFundsError) {
-    return new HttpError(
-      429,
-      "Spending limit reached. Need a higher limit? hey@mahadk.com",
-    );
-  }
-  if (error instanceof LimitExceededError) {
-    return new HttpError(429, error.message);
-  }
-  return null;
 };
 
 /**
@@ -253,7 +225,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
           }),
       });
     } catch (error) {
-      throw billingErrorToResponse(error) ?? error;
+      throw billingErrorToHttp(error) ?? error;
     }
 
     metered.settled.catch((error) =>

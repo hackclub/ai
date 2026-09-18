@@ -1,9 +1,5 @@
 import { Elysia } from "elysia";
-import type postgres from "postgres";
 
-import { authenticateApiKey, touchApiKey } from "../../auth/api-keys";
-import type { BillingEngine } from "../../billing/engine";
-import { InsufficientFundsError, LimitExceededError } from "../../billing/errors";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
@@ -31,19 +27,18 @@ import type {
   MeteredProviderResponse,
   ProviderCompletion,
 } from "../../providers/types";
-import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
-import { runMeteredRequest } from "../metered-request";
-import { clientIp } from "../proxy";
-import { RateLimiter } from "../rate-limit";
+import {
+  authorizeProviderRequest,
+  defaultRateLimiter,
+  type MeteredRouteDependencies,
+  parseJsonObject,
+  type ProviderRouteInput,
+  runProviderRoute,
+} from "./shared";
 
-export type ReplicateRouteDependencies = {
-  sql: postgres.Sql;
-  billing: BillingEngine;
+export type ReplicateRouteDependencies = MeteredRouteDependencies & {
   replicateApiKey: string;
-  enforceIdv: boolean;
-  fetch?: typeof fetch;
-  rateLimiter?: RateLimiter;
   /** Replicate API origin. */
   baseUrl?: string;
   /** This gateway's public origin, used to rewrite Replicate's API links in responses. */
@@ -57,7 +52,6 @@ export type ReplicateRouteDependencies = {
    * limit check. Defaults to 0.05 USD.
    */
   minimumHoldUsd?: string;
-  onSettlementError?: (error: unknown, requestId: string) => void;
 };
 
 /**
@@ -329,27 +323,17 @@ const passthrough = (upstream: Response) =>
 
 const readJson = async (request: Request) => {
   const raw = await request.text();
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    throw new HttpError(400, "Request body must be valid JSON");
-  }
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new HttpError(400, "Request body must be a JSON object");
-  }
-  return { raw, body: body as Record<string, unknown> };
+  return { raw, body: parseJsonObject(raw) };
 };
 
 /** Every Replicate proxy route under /proxy/v1/replicate. */
 export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
-  const fetchImplementation = deps.fetch ?? fetch;
+  const fetchImplementation = (deps.fetch ?? fetch) as typeof fetch;
   const baseUrl = (deps.baseUrl ?? "https://api.replicate.com").replace(/\/$/, "");
   const publicBaseUrl = (deps.publicBaseUrl ?? "http://localhost:3000").replace(/\/$/, "");
   const upstreamLinkPrefix = `${baseUrl}/v1/`;
   const publicLinkPrefix = `${publicBaseUrl}/proxy/v1/replicate/`;
-  const rateLimiter =
-    deps.rateLimiter ?? new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
+  const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();
   const pricingSource = deps.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
   const settlementTimeoutMs = deps.settlementTimeoutMs ?? 15 * 60 * 1_000;
   const minimumHold = Usd.parse(deps.minimumHoldUsd ?? "0.05");
@@ -469,48 +453,29 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     const estimate = estimatePredictionCost(pricing, input);
     const costUsd = estimate.toAtoms() < minimumHold.toAtoms() ? minimumHold : estimate;
     const requestBody = JSON.stringify(payload);
-    const requestId = crypto.randomUUID();
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, {
-        requestId,
-        accountId: principal.billingAccountId,
-        provider: "replicate",
-        endpoint: "replicate/predictions",
-        model,
-        estimatedCostUsd: costUsd,
-        reservationExpiresAt: new Date(
-          Date.now() + settlementTimeoutMs + RESERVATION_TTL_MARGIN_MS,
+    const { metered, requestId } = await runProviderRoute(deps, request, principal, {
+      provider: "replicate",
+      endpoint: "replicate/predictions",
+      model,
+      estimatedCostUsd: costUsd,
+      reservationExpiresAt: new Date(
+        Date.now() + settlementTimeoutMs + RESERVATION_TTL_MARGIN_MS,
+      ),
+      // The client's abort signal is deliberately not forwarded: Replicate
+      // creates the prediction before a `Prefer: wait` response returns,
+      // so aborting the upstream call would release the hold for a run
+      // that still executes (and still delivers to any webhook).
+      execute: async () =>
+        meterPrediction(
+          await fetchImplementation(`${baseUrl}${path}`, {
+            method: "POST",
+            headers: upstreamHeaders(request),
+            body: requestBody,
+          }),
+          requestBody,
+          { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
         ),
-        analytics: {
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          requestHeaders: request.headers,
-          attributes: { ip: clientIp(request.headers) },
-        },
-        // The client's abort signal is deliberately not forwarded: Replicate
-        // creates the prediction before a `Prefer: wait` response returns,
-        // so aborting the upstream call would release the hold for a run
-        // that still executes (and still delivers to any webhook).
-        execute: async () =>
-          meterPrediction(
-            await fetchImplementation(`${baseUrl}${path}`, {
-              method: "POST",
-              headers: upstreamHeaders(request),
-              body: requestBody,
-            }),
-            requestBody,
-            { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
-          ),
-      });
-    } catch (error) {
-      if (error instanceof InsufficientFundsError) {
-        throw new HttpError(429, "Spending limit reached. Need a higher limit? hey@mahadk.com");
-      }
-      if (error instanceof LimitExceededError) throw new HttpError(429, error.message);
-      throw error;
-    }
-    metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
+    } satisfies ProviderRouteInput);
     // A prediction response is a single JSON document, so buffering it costs
     // nothing and lets ownership be recorded before the client can poll.
     const { parsed, response } = await rewrittenJson(metered.response);
@@ -538,17 +503,9 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   };
 
   return new Elysia({ prefix: "/proxy/v1/replicate" })
-    .derive(async ({ request }) => {
-      assertNotBlockedClient(request.headers, null);
-      const principal = await authenticateApiKey(
-        deps.sql,
-        request.headers.get("authorization") ?? undefined,
-        { enforceIdv: deps.enforceIdv },
-      );
-      rateLimiter.consume(principal.userId);
-      touchApiKey(deps.sql, principal.apiKeyId);
-      return { principal };
-    })
+    .derive(async ({ request }) => ({
+      principal: await authorizeProviderRequest(deps, rateLimiter, request, ""),
+    }))
     // Files
     .post("/files", async ({ request, principal }) => {
       const form = await request.formData().catch(() => null);

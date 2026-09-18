@@ -179,7 +179,7 @@ describe("jevRoutes", () => {
     const { app } = build(() => Response.json(successBody));
     const response = await app.handle(request("/proxy/v1/jev/systemone", { method: "POST", body: "{" }));
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Invalid JSON body" });
+    expect(await response.json()).toEqual({ error: "Request body must be valid JSON" });
   });
 
   test("forwards systemone, defaults the model, and bills reported input tokens", async () => {

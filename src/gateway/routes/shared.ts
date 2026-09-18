@@ -73,7 +73,7 @@ export const parseJsonObject = (raw: string): Record<string, unknown> => {
   try {
     body = JSON.parse(raw);
   } catch {
-    throw new HttpError(400, "Invalid JSON body");
+    throw new HttpError(400, "Request body must be valid JSON");
   }
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     throw new HttpError(400, "Request body must be a JSON object");
