@@ -1,18 +1,15 @@
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
-import { authenticateApiKey, touchApiKey } from "../auth/api-keys";
 import type { BillingEngine } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { forwardableHeaders } from "../providers/response-headers";
-import { assertNotBlockedClient } from "./abuse";
 import { HttpError } from "./http-error";
-import { runMeteredRequest } from "./metered-request";
 import { RateLimiter } from "./rate-limit";
-import { billingErrorToHttp, clientIp, parseJsonObject } from "./routes/shared";
+import { authorizeProviderRequest, parseJsonObject, runProviderRoute } from "./routes/shared";
 
 export type ProxyDependencies = {
   sql: postgres.Sql;
@@ -178,15 +175,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
   const handle = async (endpoint: ProxyEndpoint, request: Request) => {
     const kind = ENDPOINTS[endpoint];
     const rawBody = await request.text();
-    assertNotBlockedClient(request.headers, rawBody);
-
-    const principal = await authenticateApiKey(
-      deps.sql,
-      request.headers.get("authorization") ?? undefined,
-      { enforceIdv: deps.enforceIdv },
-    );
-    rateLimiter.consume(principal.userId);
-    touchApiKey(deps.sql, principal.apiKeyId);
+    const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
 
     const body = parseBody(rawBody);
     // Any model OpenRouter serves is allowed; the listing is only consulted
@@ -198,23 +187,16 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     body.user = `user_${principal.userId}`;
     body.usage = { include: true };
 
-    const requestId = crypto.randomUUID();
-    let metered;
-    try {
-      metered = await runMeteredRequest(deps.billing, {
-        requestId,
-        accountId: principal.billingAccountId,
+    const { metered, requestId } = await runProviderRoute(
+      deps,
+      request,
+      principal,
+      {
         provider: "openrouter",
         endpoint,
         model: body.model,
         estimatedCostUsd: estimateFor(kind, model, body),
         reservationTtlMs,
-        analytics: {
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          requestHeaders: request.headers,
-          attributes: { ip: clientIp(request.headers) },
-        },
         execute: () =>
           deps.adapter.execute({
             endpoint,
@@ -223,13 +205,8 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
             headers: deps.attributionHeaders,
             signal: request.signal,
           }),
-      });
-    } catch (error) {
-      throw billingErrorToHttp(error) ?? error;
-    }
-
-    metered.settled.catch((error) =>
-      deps.onSettlementError?.(error, requestId),
+      },
+      { rewrapResponse: false },
     );
 
     const headers = forwardableHeaders(metered.response.headers);

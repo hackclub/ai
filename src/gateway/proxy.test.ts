@@ -5,6 +5,8 @@ import type { BillingEngine, Reservation } from "../billing/engine";
 import { Usd } from "../billing/money";
 import type { ModelCatalog } from "../models/catalog";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
+import { blockedPrompts } from "../config/blocked-prompts";
+import { BLOCKED_MESSAGE } from "./abuse";
 import { proxyRoutes, withKeepAlive } from "./proxy";
 
 const encoder = new TextEncoder();
@@ -113,8 +115,11 @@ describe("proxyRoutes", () => {
     },
   } as unknown as ModelCatalog;
 
+  let adapterExecuteCalls = 0;
+
   const fakeAdapter = {
     async execute() {
+      adapterExecuteCalls += 1;
       return {
         response: new Response(JSON.stringify({ ok: true }), {
           headers: { "content-type": "application/json" },
@@ -161,5 +166,25 @@ describe("proxyRoutes", () => {
     const requestId = response.headers.get("x-request-id");
     expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test("rejects a blocked prompt with 403 and never calls the adapter", async () => {
+    const callsBefore = adapterExecuteCalls;
+    const response = await app.handle(
+      new Request("http://gateway.test/proxy/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer sk-hc-v1-test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: [{ role: "user", content: blockedPrompts[0] }],
+        }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
+    expect(adapterExecuteCalls).toBe(callsBefore);
   });
 });
