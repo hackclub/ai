@@ -79,9 +79,15 @@ describe("modelPricing", () => {
     expect(pricing?.maxCompletionTokens).toBe(1024);
   });
 
-  test("treats missing components as free and absent limits as null", () => {
-    const pricing = modelPricing({ id: "m", pricing: { prompt: "0" } });
-    expect(pricing?.completionUsd.toAtoms()).toBe(0n);
+  test("treats a missing prompt or completion price as unknown", () => {
+    expect(modelPricing({ id: "m", pricing: { prompt: "0" } })).toBeNull();
+    expect(modelPricing({ id: "m", pricing: { completion: "0" } })).toBeNull();
+    expect(modelPricing({ id: "m" })).toBeNull();
+  });
+
+  test("defaults a missing request price to zero and absent limits to null", () => {
+    const pricing = modelPricing({ id: "m", pricing: { prompt: "0", completion: "0" } });
+    expect(pricing?.requestUsd.toAtoms()).toBe(0n);
     expect(pricing?.maxCompletionTokens).toBeNull();
   });
 
