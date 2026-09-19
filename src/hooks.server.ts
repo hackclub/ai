@@ -18,6 +18,8 @@ const backend = (registry.__hcaiBackend ??= createBackend(loadEnv()));
 // A start failure is not fatal here: pages still work, /up answers 503, and
 // the error is logged and reported. See src/lifecycle.ts.
 registry.__hcaiBackendStarted ??= startBackend(backend).started;
+// adapter-bun owns the listener; the settlement drain in Backend.shutdown
+// covers in-flight requests.
 installShutdownHandlers(backend);
 
 
@@ -48,7 +50,12 @@ const isApiPath = (pathname: string) =>
 
 export const handle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url;
-  if (isApiPath(pathname)) return backend.app.handle(event.request);
+  if (isApiPath(pathname)) {
+    // Resolves once per process; a no-op afterwards. Startup failure is not
+    // fatal here (pages still work), and /up reports it.
+    await registry.__hcaiBackendStarted;
+    return backend.app.handle(event.request);
+  }
 
   if (isCrossOriginFormSubmission(event.request, event.url.origin)) {
     return Response.json({ error: "Cross-site form submissions are forbidden" }, { status: 403 });
