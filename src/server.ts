@@ -121,8 +121,7 @@ export const createBackend = (env: Env): Backend => {
       inputPricePerMillionTokensUsd: env.typesafeInputPricePerMillionUsd,
     }),
     moderationRoutes({
-      sql,
-      enforceIdv: env.enforceIdv,
+      ...metered,
       moderationApiUrl: env.openAiModerationApiUrl,
       moderationApiKey: env.openAiModerationApiKey,
     }),
