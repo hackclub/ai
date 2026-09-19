@@ -79,7 +79,7 @@ bun test src/analytics/request-events.integration.test.ts
 ## Development server
 
 ```bash
-bun install
+bun install --frozen-lockfile
 cp .env.example .env   # fill in OPENROUTER_API_KEY and any provider keys
 bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 via Docker
 bun run dev:seed       # local user, API key, and browser session (dev only)
