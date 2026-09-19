@@ -558,12 +558,18 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       );
       const id = response.ok ? idOf(parsed) : null;
       if (id) {
-        await recordReplicateResource(deps.sql, {
-          kind: "file",
-          id,
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-        });
+        try {
+          await recordReplicateResource(deps.sql, {
+            kind: "file",
+            id,
+            userId: principal.userId,
+            apiKeyId: principal.apiKeyId,
+          });
+        } catch (error) {
+          // The file exists upstream; a lost ownership row must not turn
+          // that into a 500. The user keeps the id from the body.
+          deps.onSettlementError?.(new Error(`Failed to record ownership of file ${id}`, { cause: error }), id);
+        }
       }
       return response;
     })

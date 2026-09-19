@@ -546,3 +546,59 @@ describe("POST /files size limit", () => {
     expect(response.status).toBe(201);
   });
 });
+
+describe("POST /files ownership failures", () => {
+  const principalSql = (async () => [
+    {
+      user_id: "u1",
+      api_key_id: "k1",
+      billing_account_id: "a1",
+      billing_account_status: "active",
+      is_banned: false,
+      is_idv_verified: true,
+      skip_idv: false,
+    },
+  ]) as unknown as ReplicateRouteDependencies["sql"];
+
+  test("keeps the file id when the ownership insert fails", async () => {
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return await principalSql(strings as unknown as TemplateStringsArray);
+      }
+      if (query.includes("replicate_resources") && query.includes("INSERT")) {
+        throw new Error("insert failed");
+      }
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    const errors: Array<{ error: unknown; requestId: string }> = [];
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing: {} as never, // never reached by this route
+      replicateApiKey: "test",
+      enforceIdv: false,
+      fetch: (async () => Response.json({ id: "f2" }, { status: 201 })) as unknown as typeof fetch,
+      onSettlementError: (error, requestId) => errors.push({ error, requestId }),
+    });
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { id: string };
+    expect(body.id).toBe("f2");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.requestId).toBe("f2");
+    expect(String((errors[0]?.error as Error)?.message)).toContain("f2");
+  });
+});
