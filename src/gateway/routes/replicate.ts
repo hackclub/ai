@@ -27,6 +27,7 @@ import type {
   MeteredProviderResponse,
   ProviderCompletion,
 } from "../../providers/types";
+import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -119,6 +120,7 @@ export const resolveModelReference = (reference: string): ModelReference => {
 };
 
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
+const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
 
 export type PredictionSettlement = {
   pricing: ReplicatePricing;
@@ -141,9 +143,20 @@ const awaitTerminal = async (
   if (!initial.id) return null;
   const sleep = settlement.sleep ?? Bun.sleep;
   const deadline = Date.now() + settlement.timeoutMs;
+  let consecutiveFailures = 0;
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
     await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)] ?? 5_000);
-    const latest = await settlement.lookup(initial.id);
+    let latest: PredictionSnapshot | null;
+    try {
+      latest = await settlement.lookup(initial.id);
+      consecutiveFailures = 0;
+    } catch (error) {
+      // A transient upstream error is retried; a run of them is given up on
+      // so a dead upstream still resolves within the settlement window.
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_LOOKUP_FAILURES) throw error;
+      continue;
+    }
     if (isTerminal(latest)) return latest;
   }
   return null;
@@ -442,8 +455,16 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     request: Request,
     principal: { userId: string; apiKeyId: string; billingAccountId: string },
     reference: ModelReference,
+    raw: string,
     body: Record<string, unknown>,
   ) => {
+    assertNotBlockedClient(request.headers, raw);
+    // Replicate would POST results to any URL named here, from its own
+    // network, under the shared account token; and the URL (often carrying
+    // the caller's secret) would be stored as request_body. Not supported.
+    if ("webhook" in body || "webhook_events_filter" in body) {
+      throw new HttpError(400, "Webhooks are not supported through the proxy; poll the prediction instead.");
+    }
     const { model } = reference;
     const path = reference.version ? "/v1/predictions" : `/v1/models/${model}/predictions`;
     const { model: _model, version: _version, ...rest } = body;
@@ -537,12 +558,18 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       );
       const id = response.ok ? idOf(parsed) : null;
       if (id) {
-        await recordReplicateResource(deps.sql, {
-          kind: "file",
-          id,
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-        });
+        try {
+          await recordReplicateResource(deps.sql, {
+            kind: "file",
+            id,
+            userId: principal.userId,
+            apiKeyId: principal.apiKeyId,
+          });
+        } catch (error) {
+          // The file exists upstream; a lost ownership row must not turn
+          // that into a 500. The user keeps the id from the body.
+          deps.onSettlementError?.(new Error(`Failed to record ownership of file ${id}`, { cause: error }), id);
+        }
       }
       return response;
     })
@@ -564,23 +591,23 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     .post("/models/:owner/:model/predictions", async ({ request, params, principal }) => {
       const fullModelId = validateModelAccess(params.owner, params.model);
       const pathVersion = versionFromModelName(params.model);
-      const { body } = await readJson(request);
+      const { raw, body } = await readJson(request);
       const bodyVersion = typeof body.version === "string" ? body.version : undefined;
       if (pathVersion) {
         const reference = resolveModelReference(`${fullModelId}:${pathVersion}`);
         if (bodyVersion && bodyVersion !== pathVersion && bodyVersion !== reference.version) {
           throw new HttpError(400, "Conflicting version specified in path and request body.");
         }
-        return billedPrediction(request, principal, reference, body);
+        return billedPrediction(request, principal, reference, raw, body);
       }
       if (bodyVersion) {
         const reference = resolveModelReference(bodyVersion);
         if (reference.model !== fullModelId) {
           throw new HttpError(400, "Conflicting model specified in path and request body.");
         }
-        return billedPrediction(request, principal, reference, body);
+        return billedPrediction(request, principal, reference, raw, body);
       }
-      return billedPrediction(request, principal, { model: fullModelId, version: null }, body);
+      return billedPrediction(request, principal, { model: fullModelId, version: null }, raw, body);
     })
     // Upstream paths are built from the allowlisted id, never from the raw
     // params: Elysia decodes `%2F`, so a decoded `..` segment would otherwise
@@ -600,7 +627,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     })
     // Predictions
     .post("/predictions", async ({ request, principal }) => {
-      const { body } = await readJson(request);
+      const { raw, body } = await readJson(request);
       const version = typeof body.version === "string" ? body.version : undefined;
       const model = typeof body.model === "string" ? body.model : undefined;
       if (!version && !model) {
@@ -614,7 +641,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       if (version && model && parseOwnerName(model) !== reference.model) {
         throw new HttpError(400, "Conflicting model and version specified in request body.");
       }
-      return billedPrediction(request, principal, reference, body);
+      return billedPrediction(request, principal, reference, raw, body);
     })
     .get("/predictions", notListable("predictions"))
     .get("/predictions/:id", async ({ request, params, principal }) => {

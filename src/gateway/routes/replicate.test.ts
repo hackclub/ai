@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
+import { blockedPrompts } from "../../config/blocked-prompts";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
+import { BLOCKED_MESSAGE } from "../abuse";
 import {
   meterPrediction,
   replicateRoutes,
@@ -221,6 +223,46 @@ describe("meterPrediction", () => {
     expect(completion.providerRequestId).toBe("p4");
   });
 
+  test("retries a transient lookup failure instead of abandoning settlement", async () => {
+    let calls = 0;
+    const upstream = Response.json({ id: "p10", status: "starting" }, { status: 201 });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("502 from Replicate");
+        return { id: "p10", status: "succeeded", metrics: { predict_time: 1 } };
+      },
+      timeoutMs: 10_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("complete");
+    expect(calls).toBe(2);
+  });
+
+  test("gives up after a run of consecutive lookup failures", async () => {
+    let calls = 0;
+    const upstream = Response.json({ id: "p11", status: "starting" }, { status: 201 });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => {
+        calls += 1;
+        throw new Error("still down");
+      },
+      timeoutMs: 10_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("uncertain");
+    if (completion.state !== "uncertain") return;
+    expect(completion.reason).toBe("still down");
+    expect(completion.providerRequestId).toBe("p11");
+    expect(calls).toBe(5);
+  });
+
   test("settles a cancellation even when the upstream cancel rejects", async () => {
     const upstream = new Response(
       new ReadableStream<Uint8Array>({
@@ -364,6 +406,84 @@ describe("billedPrediction ownership failures", () => {
   });
 });
 
+describe("billedPrediction request validation", () => {
+  const pricing: ReplicatePricing = {
+    kind: "hardware",
+    hardware: "T4",
+    perSecondUsd: Usd.parse("0.001"),
+    medianRunUsd: Usd.parse("0.002"),
+  };
+
+  const fakeSql = (async (strings: TemplateStringsArray) => {
+    const query = strings.join("?");
+    if (query.includes("FROM api_keys")) {
+      return [
+        {
+          api_key_id: "22222222-2222-2222-2222-222222222222",
+          user_id: "11111111-1111-1111-1111-111111111111",
+          billing_account_id: "33333333-3333-3333-3333-333333333333",
+          billing_account_status: "active",
+          is_banned: false,
+          is_idv_verified: true,
+          skip_idv: true,
+        },
+      ];
+    }
+    return [];
+  }) as unknown as ReplicateRouteDependencies["sql"];
+
+  const buildApp = (fetchCalls: string[]) =>
+    replicateRoutes({
+      sql: fakeSql,
+      billing: {} as never, // must not be reached when the request is refused
+      replicateApiKey: "test-key",
+      enforceIdv: false,
+      fetch: (async (input: RequestInfo | URL) => {
+        fetchCalls.push(String(input));
+        throw new Error("Unexpected fetch call");
+      }) as unknown as typeof fetch,
+      pricing: { get: async () => pricing },
+    });
+
+  test("refuses a prediction whose input carries a blocked prompt", async () => {
+    const fetchCalls: string[] = [];
+    const app = buildApp(fetchCalls);
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/predictions", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+        body: JSON.stringify({ version: knownModel, input: { prompt: blockedPrompts[0] } }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe(BLOCKED_MESSAGE);
+    expect(fetchCalls).toEqual([]);
+  });
+
+  test("rejects webhook fields", async () => {
+    const fetchCalls: string[] = [];
+    const app = buildApp(fetchCalls);
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/predictions", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+        body: JSON.stringify({
+          version: knownModel,
+          input: {},
+          webhook: "https://attacker.example/hook?secret=1",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchCalls).toEqual([]);
+  });
+});
+
 describe("POST /files size limit", () => {
   const principalSql = (async () => [
     {
@@ -424,5 +544,61 @@ describe("POST /files size limit", () => {
     );
 
     expect(response.status).toBe(201);
+  });
+});
+
+describe("POST /files ownership failures", () => {
+  const principalSql = (async () => [
+    {
+      user_id: "u1",
+      api_key_id: "k1",
+      billing_account_id: "a1",
+      billing_account_status: "active",
+      is_banned: false,
+      is_idv_verified: true,
+      skip_idv: false,
+    },
+  ]) as unknown as ReplicateRouteDependencies["sql"];
+
+  test("keeps the file id when the ownership insert fails", async () => {
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return await principalSql(strings as unknown as TemplateStringsArray);
+      }
+      if (query.includes("replicate_resources") && query.includes("INSERT")) {
+        throw new Error("insert failed");
+      }
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    const errors: Array<{ error: unknown; requestId: string }> = [];
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing: {} as never, // never reached by this route
+      replicateApiKey: "test",
+      enforceIdv: false,
+      fetch: (async () => Response.json({ id: "f2" }, { status: 201 })) as unknown as typeof fetch,
+      onSettlementError: (error, requestId) => errors.push({ error, requestId }),
+    });
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { id: string };
+    expect(body.id).toBe("f2");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.requestId).toBe("f2");
+    expect(String((errors[0]?.error as Error)?.message)).toContain("f2");
   });
 });
