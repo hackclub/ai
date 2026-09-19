@@ -64,12 +64,15 @@ const toStats = (row: StatsRow | undefined): UsageStats => {
 export type AnalyticsQueriesOptions = {
   /** How long a global aggregate is served from memory. Default 60 s. */
   globalCacheTtlMs?: number;
+  /** Cap on memoized entries (per-account keys included). Default 5,000. */
+  memoMaxEntries?: number;
   now?: () => number;
 };
 
 export class AnalyticsQueries {
   private readonly ttlMs: number;
   private readonly now: () => number;
+  private readonly maxEntries: number;
   private readonly cache = new Map<string, { value: unknown; fetchedAt: number }>();
   private readonly inFlight = new Map<string, Promise<unknown>>();
 
@@ -78,6 +81,7 @@ export class AnalyticsQueries {
     options: AnalyticsQueriesOptions = {},
   ) {
     this.ttlMs = options.globalCacheTtlMs ?? 60_000;
+    this.maxEntries = options.memoMaxEntries ?? 5_000;
     this.now = options.now ?? Date.now;
   }
 
@@ -90,6 +94,10 @@ export class AnalyticsQueries {
     const refresh = load()
       .then((value) => {
         this.cache.set(key, { value, fetchedAt: this.now() });
+        if (this.cache.size > this.maxEntries) {
+          const oldest = this.cache.keys().next().value;
+          if (oldest !== undefined) this.cache.delete(oldest);
+        }
         return value;
       })
       .catch((error) => {
@@ -101,15 +109,28 @@ export class AnalyticsQueries {
     return refresh;
   }
 
-  async userStats(accountId: string): Promise<UsageStats> {
+  userStats(accountId: string): Promise<UsageStats> {
+    return this.memo(`userStats:${accountId}`, () => this.loadUserStats(accountId));
+  }
+
+  private async loadUserStats(accountId: string): Promise<UsageStats> {
+    // Redelivered outbox rows share an event_id; collapse them in the
+    // subquery instead of forcing a FINAL merge of every part.
     const result = await this.clickhouse.query({
       query: `
         SELECT
           count() AS total_requests,
           sum(input_tokens) AS total_prompt,
           sum(output_tokens) AS total_completion
-        FROM hcai.request_events FINAL
-        WHERE account_id = {account_id:UUID}
+        FROM (
+          SELECT
+            event_id,
+            argMax(input_tokens, event_version) AS input_tokens,
+            argMax(output_tokens, event_version) AS output_tokens
+          FROM hcai.request_events
+          WHERE account_id = {account_id:UUID}
+          GROUP BY event_id
+        )
       `,
       query_params: { account_id: accountId },
       format: "JSONEachRow",

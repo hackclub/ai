@@ -5,15 +5,17 @@ import { AnalyticsQueries } from "./queries";
 
 const fakeClickHouse = (responses: Array<() => unknown[]>) => {
   let calls = 0;
+  let lastQuery: { query: string; query_params?: Record<string, unknown> } | undefined;
   const client = {
-    query: async () => {
+    query: async (args: { query: string; query_params?: Record<string, unknown> }) => {
       calls += 1;
+      lastQuery = args;
       const next = responses.shift();
       if (!next) throw new Error("No response scripted");
       return { json: async () => next() };
     },
   } as unknown as ClickHouseClient;
-  return { client, calls: () => calls };
+  return { client, calls: () => calls, last: () => lastQuery! };
 };
 
 const statsRow = { total_requests: "2", total_prompt: "10", total_completion: "5" };
@@ -61,5 +63,42 @@ describe("AnalyticsQueries global cache", () => {
     await queries.modelStats();
     await queries.globalStats();
     expect(calls()).toBe(2);
+  });
+
+  test("serves userStats from memory per account", async () => {
+    const { client, calls } = fakeClickHouse([
+      () => [statsRow],
+      () => [statsRow],
+    ]);
+    const queries = new AnalyticsQueries(client);
+    await queries.userStats("a");
+    await queries.userStats("a");
+    expect(calls()).toBe(1);
+    await queries.userStats("b");
+    expect(calls()).toBe(2);
+  });
+
+  test("userStats avoids FINAL and groups by event_id", async () => {
+    const { client, last } = fakeClickHouse([() => [statsRow]]);
+    const queries = new AnalyticsQueries(client);
+    await queries.userStats("account-1");
+    expect(last().query).not.toContain("FINAL");
+    expect(last().query).toContain("GROUP BY event_id");
+    expect(last().query_params?.account_id).toBe("account-1");
+  });
+
+  test("evicts the oldest memo entry beyond the cap", async () => {
+    const { client, calls } = fakeClickHouse([
+      () => [statsRow],
+      () => [statsRow],
+      () => [statsRow],
+      () => [statsRow],
+    ]);
+    const queries = new AnalyticsQueries(client, { memoMaxEntries: 2 });
+    await queries.userStats("a");
+    await queries.userStats("b");
+    await queries.userStats("c");
+    await queries.userStats("a");
+    expect(calls()).toBe(4);
   });
 });
