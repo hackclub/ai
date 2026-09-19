@@ -18,6 +18,7 @@ import {
   type PredictionSnapshot,
 } from "../../providers/replicate/predictions";
 import {
+  countReplicateResources,
   ownsReplicateResource,
   recordReplicateResource,
   type ReplicateResourceKind,
@@ -55,6 +56,8 @@ export type ReplicateRouteDependencies = MeteredRouteDependencies & {
   minimumHoldUsd?: string;
   /** Largest accepted file upload; defaults to 20 MiB. */
   maxUploadBytes?: number;
+  /** Uploads a user may make in 24 hours; default 200. */
+  maxFilesPerDay?: number;
 };
 
 /**
@@ -353,6 +356,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const settlementTimeoutMs = deps.settlementTimeoutMs ?? 15 * 60 * 1_000;
   const minimumHold = Usd.parse(deps.minimumHoldUsd ?? "0.05");
   const maxUploadBytes = deps.maxUploadBytes ?? 20 * 1024 * 1024;
+  const maxFilesPerDay = deps.maxFilesPerDay ?? 200;
 
   const resolvePricing = async (model: string) => {
     let pricing: ReplicatePricing | null;
@@ -536,6 +540,10 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       if (content.size > maxUploadBytes) {
         throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
       }
+      const recent = await countReplicateResources(deps.sql, principal.userId, "file", 24 * 60 * 60 * 1_000);
+      if (recent >= maxFilesPerDay) {
+        throw new HttpError(429, `Upload limit reached: ${maxFilesPerDay} files per 24 hours.`);
+      }
       const upload = new FormData();
       upload.append("content", content);
       // The official SDK sends metadata as a JSON blob part; curl users send a string.
@@ -547,14 +555,49 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
         const value = form?.get(field);
         if (typeof value === "string") upload.append(field, value);
       }
-      const { parsed, response } = await rewrittenJson(
-        await fetchImplementation(`${baseUrl}/v1/files`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${deps.replicateApiKey}` },
-          body: upload,
-        }),
-      );
-      const id = response.ok ? idOf(parsed) : null;
+      const filename = form?.get("filename");
+      const { metered, requestId } = await runProviderRoute(deps, request, principal, {
+        provider: "replicate",
+        endpoint: "replicate/files",
+        model: "replicate/files",
+        estimatedCostUsd: Usd.zero,
+        attributes: { bytes: String(content.size) },
+        execute: async () => {
+          const upstream = await fetchImplementation(`${baseUrl}/v1/files`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${deps.replicateApiKey}` },
+            body: upload,
+          });
+          const text = await upstream.text();
+          const completion: ProviderCompletion = upstream.ok
+            ? {
+                state: "complete",
+                providerRequestId: null,
+                usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: Usd.zero },
+                responseBody: text,
+                bodyCapture: "complete",
+              }
+            : {
+                state: "uncertain",
+                providerRequestId: null,
+                reason: `Replicate returned HTTP ${upstream.status}`,
+                responseBody: text,
+                bodyCapture: "complete",
+              };
+          return {
+            response: new Response(text, {
+              status: upstream.status,
+              statusText: upstream.statusText,
+              headers: upstream.headers,
+            }),
+            // Never the file bytes: analytics would store them.
+            requestBody: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
+            completion: Promise.resolve(completion),
+          };
+        },
+      } satisfies ProviderRouteInput);
+      const { parsed, response } = await rewrittenJson(metered.response);
+      const id = metered.response.ok ? idOf(parsed) : null;
       if (id) {
         try {
           await recordReplicateResource(deps.sql, {
@@ -566,7 +609,10 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
         } catch (error) {
           // The file exists upstream; a lost ownership row must not turn
           // that into a 500. The user keeps the id from the body.
-          deps.onSettlementError?.(new Error(`Failed to record ownership of file ${id}`, { cause: error }), id);
+          deps.onSettlementError?.(
+            new Error(`Failed to record ownership of file ${id}`, { cause: error }),
+            requestId,
+          );
         }
       }
       return response;

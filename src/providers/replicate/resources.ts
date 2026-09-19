@@ -31,6 +31,21 @@ export const recordReplicateResource = async (sql: Sql, record: ReplicateResourc
   `;
 };
 
+/** Number of resources of `kind` a user has created in the last `sinceMs` milliseconds. */
+export const countReplicateResources = async (
+  sql: Sql,
+  userId: string,
+  kind: ReplicateResourceKind,
+  sinceMs: number,
+): Promise<number> => {
+  const [row] = await sql<{ n: string }[]>`
+    SELECT count(*)::text AS n FROM replicate_resources
+    WHERE user_id = ${userId}::uuid AND kind = ${kind}
+      AND created_at > now() - make_interval(secs => ${sinceMs / 1_000})
+  `;
+  return Number(row?.n ?? 0);
+};
+
 export const ownsReplicateResource = async (
   sql: Sql,
   kind: ReplicateResourceKind,
