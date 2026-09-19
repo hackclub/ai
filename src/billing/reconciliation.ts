@@ -121,7 +121,7 @@ type PendingRow = {
   provider_request_id: string | null;
   reconciliation_reason: string | null;
   expired: boolean;
-  age_ms: number;
+  age_ms: number | string;
 };
 
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -228,7 +228,7 @@ export async function reconcilePendingReservations(
       provider_request_id,
       reconciliation_reason,
       updated_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
-      floor(extract(epoch FROM (now() - updated_at)) * 1000)::bigint::int AS age_ms
+      floor(extract(epoch FROM (now() - updated_at)) * 1000)::bigint AS age_ms
     FROM billing_reservations
     WHERE state = 'pending_reconciliation'
     ORDER BY updated_at ASC
@@ -248,7 +248,7 @@ export async function reconcilePendingReservations(
 
   for (const row of rows) {
     const { expired } = row;
-    const ageMs = row.age_ms;
+    const ageMs = Number(row.age_ms);
     try {
       const pending = lookupCharge(row);
       if (!pending) {
