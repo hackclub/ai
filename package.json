@@ -11,6 +11,7 @@
     "db:reset": "docker compose down --volumes",
     "db:check": "sh scripts/check-datastores.sh",
     "db:migrate": "bun scripts/migrate.ts",
+    "test:integration": "bun scripts/test-integration.ts",
     "build": "vite build",
     "start": "bun ./build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
