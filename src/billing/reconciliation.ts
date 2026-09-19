@@ -241,7 +241,7 @@ export async function reconcilePendingReservations(
       provider_request_id,
       reconciliation_reason,
       created_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
-      floor(extract(epoch FROM (now() - updated_at)) * 1000)::bigint AS age_ms
+      floor(extract(epoch FROM (now() - created_at)) * 1000)::bigint AS age_ms
     FROM billing_reservations
     WHERE state = 'pending_reconciliation'
     ORDER BY updated_at ASC
