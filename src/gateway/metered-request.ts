@@ -16,7 +16,33 @@ import type {
 export type BillingLifecycle = Pick<
   BillingEngine,
   "reserve" | "finalize" | "release" | "markPendingReconciliation"
->;
+> & {
+  settlements?: SettlementTracker;
+};
+
+/** Settlements not yet recorded in billing; drained on shutdown. */
+export class SettlementTracker {
+  private readonly pending = new Set<Promise<unknown>>();
+  track<T>(settled: Promise<T>): Promise<T> {
+    const entry: Promise<unknown> = settled.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.pending.add(entry);
+    void entry.finally(() => this.pending.delete(entry));
+    return settled;
+  }
+  get size() {
+    return this.pending.size;
+  }
+  /** Resolves when every tracked settlement has finished or `timeoutMs` elapsed. */
+  async drain(timeoutMs: number): Promise<{ remaining: number }> {
+    const all = Promise.all([...this.pending]).then(() => undefined);
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+    await Promise.race([all, timeout]);
+    return { remaining: this.pending.size };
+  }
+}
 
 export type MeteredRequestAnalytics = {
   userId?: string | null;
@@ -36,6 +62,12 @@ export type MeteredRequestInput = {
   analytics?: MeteredRequestAnalytics;
   /** Dispatches the upstream call. Only invoked after the reservation holds. */
   execute: () => Promise<MeteredProviderResponse>;
+  /**
+   * Called when the dispatch-error path's `billing.release` itself throws.
+   * The upstream error is still what's thrown from `runMeteredRequest`; this
+   * is purely a reporting hook. Not wired from routes in this plan.
+   */
+  onReleaseError?: (error: unknown, requestId: string) => void;
 };
 
 export type MeteredRequestOutcome =
@@ -216,12 +248,18 @@ export async function runMeteredRequest(
   try {
     metered = await input.execute();
   } catch (error) {
-    await billing.release(input.requestId);
+    try {
+      await billing.release(input.requestId);
+    } catch (releaseError) {
+      // The upstream failure is the useful signal; the leaked hold is
+      // recovered by the expiry sweeper. Report both, rethrow the original.
+      input.onReleaseError?.(releaseError, input.requestId);
+    }
     throw error;
   }
   const timeToFirstByteMs = elapsedMs(startedAt);
 
-  const settled = metered.completion.then((completion) =>
+  const raw = metered.completion.then((completion) =>
     settleCompletion(
       billing,
       {
@@ -234,6 +272,7 @@ export async function runMeteredRequest(
       completion,
     ),
   );
+  const settled = billing.settlements ? billing.settlements.track(raw) : raw;
 
   return { response: metered.response, reservation, settled };
 }

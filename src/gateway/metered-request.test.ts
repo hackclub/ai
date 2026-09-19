@@ -14,6 +14,7 @@ import {
   type BillingLifecycle,
   redactHeaders,
   runMeteredRequest,
+  SettlementTracker,
 } from "./metered-request";
 
 type Call =
@@ -173,6 +174,100 @@ describe("runMeteredRequest", () => {
     ).rejects.toBe(failure);
 
     expect(calls.map((call) => call.method)).toEqual(["reserve", "release"]);
+  });
+
+  test("rethrows the dispatch error when release also fails", async () => {
+    const { billing } = fakeBilling();
+    const failure = new Error("connect ECONNREFUSED");
+    const releaseFailure = new Error("pool closed");
+    billing.release = async () => {
+      throw releaseFailure;
+    };
+    const releaseErrors: Array<{ error: unknown; requestId: string }> = [];
+
+    const input = {
+      ...baseInput(async () => {
+        throw failure;
+      }),
+      onReleaseError: (error: unknown, requestId: string) => {
+        releaseErrors.push({ error, requestId });
+      },
+    };
+
+    await expect(runMeteredRequest(billing, input)).rejects.toBe(failure);
+
+    expect(releaseErrors).toEqual([
+      { error: releaseFailure, requestId: "request-1" },
+    ]);
+  });
+
+  test("drains tracked settlements", async () => {
+    const { billing } = fakeBilling();
+    const tracker = new SettlementTracker();
+    billing.settlements = tracker;
+
+    let resolveCompletion: (completion: ProviderCompletion) => void;
+    const completionPromise = new Promise<ProviderCompletion>((resolve) => {
+      resolveCompletion = resolve;
+    });
+
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(async () => ({
+        response: new Response("ignored", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+        requestBody: '{"model":"test/model"}',
+        completion: completionPromise,
+      })),
+    );
+
+    expect(tracker.size).toBe(1);
+
+    const drainPromise = tracker.drain(1_000);
+    resolveCompletion!({
+      state: "complete",
+      providerRequestId: "gen-1",
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        costUsd: Usd.parse("0.0001"),
+      },
+      responseBody: "{}",
+      bodyCapture: "complete",
+    });
+
+    const result = await drainPromise;
+    expect(result).toEqual({ remaining: 0 });
+    await request.settled;
+  });
+
+  test("drain times out and reports the remainder", async () => {
+    const { billing } = fakeBilling();
+    const tracker = new SettlementTracker();
+    billing.settlements = tracker;
+
+    const completionPromise = new Promise<ProviderCompletion>(() => {
+      // Never resolves.
+    });
+
+    await runMeteredRequest(
+      billing,
+      baseInput(async () => ({
+        response: new Response("ignored", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+        requestBody: '{"model":"test/model"}',
+        completion: completionPromise,
+      })),
+    );
+
+    expect(tracker.size).toBe(1);
+    const result = await tracker.drain(20);
+    expect(result).toEqual({ remaining: 1 });
   });
 
   test("does not dispatch when the reservation is refused", async () => {

@@ -11,6 +11,7 @@ import { BillingEngine } from "./billing/engine";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
 import { keysApiRoutes } from "./gateway/keys-api";
+import { SettlementTracker } from "./gateway/metered-request";
 import { RateLimiter } from "./gateway/rate-limit";
 import { exaRoutes } from "./gateway/routes/exa";
 import { imagesRoutes } from "./gateway/routes/images";
@@ -26,11 +27,16 @@ import { OpenRouterAdapter } from "./providers/openrouter/adapter";
 import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
+// The orchestrator's termination grace period must exceed this so the
+// process is not SIGKILLed mid-drain.
+const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
+
 export type Backend = {
   app: ReturnType<typeof createApp>;
   sql: postgres.Sql;
   clickhouse: ClickHouseClient;
   billing: BillingEngine;
+  settlements: SettlementTracker;
   catalog: ModelCatalog;
   /** Replicate model listing for the dashboard; null when REPLICATE_API_KEY is unset. */
   replicateCatalog: ReplicateCatalog | null;
@@ -65,7 +71,8 @@ export const createBackend = (env: Env): Backend => {
     username: env.clickhouseUser,
     password: env.clickhousePassword,
   });
-  const billing = new BillingEngine(sql);
+  const settlements = new SettlementTracker();
+  const billing = Object.assign(new BillingEngine(sql), { settlements });
   Sentry.init({
     dsn: env.sentryDsn ?? undefined,
     enabled: env.sentryDsn !== null,
@@ -217,6 +224,7 @@ export const createBackend = (env: Env): Backend => {
     sql,
     clickhouse,
     billing,
+    settlements,
     catalog,
     replicateCatalog,
     queries,
@@ -248,6 +256,10 @@ export const createBackend = (env: Env): Backend => {
     },
     shutdown: async () => {
       await worker?.stop();
+      const { remaining } = await settlements.drain(SETTLEMENT_DRAIN_TIMEOUT_MS);
+      if (remaining > 0) {
+        log.error("shutdown abandoned in-flight settlements", { remaining });
+      }
       await Sentry.flush(2_000).catch(() => {});
       await sql.end();
       await clickhouse.close();
