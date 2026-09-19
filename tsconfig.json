@@ -6,6 +6,9 @@
       "$app/types"
     ],
     "strict": true,
-    "checkJs": false
+    "checkJs": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
   }
 }
