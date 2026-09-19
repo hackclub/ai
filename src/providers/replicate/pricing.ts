@@ -1,3 +1,4 @@
+import { memoAsync } from "../../cache/memo-async";
 import { Usd } from "../../billing/money";
 
 /**
@@ -347,8 +348,6 @@ export const createReplicatePricingSource = (
   const fetchImplementation = options.fetch ?? fetch;
   const ttlMs = options.ttlMs ?? 60 * 60 * 1_000;
   const siteUrl = (options.siteUrl ?? "https://replicate.com").replace(/\/$/, "");
-  const cache = new Map<string, { value: ReplicatePricing | null; fetchedAt: number }>();
-  const inFlight = new Map<string, Promise<ReplicatePricing | null>>();
 
   const load = async (model: string) => {
     const response = await fetchImplementation(`${siteUrl}/${model}`, {
@@ -358,24 +357,11 @@ export const createReplicatePricingSource = (
     return parseReplicatePricing(await response.text());
   };
 
+  const memo = memoAsync(load, { ttlMs });
+
   return {
-    async get(model) {
-      const cached = cache.get(model);
-      if (cached && Date.now() - cached.fetchedAt < ttlMs) return cached.value;
-      const pending = inFlight.get(model);
-      if (pending) return pending;
-      const refresh = load(model)
-        .then((value) => {
-          cache.set(model, { value, fetchedAt: Date.now() });
-          return value;
-        })
-        .catch((error: unknown) => {
-          if (cached) return cached.value;
-          throw error;
-        })
-        .finally(() => inFlight.delete(model));
-      inFlight.set(model, refresh);
-      return refresh;
+    get(model) {
+      return memo.get(model);
     },
   };
 };
