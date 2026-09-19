@@ -42,8 +42,11 @@ type CacheEntry = {
 
 type Listing = { data?: unknown };
 
-const nonNegativePrice = (value: string | undefined): Usd | null => {
-  if (value === undefined) return Usd.zero;
+const nonNegativePrice = (
+  value: string | undefined,
+  whenMissing: Usd | null,
+): Usd | null => {
+  if (value === undefined) return whenMissing;
   try {
     const parsed = Usd.parse(value);
     return parsed.isNegative() ? null : parsed;
@@ -57,9 +60,11 @@ const nonNegativePrice = (value: string | undefined): Usd | null => {
  * OpenRouter uses "-1" for models whose price is not fixed.
  */
 export const modelPricing = (model: OpenRouterModel): ModelPricing | null => {
-  const promptUsd = nonNegativePrice(model.pricing?.prompt);
-  const completionUsd = nonNegativePrice(model.pricing?.completion);
-  const requestUsd = nonNegativePrice(model.pricing?.request);
+  // A listing without a token price is "unknown", not "free": the proxy
+  // then places its unknown-model hold instead of reserving nothing.
+  const promptUsd = nonNegativePrice(model.pricing?.prompt, null);
+  const completionUsd = nonNegativePrice(model.pricing?.completion, null);
+  const requestUsd = nonNegativePrice(model.pricing?.request, Usd.zero);
   if (!promptUsd || !completionUsd || !requestUsd) return null;
 
   const declared = model.top_provider?.max_completion_tokens;

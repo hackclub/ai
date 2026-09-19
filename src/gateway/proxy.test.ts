@@ -162,4 +162,42 @@ describe("proxyRoutes", () => {
     expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(await response.json()).toEqual({ ok: true });
   });
+
+  test("reserves the unknown-model hold when the listing has no usable pricing", async () => {
+    const recordedEstimates: string[] = [];
+    const catalogWithoutPricing = {
+      async find() {
+        return { id: "openai/gpt-4o-mini", pricing: {} };
+      },
+    } as unknown as ModelCatalog;
+    const billingRecordingEstimates = {
+      ...fakeBilling,
+      async reserve(input: { requestId: string; estimatedCostUsd: Usd }) {
+        recordedEstimates.push(input.estimatedCostUsd.toString());
+        return reservationFor(input.requestId);
+      },
+    } as unknown as BillingEngine;
+    const appWithoutPricing = proxyRoutes({
+      sql: fakeSql,
+      billing: billingRecordingEstimates,
+      catalog: catalogWithoutPricing,
+      adapter: fakeAdapter,
+      openRouterApiKey: "or-key",
+      enforceIdv: false,
+      reservationFallbackOutputTokens: 1_000,
+    });
+
+    const response = await appWithoutPricing.handle(
+      new Request("http://gateway.test/proxy/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer sk-hc-v1-test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ model: "openai/gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(recordedEstimates).toEqual(["0.050000000000"]);
+  });
 });
