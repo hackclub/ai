@@ -1,3 +1,4 @@
+import { memoAsync } from "../cache/memo-async";
 import { Usd } from "../billing/money";
 
 export type ModelKind = "language" | "embedding";
@@ -33,11 +34,6 @@ export type ModelCatalogOptions = {
   ttlMs?: number;
   headers?: Record<string, string>;
   now?: () => number;
-};
-
-type CacheEntry = {
-  models: OpenRouterModel[];
-  fetchedAt: number;
 };
 
 type Listing = { data?: unknown };
@@ -80,34 +76,18 @@ export const modelPricing = (model: OpenRouterModel): ModelPricing | null => {
  */
 export class ModelCatalog {
   private readonly fetchImplementation: typeof fetch;
-  private readonly ttlMs: number;
-  private readonly now: () => number;
-  private readonly cache = new Map<ModelKind, CacheEntry>();
-  private readonly inFlight = new Map<ModelKind, Promise<OpenRouterModel[]>>();
+  private readonly memo: ReturnType<typeof memoAsync<ModelKind, OpenRouterModel[]>>;
 
   constructor(private readonly options: ModelCatalogOptions) {
     this.fetchImplementation = options.fetch ?? fetch;
-    this.ttlMs = options.ttlMs ?? 5 * 60 * 1_000;
-    this.now = options.now ?? Date.now;
+    this.memo = memoAsync((kind) => this.refresh(kind), {
+      ttlMs: options.ttlMs ?? 5 * 60 * 1_000,
+      now: options.now ?? Date.now,
+    });
   }
 
-  async list(kind: ModelKind): Promise<OpenRouterModel[]> {
-    const cached = this.cache.get(kind);
-    if (cached && this.now() - cached.fetchedAt < this.ttlMs) {
-      return cached.models;
-    }
-
-    const pending = this.inFlight.get(kind);
-    if (pending) return pending;
-
-    const refresh = this.refresh(kind)
-      .catch((error) => {
-        if (cached) return cached.models;
-        throw error;
-      })
-      .finally(() => this.inFlight.delete(kind));
-    this.inFlight.set(kind, refresh);
-    return refresh;
+  list(kind: ModelKind): Promise<OpenRouterModel[]> {
+    return this.memo.get(kind);
   }
 
   async find(kind: ModelKind, id: string): Promise<OpenRouterModel | null> {
@@ -141,7 +121,6 @@ export class ModelCatalog {
       (model) => typeof model?.id === "string",
     );
 
-    this.cache.set(kind, { models, fetchedAt: this.now() });
     return models;
   }
 }

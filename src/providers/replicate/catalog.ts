@@ -1,3 +1,4 @@
+import { memoAsync } from "../../cache/memo-async";
 import {
   type ReplicateCategoryConfig,
   replicateCategories,
@@ -55,8 +56,6 @@ export const createReplicateCatalog = (options: ReplicateCatalogOptions) => {
   const baseUrl = (options.baseUrl ?? "https://api.replicate.com").replace(/\/$/, "");
   const pricingSource =
     options.pricing ?? createReplicatePricingSource({ fetch: fetchImplementation });
-  let cache: { data: ReplicateCategory[]; fetchedAt: number } | null = null;
-  let inFlight: Promise<ReplicateCategory[]> | null = null;
 
   const pricingSummary = async (modelId: string) => {
     try {
@@ -67,7 +66,7 @@ export const createReplicateCatalog = (options: ReplicateCatalogOptions) => {
     }
   };
 
-  const refresh = async () => {
+  const refresh = async (_key: "categories") => {
     const categories = await Promise.all(
       replicateCategories.map(async (category: ReplicateCategoryConfig) => {
         const models = await Promise.all(
@@ -99,18 +98,14 @@ export const createReplicateCatalog = (options: ReplicateCatalogOptions) => {
         };
       }),
     );
-    cache = { data: categories, fetchedAt: Date.now() };
     return categories;
   };
 
+  const memo = memoAsync<"categories", ReplicateCategory[]>(refresh, { ttlMs });
+
   return {
-    async categories(): Promise<ReplicateCategory[]> {
-      if (cache && Date.now() - cache.fetchedAt < ttlMs) return cache.data;
-      if (inFlight) return inFlight;
-      inFlight = refresh().finally(() => {
-        inFlight = null;
-      });
-      return inFlight;
+    categories(): Promise<ReplicateCategory[]> {
+      return memo.get("categories");
     },
   };
 };
