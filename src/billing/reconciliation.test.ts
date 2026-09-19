@@ -247,6 +247,106 @@ describe("reconcilePendingReservations for Replicate", () => {
   });
 });
 
+describe("reconcilePendingReservations queue rotation", () => {
+  const minute = 60_000;
+
+  const openRouterPending = (requestId: string, providerRequestId: string | null, ageMs: number) => ({
+    request_id: requestId,
+    provider: "openrouter",
+    provider_request_id: providerRequestId,
+    reconciliation_reason: "client disconnected",
+    expired: false,
+    age_ms: ageMs,
+  });
+  const replicatePending = (requestId: string, providerRequestId: string | null, ageMs: number) => ({
+    request_id: requestId,
+    provider: "replicate",
+    provider_request_id: providerRequestId,
+    reconciliation_reason: "did not finish within the settlement window",
+    expired: false,
+    age_ms: ageMs,
+  });
+  const pricing = {
+    get: async () => ({
+      kind: "hardware" as const,
+      hardware: "T4",
+      perSecondUsd: Usd.parse("0.001"),
+      medianRunUsd: null,
+    }),
+  };
+  const replicate = (respond: (url: string) => Response) => ({
+    apiKey: "rkey",
+    pricing,
+    fetch: (async (input) => respond(String(input))) as typeof fetch,
+  });
+
+  /** A fake `sql` that records every call's template text and only answers the SELECT. */
+  const recordingSql = (rows: unknown[]) => {
+    const calls: string[] = [];
+    const sql = (async (strings: TemplateStringsArray) => {
+      const text = strings.join("?");
+      calls.push(text);
+      return text.trim().startsWith("SELECT") ? rows : [];
+    }) as unknown as postgres.Sql;
+    return { sql, calls };
+  };
+
+  test("an age beyond PostgreSQL's int4 range does not throw and is logged raw", async () => {
+    const { billing, released } = fakeBilling();
+    const logs: string[] = [];
+    const result = await reconcilePendingReservations({
+      sql: fakeSql([
+        {
+          request_id: "ancient",
+          provider: "openrouter",
+          provider_request_id: null,
+          reconciliation_reason: null,
+          expired: true,
+          age_ms: "3000000000",
+        },
+      ]),
+      billing,
+      openRouter: openRouter(() => new Response("", { status: 404 })),
+      log: (message) => logs.push(message),
+    });
+    expect(result).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
+    expect(released).toEqual(["ancient"]);
+    expect(logs.some((line) => line.includes("3000000000ms"))).toBe(true);
+  });
+
+  test("defers a not-ready row to the back of the queue", async () => {
+    const { billing } = fakeBilling();
+    const { sql, calls } = recordingSql([replicatePending("r1", "pred1", minute)]);
+    const result = await reconcilePendingReservations({
+      sql,
+      billing,
+      openRouter: openRouter(() => {
+        throw new Error("OpenRouter must not be consulted for Replicate rows");
+      }),
+      replicate: replicate(() => Response.json({ id: "pred1", status: "processing" })),
+    });
+    expect(result).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
+    expect(
+      calls.some(
+        (call) => call.includes("UPDATE billing_reservations") && call.includes("SET updated_at = now()"),
+      ),
+    ).toBe(true);
+  });
+
+  test("does not defer a row that was finalized", async () => {
+    const { billing, finalized } = fakeBilling();
+    const { sql, calls } = recordingSql([openRouterPending("r1", "gen-1", minute)]);
+    const result = await reconcilePendingReservations({
+      sql,
+      billing,
+      openRouter: openRouter(() => generationResponse(0.002)),
+    });
+    expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
+    expect(finalized).toHaveLength(1);
+    expect(calls.some((call) => call.includes("UPDATE billing_reservations"))).toBe(false);
+  });
+});
+
 describe("expireStaleReservations", () => {
   test("releases every expired reservation independently", async () => {
     const { billing, released } = fakeBilling();
