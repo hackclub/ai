@@ -120,6 +120,7 @@ export const resolveModelReference = (reference: string): ModelReference => {
 };
 
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
+const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
 
 export type PredictionSettlement = {
   pricing: ReplicatePricing;
@@ -142,9 +143,20 @@ const awaitTerminal = async (
   if (!initial.id) return null;
   const sleep = settlement.sleep ?? Bun.sleep;
   const deadline = Date.now() + settlement.timeoutMs;
+  let consecutiveFailures = 0;
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
     await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)] ?? 5_000);
-    const latest = await settlement.lookup(initial.id);
+    let latest: PredictionSnapshot | null;
+    try {
+      latest = await settlement.lookup(initial.id);
+      consecutiveFailures = 0;
+    } catch (error) {
+      // A transient upstream error is retried; a run of them is given up on
+      // so a dead upstream still resolves within the settlement window.
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_LOOKUP_FAILURES) throw error;
+      continue;
+    }
     if (isTerminal(latest)) return latest;
   }
   return null;

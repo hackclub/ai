@@ -223,6 +223,46 @@ describe("meterPrediction", () => {
     expect(completion.providerRequestId).toBe("p4");
   });
 
+  test("retries a transient lookup failure instead of abandoning settlement", async () => {
+    let calls = 0;
+    const upstream = Response.json({ id: "p10", status: "starting" }, { status: 201 });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("502 from Replicate");
+        return { id: "p10", status: "succeeded", metrics: { predict_time: 1 } };
+      },
+      timeoutMs: 10_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("complete");
+    expect(calls).toBe(2);
+  });
+
+  test("gives up after a run of consecutive lookup failures", async () => {
+    let calls = 0;
+    const upstream = Response.json({ id: "p11", status: "starting" }, { status: 201 });
+    const metered = meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => {
+        calls += 1;
+        throw new Error("still down");
+      },
+      timeoutMs: 10_000,
+      sleep: noSleep,
+    });
+    await drain(metered.response);
+    const completion = await metered.completion;
+    expect(completion.state).toBe("uncertain");
+    if (completion.state !== "uncertain") return;
+    expect(completion.reason).toBe("still down");
+    expect(completion.providerRequestId).toBe("p11");
+    expect(calls).toBe(5);
+  });
+
   test("settles a cancellation even when the upstream cancel rejects", async () => {
     const upstream = new Response(
       new ReadableStream<Uint8Array>({
