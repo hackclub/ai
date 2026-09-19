@@ -27,7 +27,7 @@ Elysia exp builds break between versions; bumping one is its own PR.
 | Production build / run | `bun run build` then `bun run start` |
 | Local databases | `bun run db:up` / `db:down` / `db:logs` / `db:check` |
 | Wipe local databases | `bun run db:reset` (destructive) |
-| Apply migrations (once plan 002 lands) | `bun run db:migrate` |
+| Apply migrations | `bun run db:migrate` (`--status` lists pending) |
 | Seed a dev user, key, and session | `bun run dev:seed` |
 
 Verification baseline for any change: `bun run typecheck` exits 0 and

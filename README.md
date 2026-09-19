@@ -90,8 +90,10 @@ bun run dev            # http://localhost:3000
 the dashboard without Hack Club OAuth. Providers are enabled by their keys:
 `/proxy/v1/replicate/*` is mounted only when `REPLICATE_API_KEY` is set, and
 Exa and OCR answer `503` with "<Provider> is not configured" until
-`EXA_API_KEY` / `MISTRAL_API_KEY` are set. `bun run dev:reset-db` wipes the
-local databases and re-applies the migrations.
+`EXA_API_KEY` / `MISTRAL_API_KEY` are set. `TYPESAFE_API_KEY` is different:
+unlike the other provider keys, it is required at startup for the Jev route.
+`bun run dev:reset-db` wipes the local databases and re-applies the
+migrations.
 
 The server needs `DATABASE_URL` and `OPENROUTER_API_KEY`; see `.env.example`
 for the optional settings. On startup it creates the Graphile Worker schema,
@@ -111,8 +113,9 @@ is off, so bearer keys and cookies are never sent).
 | `POST /proxy/v1/exa/*` | API key (503 until `EXA_API_KEY` is set) | Exa search, contents, answer |
 | `POST /proxy/v1/ocr` | API key (503 until `MISTRAL_API_KEY` is set) | Mistral OCR |
 | `/proxy/v1/replicate/*` | API key (mounted only when `REPLICATE_API_KEY` is set) | Replicate files, models, predictions (scoped to their creator; no account-wide listings) |
+| `POST /proxy/v1/jev/systemone`, `GET /proxy/v1/jev/models` (also under `/jev/v1/`) | API key | Jev (Typesafe) system prompt one-shot; `TYPESAFE_API_KEY` is required at startup |
 | `/auth/login`, `/auth/callback`, `POST /auth/logout` | cookie | Hack Club sign-in |
-| `GET/POST /api/keys`, `DELETE /api/keys/:id` | session | Dashboard key management |
+| `GET/POST /api/keys`, `DELETE /api/keys/:id`, `POST /api/dismiss-agent-banner` | session | Dashboard key management |
 | `POST /api/ghss`, `POST /internal/revoke` | signature / shared secret | Leaked-key revocation |
 
 Requests authenticate with `Authorization: Bearer sk-hc-v1-...`. Bodies pass
@@ -157,7 +160,7 @@ bun run check          # svelte-check
 
 Pages: `/` (marketing, redirects signed-in users), `/dashboard`, `/keys`,
 `/activity` (with cursor-paged "Load more"), `/models`, `/models/<id>`,
-`/global`, `/replicate`, and `/jev`.
+`/global`, `/replicate`, `/jev`, `/exa`, and `/ocr`.
 Sign-in uses Hack Club OAuth at `/auth/login`; without `HACK_CLUB_CLIENT_ID`
 and `HACK_CLUB_CLIENT_SECRET` the auth routes are not mounted.
 

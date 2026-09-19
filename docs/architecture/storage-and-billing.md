@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted initial direction. Transaction implementations and production sizing
-remain to be validated.
+Accepted. The reservation transactions are implemented and covered by the
+integration suite; production sizing remains to be validated.
 
 ## Data ownership
 
@@ -159,10 +159,15 @@ the process died mid-request. The `billing.reconcile` Graphile Worker task
 runs every five minutes (`src/billing/reconciliation.ts`):
 
 1. Reservations still `reserved` past `expires_at` are released.
-2. Each pending OpenRouter reservation with a generation ID is looked up at
-   OpenRouter's generation endpoint and finalized with the recorded cost,
-   `usage_source = reconciled`, and an analytics event whose `outcome` is
-   `reconciled` (no bodies are available at that point).
+2. Each pending reservation with a provider request ID is looked up by
+   provider:
+
+   | Provider | Lookup | Outcome |
+   |---|---|---|
+   | `openrouter` | generation metadata endpoint by generation id | finalized with recorded cost, `usage_source = reconciled`, analytics `outcome = reconciled` (no bodies) |
+   | `replicate` | prediction by id, billed from terminal metrics and live model pricing | finalized; a running prediction or one without billable metrics is `not_ready` and stays pending (no 24 h release) |
+   | anything else | none | released after 24 hours without a ledger entry |
+
 3. A pending reservation with no provider record after 24 hours is released;
    younger ones are retried on the next run.
 
