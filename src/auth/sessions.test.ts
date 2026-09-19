@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type postgres from "postgres";
 
-import { cookieValue, sessionUser } from "./sessions";
+import { cookieName, cookieValue, sessionUser } from "./sessions";
 
 describe("cookieValue", () => {
   test("decodes the named cookie and ignores the rest", () => {
@@ -14,6 +14,17 @@ describe("cookieValue", () => {
     // A browser may carry a cookie set by a sibling host; it must not 500 every page.
     expect(cookieValue("session_token=%E0", "session_token")).toBeUndefined();
     expect(cookieValue("session_token=%", "session_token")).toBeUndefined();
+  });
+
+  test("returns undefined when the same cookie name appears twice", () => {
+    expect(cookieValue("session_token=a; session_token=b", "session_token")).toBeUndefined();
+  });
+});
+
+describe("cookieName", () => {
+  test("prefixes the name only for secure cookies", () => {
+    expect(cookieName("session_token", true)).toBe("__Host-session_token");
+    expect(cookieName("session_token", false)).toBe("session_token");
   });
 });
 

@@ -16,6 +16,17 @@ const routes = hackClubAuthRoutes({
   }) as unknown as typeof fetch,
 });
 
+const secureRoutes = hackClubAuthRoutes({
+  sql: {} as Sql,
+  clientId: "client",
+  clientSecret: "secret",
+  baseUrl: "http://gateway.test",
+  secureCookies: true,
+  fetch: (async () => {
+    throw new Error("unexpected fetch");
+  }) as unknown as typeof fetch,
+});
+
 describe("Hack Club OAuth redirects", () => {
   test("login redirects to Hack Club with a state cookie", async () => {
     const response = await routes.handle(new Request("http://gateway.test/auth/login"));
@@ -27,6 +38,15 @@ describe("Hack Club OAuth redirects", () => {
     const state = location.searchParams.get("state") ?? "";
     expect(state.length).toBeGreaterThan(0);
     expect(cookieValue(response.headers.get("set-cookie"), "oauth_state")).toBe(state);
+  });
+
+  test("login uses a __Host- prefixed state cookie when secureCookies is true", async () => {
+    const response = await secureRoutes.handle(new Request("http://gateway.test/auth/login"));
+    expect(response.status).toBe(302);
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    expect(setCookie.startsWith("__Host-oauth_state=")).toBe(true);
+    expect(setCookie).toContain("Path=/");
+    expect(setCookie).toContain("Secure");
   });
 
   test("callback rejects a mismatched state", async () => {

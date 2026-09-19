@@ -91,20 +91,31 @@ export async function sessionUser(
 
 export const cookieValue = (cookieHeader: string | null, name: string) => {
   if (!cookieHeader) return undefined;
+  let found: string | undefined;
+  let count = 0;
   for (const part of cookieHeader.split(";")) {
     const [key, ...rest] = part.trim().split("=");
-    if (key === name) {
-      // A value that is not valid percent-encoding is treated as no cookie,
-      // not as a server error: the browser may hold one from a sibling host.
-      try {
-        return decodeURIComponent(rest.join("="));
-      } catch {
-        return undefined;
-      }
+    if (key !== name) continue;
+    count += 1;
+    // A value that is not valid percent-encoding is treated as no cookie,
+    // not as a server error: the browser may hold one from a sibling host.
+    try {
+      found = decodeURIComponent(rest.join("="));
+    } catch {
+      return undefined;
     }
   }
-  return undefined;
+  // Two cookies with the same name means one was planted by another host
+  // on the parent domain. Treat as signed out rather than guess.
+  return count === 1 ? found : undefined;
 };
+
+/**
+ * `__Host-` locks a cookie to this exact host and to HTTPS: a sibling
+ * subdomain cannot shadow it. The prefix is only valid on Secure cookies,
+ * so plain-HTTP local dev keeps the bare name.
+ */
+export const cookieName = (base: string, secure: boolean) => (secure ? `__Host-${base}` : base);
 
 export const serializeCookie = (
   name: string,

@@ -6,6 +6,7 @@ import { assertSameOrigin } from "../gateway/origin-check";
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
+  cookieName,
   cookieValue,
   createSession,
   deleteSession,
@@ -122,13 +123,13 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
   const fetchImplementation = options.fetch ?? fetch;
   const redirectUri = `${options.baseUrl}/auth/callback`;
   const stateCookie = (value: string, maxAge: number) =>
-    serializeCookie(STATE_COOKIE, value, {
+    serializeCookie(cookieName(STATE_COOKIE, options.secureCookies), value, {
       maxAge,
-      path: "/auth",
+      path: "/",
       secure: options.secureCookies,
     });
   const sessionCookie = (value: string, maxAge: number) =>
-    serializeCookie(SESSION_COOKIE, value, {
+    serializeCookie(cookieName(SESSION_COOKIE, options.secureCookies), value, {
       maxAge,
       path: "/",
       secure: options.secureCookies,
@@ -149,7 +150,10 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
       const url = new URL(request.url);
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
-      const storedState = cookieValue(request.headers.get("cookie"), STATE_COOKIE);
+      const storedState = cookieValue(
+        request.headers.get("cookie"),
+        cookieName(STATE_COOKIE, options.secureCookies),
+      );
       const clearState = stateCookie("", 0);
 
       if (!state || !storedState || state !== storedState) {
@@ -203,7 +207,10 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
     })
     .post("/logout", async ({ request }) => {
       assertSameOrigin(request, options.baseUrl);
-      const token = cookieValue(request.headers.get("cookie"), SESSION_COOKIE);
+      const token = cookieValue(
+        request.headers.get("cookie"),
+        cookieName(SESSION_COOKIE, options.secureCookies),
+      );
       if (token) await deleteSession(options.sql, token);
       return redirect("/", [sessionCookie("", 0)]);
     });

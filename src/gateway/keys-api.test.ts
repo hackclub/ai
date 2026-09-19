@@ -31,7 +31,7 @@ const fakeSql = () => {
 describe("keysApiRoutes origin check", () => {
   test("POST with a matching origin succeeds", async () => {
     const { sql } = fakeSql();
-    const app = keysApiRoutes({ sql, baseUrl: BASE_URL });
+    const app = keysApiRoutes({ sql, baseUrl: BASE_URL, secureCookies: false });
     const response = await app.handle(
       new Request(`${BASE_URL}/api/dismiss-agent-banner`, {
         method: "POST",
@@ -43,7 +43,7 @@ describe("keysApiRoutes origin check", () => {
 
   test("POST with a foreign origin is rejected before the session lookup", async () => {
     const { sql, calls } = fakeSql();
-    const app = keysApiRoutes({ sql, baseUrl: BASE_URL });
+    const app = keysApiRoutes({ sql, baseUrl: BASE_URL, secureCookies: false });
     const response = await app.handle(
       new Request(`${BASE_URL}/api/dismiss-agent-banner`, {
         method: "POST",
@@ -56,7 +56,7 @@ describe("keysApiRoutes origin check", () => {
 
   test("POST with sec-fetch-site cross-site is rejected before the session lookup", async () => {
     const { sql, calls } = fakeSql();
-    const app = keysApiRoutes({ sql, baseUrl: BASE_URL });
+    const app = keysApiRoutes({ sql, baseUrl: BASE_URL, secureCookies: false });
     const response = await app.handle(
       new Request(`${BASE_URL}/api/dismiss-agent-banner`, {
         method: "POST",
@@ -69,7 +69,7 @@ describe("keysApiRoutes origin check", () => {
 
   test("POST with no origin headers succeeds", async () => {
     const { sql } = fakeSql();
-    const app = keysApiRoutes({ sql, baseUrl: BASE_URL });
+    const app = keysApiRoutes({ sql, baseUrl: BASE_URL, secureCookies: false });
     const response = await app.handle(
       new Request(`${BASE_URL}/api/dismiss-agent-banner`, {
         method: "POST",
@@ -81,7 +81,7 @@ describe("keysApiRoutes origin check", () => {
 
   test("GET with a foreign origin succeeds (safe method)", async () => {
     const { sql } = fakeSql();
-    const app = keysApiRoutes({ sql, baseUrl: BASE_URL });
+    const app = keysApiRoutes({ sql, baseUrl: BASE_URL, secureCookies: false });
     const response = await app.handle(
       new Request(`${BASE_URL}/api/keys`, {
         method: "GET",
