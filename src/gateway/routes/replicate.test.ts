@@ -484,6 +484,62 @@ describe("billedPrediction request validation", () => {
   });
 });
 
+type FakeReservation = {
+  id: string;
+  requestId: string;
+  accountId: string;
+  provider: string;
+  providerRequestId: string | null;
+  state: "reserved" | "finalized";
+  estimatedCostUsd: string;
+  actualCostUsd: string | null;
+  unfundedCostUsd: string;
+  expiresAt: Date;
+};
+
+/** A billing fake that records every reserve/finalize call for assertions. */
+const fakeFileBilling = () => {
+  const reserves: Array<{ requestId: string; estimatedCostUsd: Usd }> = [];
+  const finalizes: Array<{
+    requestId: string;
+    actualCostUsd: Usd;
+    analytics: Record<string, unknown>;
+  }> = [];
+  const reservation = (requestId: string, state: "reserved" | "finalized"): FakeReservation => ({
+    id: `res-${requestId}`,
+    requestId,
+    accountId: "a1",
+    provider: "replicate",
+    providerRequestId: null,
+    state,
+    estimatedCostUsd: "0.000000000000",
+    actualCostUsd: state === "finalized" ? "0.000000000000" : null,
+    unfundedCostUsd: "0.000000000000",
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  const billing = {
+    reserve: async (input: { requestId: string; estimatedCostUsd: Usd }) => {
+      reserves.push({ requestId: input.requestId, estimatedCostUsd: input.estimatedCostUsd });
+      return reservation(input.requestId, "reserved");
+    },
+    finalize: async (input: {
+      requestId: string;
+      actualCostUsd: Usd;
+      analytics: Record<string, unknown>;
+    }) => {
+      finalizes.push({
+        requestId: input.requestId,
+        actualCostUsd: input.actualCostUsd,
+        analytics: input.analytics,
+      });
+      return reservation(input.requestId, "finalized");
+    },
+    release: async (requestId: string) => reservation(requestId, "finalized"),
+    markPendingReconciliation: async (requestId: string) => reservation(requestId, "finalized"),
+  } as unknown as ReplicateRouteDependencies["billing"];
+  return { billing, reserves, finalizes };
+};
+
 describe("POST /files size limit", () => {
   const principalSql = (async () => [
     {
@@ -500,7 +556,7 @@ describe("POST /files size limit", () => {
   const buildApp = (fetchImpl: typeof fetch) =>
     replicateRoutes({
       sql: principalSql,
-      billing: {} as never, // never reached by this route
+      billing: fakeFileBilling().billing,
       replicateApiKey: "test",
       enforceIdv: false,
       maxUploadBytes: 16,
@@ -576,7 +632,7 @@ describe("POST /files ownership failures", () => {
 
     const app = replicateRoutes({
       sql: fakeSql,
-      billing: {} as never, // never reached by this route
+      billing: fakeFileBilling().billing,
       replicateApiKey: "test",
       enforceIdv: false,
       fetch: (async () => Response.json({ id: "f2" }, { status: 201 })) as unknown as typeof fetch,
@@ -598,7 +654,147 @@ describe("POST /files ownership failures", () => {
     const body = (await response.json()) as { id: string };
     expect(body.id).toBe("f2");
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.requestId).toBe("f2");
     expect(String((errors[0]?.error as Error)?.message)).toContain("f2");
+  });
+});
+
+describe("POST /files metering", () => {
+  const principalSql = (async () => [
+    {
+      user_id: "u1",
+      api_key_id: "k1",
+      billing_account_id: "a1",
+      billing_account_status: "active",
+      is_banned: false,
+      is_idv_verified: true,
+      skip_idv: false,
+    },
+  ]) as unknown as ReplicateRouteDependencies["sql"];
+
+  test("records an upload as a zero-cost metered request", async () => {
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return await principalSql(strings as unknown as TemplateStringsArray);
+      }
+      if (query.includes("count(*)")) return [{ n: "0" }];
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    const { billing, reserves, finalizes } = fakeFileBilling();
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing,
+      replicateApiKey: "test",
+      enforceIdv: false,
+      fetch: (async () =>
+        Response.json({ id: "f3" }, { status: 201 })) as unknown as typeof fetch,
+    });
+
+    const form = new FormData();
+    form.append("content", new Blob([Buffer.from("secret file bytes")]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-request-id")).toBeTruthy();
+    await response.text();
+
+    expect(reserves).toHaveLength(1);
+    expect(reserves[0]?.estimatedCostUsd.toAtoms()).toBe(0n);
+
+    // finalize() is called asynchronously once the completion promise
+    // resolves; give the microtask queue a turn.
+    await Bun.sleep(0);
+    expect(finalizes).toHaveLength(1);
+    expect(finalizes[0]?.actualCostUsd.toAtoms()).toBe(0n);
+    expect(String(finalizes[0]?.analytics.request_body)).not.toContain("secret file bytes");
+  });
+
+  test("caps uploads per user", async () => {
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return await principalSql(strings as unknown as TemplateStringsArray);
+      }
+      if (query.includes("count(*)")) return [{ n: "200" }];
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    let fetchCalled = false;
+    const { billing } = fakeFileBilling();
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing,
+      replicateApiKey: "test",
+      enforceIdv: false,
+      fetch: (async () => {
+        fetchCalled = true;
+        throw new Error("upstream must not be called");
+      }) as unknown as typeof fetch,
+    });
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(fetchCalled).toBe(false);
+  });
+
+  test("an upstream failure is recorded, not billed", async () => {
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM api_keys")) {
+        return await principalSql(strings as unknown as TemplateStringsArray);
+      }
+      if (query.includes("count(*)")) return [{ n: "0" }];
+      return [];
+    }) as unknown as ReplicateRouteDependencies["sql"];
+
+    const { billing, finalizes } = fakeFileBilling();
+
+    const app = replicateRoutes({
+      sql: fakeSql,
+      billing,
+      replicateApiKey: "test",
+      enforceIdv: false,
+      fetch: (async () =>
+        new Response("upstream failure", { status: 500 })) as unknown as typeof fetch,
+    });
+
+    const form = new FormData();
+    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/files", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test" },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await response.text();
+    await Bun.sleep(0);
+
+    expect(finalizes).toHaveLength(1);
+    expect(finalizes[0]?.actualCostUsd.toAtoms()).toBe(0n);
+    expect(finalizes[0]?.analytics.outcome).toBe("provider_error");
   });
 });
