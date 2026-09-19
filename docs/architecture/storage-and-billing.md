@@ -166,5 +166,9 @@ runs every five minutes (`src/billing/reconciliation.ts`):
 3. A pending reservation with no provider record after 24 hours is released;
    younger ones are retried on the next run.
 
+A row the provider knows about but cannot yet be billed (`not_ready`) is
+kept pending and moved to the back of the queue; its 24-hour expiry is
+measured from `created_at`.
+
 Every row is settled through the engine's own transactions, so concurrent
 runs and retries are safe, and one failing row never blocks the batch.

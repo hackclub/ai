@@ -121,7 +121,7 @@ type PendingRow = {
   provider_request_id: string | null;
   reconciliation_reason: string | null;
   expired: boolean;
-  age_ms: number;
+  age_ms: number | string;
 };
 
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -207,6 +207,19 @@ const replicateCharge = async (
 };
 
 /**
+ * Moves a row the pass could not settle to the back of the queue so a
+ * backlog of not-ready rows cannot starve newer ones. Touches only
+ * `updated_at`; billing state is untouched, which is why this UPDATE lives
+ * here rather than in the engine.
+ */
+const deferRow = (sql: Sql, requestId: string) =>
+  sql`
+    UPDATE billing_reservations
+    SET updated_at = now()
+    WHERE request_id = ${requestId}::uuid AND state = 'pending_reconciliation'
+  `;
+
+/**
  * Settles reservations the gateway could not settle at request time
  * (client cancellation, truncated stream, missing usage, a prediction that
  * outlived the settlement window). The provider's own record supplies the
@@ -227,8 +240,8 @@ export async function reconcilePendingReservations(
       provider,
       provider_request_id,
       reconciliation_reason,
-      updated_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
-      floor(extract(epoch FROM (now() - updated_at)) * 1000)::bigint::int AS age_ms
+      created_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
+      floor(extract(epoch FROM (now() - created_at)) * 1000)::bigint AS age_ms
     FROM billing_reservations
     WHERE state = 'pending_reconciliation'
     ORDER BY updated_at ASC
@@ -248,7 +261,7 @@ export async function reconcilePendingReservations(
 
   for (const row of rows) {
     const { expired } = row;
-    const ageMs = row.age_ms;
+    const ageMs = Number(row.age_ms);
     try {
       const pending = lookupCharge(row);
       if (!pending) {
@@ -257,6 +270,7 @@ export async function reconcilePendingReservations(
           log(`released ${row.request_id}: no provider record to reconcile after ${ageMs}ms`);
           result.released += 1;
         } else {
+          await deferRow(options.sql, row.request_id);
           result.skipped += 1;
         }
         continue;
@@ -271,6 +285,7 @@ export async function reconcilePendingReservations(
           );
           result.released += 1;
         } else {
+          await deferRow(options.sql, row.request_id);
           result.skipped += 1;
         }
         continue;
@@ -279,6 +294,7 @@ export async function reconcilePendingReservations(
         // The provider knows the request, so the hold is kept until the
         // record can be billed, however long that takes.
         log(`skipped ${row.request_id}: ${charge.detail}`);
+        await deferRow(options.sql, row.request_id);
         result.skipped += 1;
         continue;
       }
