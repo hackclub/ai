@@ -76,7 +76,8 @@ export type ReserveInput = {
   accountId: string;
   provider: string;
   estimatedCostUsd: Usd;
-  expiresAt?: Date;
+  /** How long the hold may stay `reserved` before the sweeper releases it. Measured on the PostgreSQL clock. */
+  ttlMs?: number;
 };
 
 export type FinalizeInput = {
@@ -136,13 +137,11 @@ export class BillingEngine {
       // Concurrent reserves for one request id share an account, so the
       // account lock also serializes idempotent retries.
       const now = await lockAccount(tx, input.accountId);
-      const expiresAt =
-        input.expiresAt ?? new Date(now.getTime() + DEFAULT_RESERVATION_TTL_MS);
-      if (expiresAt <= now) {
-        throw new RangeError(
-          "expiresAt must be later than the reservation time",
-        );
+      const ttlMs = input.ttlMs ?? DEFAULT_RESERVATION_TTL_MS;
+      if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+        throw new RangeError("ttlMs must be a positive number of milliseconds");
       }
+      const expiresAt = new Date(now.getTime() + ttlMs);
 
       // Materialization precedes the locking reads in issue order, so the
       // current windows exist by the time they are locked.

@@ -58,7 +58,7 @@ export type MeteredRequestInput = {
   endpoint: string;
   model: string;
   estimatedCostUsd: Usd;
-  reservationExpiresAt?: Date;
+  reservationTtlMs?: number;
   analytics?: MeteredRequestAnalytics;
   /** Dispatches the upstream call. Only invoked after the reservation holds. */
   execute: () => Promise<MeteredProviderResponse>;
@@ -271,7 +271,7 @@ export async function runMeteredRequest(
     accountId: input.accountId,
     provider: input.provider,
     estimatedCostUsd: input.estimatedCostUsd,
-    expiresAt: input.reservationExpiresAt,
+    ttlMs: input.reservationTtlMs,
   });
 
   const startedAt = performance.now();

@@ -59,8 +59,8 @@ export type ReplicateRouteDependencies = MeteredRouteDependencies & {
 
 /**
  * Margin added to the settlement window for the reservation's lifetime: the
- * `Prefer: wait` phase (up to 60 s), the final poll, and clock skew. A
- * reservation the expiry sweeper releases mid-flight loses its charge.
+ * `Prefer: wait` phase (up to 60 s) and the final poll. A reservation the
+ * expiry sweeper releases mid-flight loses its charge.
  */
 const RESERVATION_TTL_MARGIN_MS = 5 * 60 * 1_000;
 
@@ -482,9 +482,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       endpoint: "replicate/predictions",
       model,
       estimatedCostUsd: costUsd,
-      reservationExpiresAt: new Date(
-        Date.now() + settlementTimeoutMs + RESERVATION_TTL_MARGIN_MS,
-      ),
+      reservationTtlMs: settlementTimeoutMs + RESERVATION_TTL_MARGIN_MS,
       // The client's abort signal is deliberately not forwarded: Replicate
       // creates the prediction before a `Prefer: wait` response returns,
       // so aborting the upstream call would release the hold for a run

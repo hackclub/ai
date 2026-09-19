@@ -160,6 +160,30 @@ describe("runMeteredRequest", () => {
     expect(analytics.api_key_id).toBe("key-1");
   });
 
+  test("passes reservationTtlMs through to the billing engine as ttlMs", async () => {
+    const { billing, calls } = fakeBilling();
+
+    await runMeteredRequest(billing, {
+      ...baseInput(async () => providerResponse({
+        state: "complete",
+        providerRequestId: "gen-2",
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 2,
+          costUsd: Usd.parse("0.0001"),
+        },
+        responseBody: '{"id":"gen-2"}',
+        bodyCapture: "complete",
+      })),
+      reservationTtlMs: 1234,
+    });
+
+    const reserve = calls.find((call) => call.method === "reserve");
+    if (reserve?.method !== "reserve") throw new Error("Expected reserve");
+    expect(reserve.input.ttlMs).toBe(1234);
+  });
+
   test("releases the reservation when dispatch fails", async () => {
     const { billing, calls } = fakeBilling();
     const failure = new Error("connect ECONNREFUSED");

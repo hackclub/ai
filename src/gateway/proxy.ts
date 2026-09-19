@@ -208,7 +208,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         endpoint,
         model: body.model,
         estimatedCostUsd: estimateFor(kind, model, body),
-        reservationExpiresAt: new Date(Date.now() + reservationTtlMs),
+        reservationTtlMs,
         analytics: {
           userId: principal.userId,
           apiKeyId: principal.apiKeyId,

@@ -130,7 +130,7 @@ describe("reconciliation with PostgreSQL", () => {
       accountId,
       provider: "openrouter",
       estimatedCostUsd: Usd.parse("0.01"),
-      expiresAt: new Date(Date.now() + 60_000),
+      ttlMs: 60_000,
     });
     await sql`
       UPDATE billing_reservations SET expires_at = now() - INTERVAL '1 minute'
