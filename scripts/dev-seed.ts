@@ -52,6 +52,7 @@ Try it:
 
 Dashboard without sign-in: set this cookie for ${env.baseUrl} in your browser
 (DevTools > Application > Cookies, or paste in the console):
+  # Dev is never secure, so the cookie keeps the bare (non "__Host-") name.
   document.cookie = "${SESSION_COOKIE}=${session.token}; path=/; max-age=2592000"
 then open ${env.baseUrl}/dashboard
 `);

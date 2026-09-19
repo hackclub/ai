@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import type postgres from "postgres";
 
 import { hashApiKey } from "../auth/api-keys";
-import { SESSION_COOKIE, cookieValue, sessionUser } from "../auth/sessions";
+import { SESSION_COOKIE, cookieName, cookieValue, sessionUser } from "../auth/sessions";
 import { issueApiKey, revokeApiKey } from "../auth/users";
 import { HttpError } from "./http-error";
 import { assertSameOrigin } from "./origin-check";
@@ -13,6 +13,8 @@ export type KeysApiOptions = {
   sql: Sql;
   /** Public origin of this deployment; mutations must come from it. */
   baseUrl: string;
+  /** Whether the session cookie is set (and must be read) with the `__Host-` prefix. */
+  secureCookies: boolean;
   onKeyCreated?: (userId: string, keyId: string, name: string) => void;
 };
 
@@ -97,7 +99,7 @@ export const keysApiRoutes = (options: KeysApiOptions) =>
       assertSameOrigin(request, options.baseUrl);
       const user = await sessionUser(
         options.sql,
-        cookieValue(request.headers.get("cookie"), SESSION_COOKIE),
+        cookieValue(request.headers.get("cookie"), cookieName(SESSION_COOKIE, options.secureCookies)),
       );
       if (!user) throw new HttpError(401, "Authentication required");
       if (user.isBanned) throw new HttpError(403, "You are banned from using this service.");
