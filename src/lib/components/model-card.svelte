@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { type CatalogModel, providerName, stripMarkdownLinks } from "#lib/format.ts";
+  import { type ModelCardData, providerName } from "#lib/format.ts";
   import CopyButton from "#lib/components/copy-button.svelte";
 
-  let { model }: { model: CatalogModel } = $props();
+  let { model }: { model: ModelCardData } = $props();
 
-  const description = $derived(stripMarkdownLinks(model.description ?? ""));
+  const description = $derived(model.description);
 </script>
 
 <a

@@ -1,5 +1,5 @@
 import type { Backend } from "../../server";
-import { type CatalogModel, modelTypeOf } from "#lib/format.ts";
+import { type CatalogModel, type ModelCardData, modelTypeOf, stripMarkdownLinks } from "#lib/format.ts";
 
 export type GroupedModels = {
   languageModels: CatalogModel[];
@@ -26,5 +26,28 @@ export async function groupedModels(backend: Backend): Promise<GroupedModels> {
       ...embedding,
       ...language.filter((model) => modelTypeOf(model) === "embedding"),
     ],
+  };
+}
+
+const toCard = (model: CatalogModel): ModelCardData => ({
+  id: model.id,
+  name: model.name,
+  // The card clamps to two lines; 240 characters is more than it can show.
+  description: stripMarkdownLinks(model.description ?? "").slice(0, 240),
+});
+
+export type GroupedModelCards = {
+  languageModels: ModelCardData[];
+  imageModels: ModelCardData[];
+  embeddingModels: ModelCardData[];
+};
+
+/** Projection of `groupedModels` carrying only the fields the `/models` cards render. */
+export async function groupedModelCards(backend: Backend): Promise<GroupedModelCards> {
+  const groups = await groupedModels(backend);
+  return {
+    languageModels: groups.languageModels.map(toCard),
+    imageModels: groups.imageModels.map(toCard),
+    embeddingModels: groups.embeddingModels.map(toCard),
   };
 }
