@@ -14,6 +14,8 @@ TypeScript 6 · PostgreSQL 18 (`postgres` driver) · ClickHouse 26.2
 Never run `bun update`, never change a framework version as a side effect of
 another change, and always install with `bun install --frozen-lockfile`.
 Elysia exp builds break between versions; bumping one is its own PR.
+Version ranges in `package.json` are pinned exactly for `elysia`,
+`bun-types` and `typescript`; the lockfile is authoritative for the rest.
 
 ## Commands
 
