@@ -93,6 +93,33 @@ export type MeteredRequest = {
   settled: Promise<MeteredRequestOutcome>;
 };
 
+/**
+ * Headers worth keeping for analytics. Everything else is dropped, so an SDK
+ * that carries a credential in a header we have never heard of cannot leak
+ * it into ClickHouse. Prefix entries match any header that starts with them.
+ */
+const ANALYTICS_HEADER_ALLOWLIST = new Set([
+  "accept",
+  "accept-encoding",
+  "content-type",
+  "content-length",
+  "user-agent",
+  "referer",
+  "http-referer",
+  "x-title",
+  "origin",
+  "x-request-id",
+  "cf-ipcountry",
+  "cf-ray",
+  // response side
+  "x-ratelimit-limit",
+  "x-ratelimit-remaining",
+  "x-ratelimit-reset",
+  "openai-processing-ms",
+]);
+const ANALYTICS_HEADER_PREFIXES = ["x-stainless-"];
+
+/** Sanity net: never keep these even if someone adds them to the allow-list. */
 const SENSITIVE_HEADERS = new Set([
   "authorization",
   "proxy-authorization",
@@ -102,9 +129,14 @@ const SENSITIVE_HEADERS = new Set([
   "x-openrouter-api-key",
 ]);
 
+const isAllowed = (key: string) =>
+  !SENSITIVE_HEADERS.has(key) &&
+  (ANALYTICS_HEADER_ALLOWLIST.has(key) ||
+    ANALYTICS_HEADER_PREFIXES.some((prefix) => key.startsWith(prefix)));
+
 /**
- * Drops credentials before headers can enter the analytics job payload. Header names are
- * lower-cased so the analytics maps stay stable across clients.
+ * Keeps only headers worth analytics detail before headers can enter the analytics job
+ * payload. Header names are lower-cased so the analytics maps stay stable across clients.
  */
 export const redactHeaders = (
   headers: HeadersInit | undefined,
@@ -114,8 +146,7 @@ export const redactHeaders = (
 
   new Headers(headers).forEach((value, name) => {
     const key = name.toLowerCase();
-    if (SENSITIVE_HEADERS.has(key)) return;
-    result[key] = value;
+    if (isAllowed(key)) result[key] = value;
   });
   return result;
 };

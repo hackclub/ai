@@ -387,4 +387,15 @@ describe("redactHeaders", () => {
       }),
     ).toEqual({ "content-type": "application/json" });
   });
+
+  test("drops unknown headers so a credential in a novel header never reaches analytics", () => {
+    expect(
+      redactHeaders({
+        "api-key": "sk-hc-v1-abc",
+        "x-goog-api-key": "sk-hc-v1-abc",
+        "x-stainless-lang": "js",
+        "user-agent": "t",
+      }),
+    ).toEqual({ "x-stainless-lang": "js", "user-agent": "t" });
+  });
 });

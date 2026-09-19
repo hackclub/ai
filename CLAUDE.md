@@ -77,9 +77,10 @@ database over the dev one.
 5. **API errors are `HttpError(status, message)`** and serialise as
    `{ "error": "<message>" }`. Messages are shown to callers; never put
    stack traces or upstream secrets in them.
-6. **Never log or persist credentials.** `SENSITIVE_HEADERS` in
-   `metered-request.ts` is stripped before headers reach analytics; keep it
-   in sync when a provider adds a credential header.
+6. **Never log or persist credentials.** Headers reach analytics only
+   through the allow-list in `redactHeaders` (`metered-request.ts`); add a
+   header there only if a dashboard needs it, never a credential-bearing
+   one.
 7. **Schema changes are new numbered files** in `migrations/<store>/`.
    Never edit an applied migration. ClickHouse DDL must be idempotent.
 8. **Billing invariants** in `docs/architecture/storage-and-billing.md`
