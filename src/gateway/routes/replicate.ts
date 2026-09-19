@@ -27,6 +27,7 @@ import type {
   MeteredProviderResponse,
   ProviderCompletion,
 } from "../../providers/types";
+import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -442,8 +443,10 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     request: Request,
     principal: { userId: string; apiKeyId: string; billingAccountId: string },
     reference: ModelReference,
+    raw: string,
     body: Record<string, unknown>,
   ) => {
+    assertNotBlockedClient(request.headers, raw);
     const { model } = reference;
     const path = reference.version ? "/v1/predictions" : `/v1/models/${model}/predictions`;
     const { model: _model, version: _version, ...rest } = body;
@@ -564,23 +567,23 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     .post("/models/:owner/:model/predictions", async ({ request, params, principal }) => {
       const fullModelId = validateModelAccess(params.owner, params.model);
       const pathVersion = versionFromModelName(params.model);
-      const { body } = await readJson(request);
+      const { raw, body } = await readJson(request);
       const bodyVersion = typeof body.version === "string" ? body.version : undefined;
       if (pathVersion) {
         const reference = resolveModelReference(`${fullModelId}:${pathVersion}`);
         if (bodyVersion && bodyVersion !== pathVersion && bodyVersion !== reference.version) {
           throw new HttpError(400, "Conflicting version specified in path and request body.");
         }
-        return billedPrediction(request, principal, reference, body);
+        return billedPrediction(request, principal, reference, raw, body);
       }
       if (bodyVersion) {
         const reference = resolveModelReference(bodyVersion);
         if (reference.model !== fullModelId) {
           throw new HttpError(400, "Conflicting model specified in path and request body.");
         }
-        return billedPrediction(request, principal, reference, body);
+        return billedPrediction(request, principal, reference, raw, body);
       }
-      return billedPrediction(request, principal, { model: fullModelId, version: null }, body);
+      return billedPrediction(request, principal, { model: fullModelId, version: null }, raw, body);
     })
     // Upstream paths are built from the allowlisted id, never from the raw
     // params: Elysia decodes `%2F`, so a decoded `..` segment would otherwise
@@ -600,7 +603,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     })
     // Predictions
     .post("/predictions", async ({ request, principal }) => {
-      const { body } = await readJson(request);
+      const { raw, body } = await readJson(request);
       const version = typeof body.version === "string" ? body.version : undefined;
       const model = typeof body.model === "string" ? body.model : undefined;
       if (!version && !model) {
@@ -614,7 +617,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       if (version && model && parseOwnerName(model) !== reference.model) {
         throw new HttpError(400, "Conflicting model and version specified in request body.");
       }
-      return billedPrediction(request, principal, reference, body);
+      return billedPrediction(request, principal, reference, raw, body);
     })
     .get("/predictions", notListable("predictions"))
     .get("/predictions/:id", async ({ request, params, principal }) => {

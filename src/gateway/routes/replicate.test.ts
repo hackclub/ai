@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
+import { blockedPrompts } from "../../config/blocked-prompts";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
+import { BLOCKED_MESSAGE } from "../abuse";
 import {
   meterPrediction,
   replicateRoutes,
@@ -361,6 +363,84 @@ describe("billedPrediction ownership failures", () => {
     expect(body.id).toBe("p9");
     expect(errors).toHaveLength(1);
     expect(String((errors[0]?.error as Error)?.message)).toContain("p9");
+  });
+});
+
+describe("billedPrediction request validation", () => {
+  const pricing: ReplicatePricing = {
+    kind: "hardware",
+    hardware: "T4",
+    perSecondUsd: Usd.parse("0.001"),
+    medianRunUsd: Usd.parse("0.002"),
+  };
+
+  const fakeSql = (async (strings: TemplateStringsArray) => {
+    const query = strings.join("?");
+    if (query.includes("FROM api_keys")) {
+      return [
+        {
+          api_key_id: "22222222-2222-2222-2222-222222222222",
+          user_id: "11111111-1111-1111-1111-111111111111",
+          billing_account_id: "33333333-3333-3333-3333-333333333333",
+          billing_account_status: "active",
+          is_banned: false,
+          is_idv_verified: true,
+          skip_idv: true,
+        },
+      ];
+    }
+    return [];
+  }) as unknown as ReplicateRouteDependencies["sql"];
+
+  const buildApp = (fetchCalls: string[]) =>
+    replicateRoutes({
+      sql: fakeSql,
+      billing: {} as never, // must not be reached when the request is refused
+      replicateApiKey: "test-key",
+      enforceIdv: false,
+      fetch: (async (input: RequestInfo | URL) => {
+        fetchCalls.push(String(input));
+        throw new Error("Unexpected fetch call");
+      }) as unknown as typeof fetch,
+      pricing: { get: async () => pricing },
+    });
+
+  test("refuses a prediction whose input carries a blocked prompt", async () => {
+    const fetchCalls: string[] = [];
+    const app = buildApp(fetchCalls);
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/predictions", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+        body: JSON.stringify({ version: knownModel, input: { prompt: blockedPrompts[0] } }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe(BLOCKED_MESSAGE);
+    expect(fetchCalls).toEqual([]);
+  });
+
+  test.skip("rejects webhook fields", async () => {
+    const fetchCalls: string[] = [];
+    const app = buildApp(fetchCalls);
+
+    const response = await app.handle(
+      new Request("http://localhost/proxy/v1/replicate/predictions", {
+        method: "POST",
+        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+        body: JSON.stringify({
+          version: knownModel,
+          input: {},
+          webhook: "https://attacker.example/hook?secret=1",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchCalls).toEqual([]);
   });
 });
 
