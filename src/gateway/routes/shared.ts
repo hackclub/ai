@@ -101,12 +101,22 @@ export type ProviderRouteInput = Omit<MeteredRequestInput, "requestId" | "accoun
  * callback. `input` is completed IN PLACE and handed to `runMeteredRequest`
  * as the same object, because the Jev route mutates `input.model` after the
  * upstream response arrives and analytics read it at settlement.
+ *
+ * By default the returned `metered.response` is rewrapped with a fresh
+ * `Headers` object carrying `x-request-id`, so callers that return it
+ * unchanged (exa, ocr, jev) get the header for free; callers that
+ * post-process the body into a new Response (images, replicate) must set it
+ * themselves on the response they build. Pass `{ rewrapResponse: false }` to
+ * skip the rewrap entirely and set the header on whatever response the
+ * caller builds instead — the OpenAI-compatible proxy does this because it
+ * also filters headers through `forwardableHeaders`.
  */
 export async function runProviderRoute(
   deps: Pick<MeteredRouteDependencies, "billing" | "onSettlementError">,
   request: Request,
   principal: AuthenticatedPrincipal,
   input: ProviderRouteInput,
+  options: { rewrapResponse?: boolean } = {},
 ): Promise<{ metered: MeteredRequest; requestId: string }> {
   const requestId = crypto.randomUUID();
   const attributes = input.attributes;
@@ -128,9 +138,9 @@ export async function runProviderRoute(
     throw billingErrorToHttp(error) ?? error;
   }
   metered.settled.catch((error) => deps.onSettlementError?.(error, requestId));
-  // Callers that return `metered.response` unchanged (exa, ocr, jev) get the
-  // header for free. Callers that post-process the body into a new Response
-  // (images, replicate) must set it themselves on the response they build.
+  if (options.rewrapResponse === false) {
+    return { metered, requestId };
+  }
   const headers = new Headers(metered.response.headers);
   headers.set("x-request-id", requestId);
   metered.response = new Response(metered.response.body, {

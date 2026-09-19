@@ -293,4 +293,31 @@ describe("runProviderRoute", () => {
       expect(finalizeCall.input.analytics?.model).toBe("changed");
     }
   });
+
+  test("rewrapResponse: false returns execute's response untouched, with no x-request-id", async () => {
+    const { billing } = fakeBilling();
+    const request = new Request("http://gateway.test/x");
+    const executeResponse = new Response("ok");
+
+    const { metered } = await runProviderRoute(
+      { billing },
+      request,
+      principal,
+      {
+        provider: "test",
+        endpoint: "test/endpoint",
+        model: "test-model",
+        estimatedCostUsd: Usd.parse("0.01"),
+        execute: async (): Promise<MeteredProviderResponse> => ({
+          response: executeResponse,
+          requestBody: "{}",
+          completion: Promise.resolve(completeCompletion()),
+        }),
+      },
+      { rewrapResponse: false },
+    );
+
+    expect(metered.response).toBe(executeResponse);
+    expect(metered.response.headers.get("x-request-id")).toBeNull();
+  });
 });
