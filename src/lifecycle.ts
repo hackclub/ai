@@ -42,13 +42,15 @@ export const installShutdownHandlers = (
     if (stopping) return;
     stopping = true;
     log.info("shutting down", { signal });
+    let exitCode = 0;
     try {
       options.stopServer?.();
       await backend.shutdown();
     } catch (error) {
+      exitCode = 1;
       log.error("shutdown failed", { error });
     } finally {
-      process.exit(0);
+      process.exit(exitCode);
     }
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
