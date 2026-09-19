@@ -423,7 +423,7 @@ describe("billedPrediction request validation", () => {
     expect(fetchCalls).toEqual([]);
   });
 
-  test.skip("rejects webhook fields", async () => {
+  test("rejects webhook fields", async () => {
     const fetchCalls: string[] = [];
     const app = buildApp(fetchCalls);
 

@@ -447,6 +447,12 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     body: Record<string, unknown>,
   ) => {
     assertNotBlockedClient(request.headers, raw);
+    // Replicate would POST results to any URL named here, from its own
+    // network, under the shared account token; and the URL (often carrying
+    // the caller's secret) would be stored as request_body. Not supported.
+    if ("webhook" in body || "webhook_events_filter" in body) {
+      throw new HttpError(400, "Webhooks are not supported through the proxy; poll the prediction instead.");
+    }
     const { model } = reference;
     const path = reference.version ? "/v1/predictions" : `/v1/models/${model}/predictions`;
     const { model: _model, version: _version, ...rest } = body;
