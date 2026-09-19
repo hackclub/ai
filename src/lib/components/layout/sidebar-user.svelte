@@ -1,5 +1,4 @@
 <script lang="ts">
-  import AccountIcon from "remixicon-svelte/icons/user-settings-line";
   import ChevronsUpDownIcon from "remixicon-svelte/icons/expand-up-down-line";
   import LogOutIcon from "remixicon-svelte/icons/logout-box-r-line";
   import * as Avatar from "#lib/components/ui/avatar/index.ts";

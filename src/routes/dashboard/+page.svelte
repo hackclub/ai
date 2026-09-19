@@ -2,7 +2,6 @@
   import KeyIcon from "remixicon-svelte/icons/key-2-line";
   import CpuIcon from "remixicon-svelte/icons/cpu-line";
   import PulseIcon from "remixicon-svelte/icons/pulse-line";
-  import FlaskIcon from "remixicon-svelte/icons/flask-line";
   import ArrowRightIcon from "remixicon-svelte/icons/arrow-right-s-line";
   import AlertIcon from "remixicon-svelte/icons/alert-line";
   import CloseIcon from "remixicon-svelte/icons/close-line";

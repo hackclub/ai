@@ -1,7 +1,6 @@
 <script lang="ts">
   import EmptyState from "#lib/components/empty-state.svelte";
   import PageHeader from "#lib/components/page-header.svelte";
-  import StatsGrid from "#lib/components/stats-grid.svelte";
   import { Button } from "#lib/components/ui/button/index.ts";
   import { displayModelName, formatDuration, formatFullTime, formatPrice, formatRelativeTime, hashColor } from "#lib/format.ts";
   import type { ActivityPage, ActivityRow } from "#lib/server/activity.ts";

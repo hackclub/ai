@@ -88,15 +88,12 @@ describe("drainRequestEvents", () => {
 
   test("parks unmappable rows in one statement and still delivers the rest", async () => {
     const statements: Statement[] = [];
-    let inserted: unknown[] = [];
     await drainRequestEvents({
       sql: fakeSql(statements, [
         { id: "1", payload: { event_id: "11111111-1111-1111-1111-111111111111" } },
         { id: "2", payload: {} },
       ]),
-      clickhouse: clickhouse(async function (this: unknown, ...args: unknown[]) {
-        inserted = args;
-      } as never),
+      clickhouse: clickhouse(async function (this: unknown, ..._args: unknown[]) {} as never),
     });
     const park = statements.find((s) => s.text.includes("unnest("));
     expect(park?.values).toEqual([25, ["2"], ["request event payload has no event_id"]]);
