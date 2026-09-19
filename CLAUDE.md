@@ -26,6 +26,7 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Typecheck (the baseline gate) | `bun run typecheck` |
 | Svelte check | `bun run check` |
 | Unit tests | `bun test` |
+| Integration tests (Docker) | `bun run test:integration` |
 | Production build / run | `bun run build` then `bun run start` |
 | Local databases | `bun run db:up` / `db:down` / `db:logs` / `db:check` |
 | Wipe local databases | `bun run db:reset` (destructive) |
@@ -33,7 +34,10 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Seed a dev user, key, and session | `bun run dev:seed` |
 
 Verification baseline for any change: `bun run typecheck` exits 0 and
-`bun test` reports `0 fail`. Integration tests are skipped unless
+`bun test` reports `0 fail`. `bun run test:integration` provisions the
+Docker-gated suites end to end (starts the datastores, creates and migrates
+a separate `hcai_test` database, then runs `bun test` with the opt-in
+variables set). Integration tests are otherwise skipped unless
 `BILLING_TEST_DATABASE_URL` (and for ClickHouse delivery
 `ANALYTICS_TEST_DATABASE_URL` + `ANALYTICS_TEST_CLICKHOUSE_URL`) point at a
 running database. Stop `bun run dev` before running them: its in-process

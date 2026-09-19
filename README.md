@@ -53,28 +53,24 @@ request, then starts Postgres and ClickHouse with `docker compose` and runs
 the same integration tests with the variables above set.
 
 ```bash
-# one-time: a second database on the same Postgres container
-docker compose exec -T postgres psql -U hcai -d hcai -c "CREATE DATABASE hcai_test"
-DATABASE_URL=postgres://hcai:hcai@localhost:55432/hcai_test bun run db:migrate
-
-BILLING_TEST_DATABASE_URL=postgres://hcai:hcai@localhost:55432/hcai_test bun test
+bun run test:integration            # everything, including the Docker-gated suites
+bun run test:integration src/billing # a subset
 ```
 
-(Without `bun run db:migrate`, apply the SQL files by hand instead: `for f in
-migrations/postgres/*.sql; do docker compose exec -T postgres psql -U hcai -d
-hcai_test -v ON_ERROR_STOP=1 < "$f"; done`.)
+By hand, the script does: start `bun run db:up`; create a second database
+`hcai_test` on the same Postgres container
+(`docker compose exec -T postgres psql -U hcai -d hcai -c "CREATE DATABASE hcai_test"`);
+apply migrations to it (`DATABASE_URL=postgres://hcai:hcai@localhost:55432/hcai_test bun run db:migrate`);
+then run `bun test` with `BILLING_TEST_DATABASE_URL`,
+`ANALYTICS_TEST_DATABASE_URL`, and `ANALYTICS_TEST_CLICKHOUSE_URL` all set to
+that database and ClickHouse.
 
 The tests refuse to run when the test URL is the same database as
 `DATABASE_URL`.
 
 The outbox delivery test additionally inserts an outbox row, drains it to
-ClickHouse, and checks the event is searchable:
-
-```bash
-ANALYTICS_TEST_DATABASE_URL=postgres://hcai:hcai@localhost:55432/hcai_test \
-ANALYTICS_TEST_CLICKHOUSE_URL="$CLICKHOUSE_URL" \
-bun test src/analytics/request-events.integration.test.ts
-```
+ClickHouse, and checks the event is searchable
+(`bun run test:integration src/analytics/request-events.integration.test.ts`).
 
 ## Development server
 
