@@ -33,13 +33,19 @@ describe("AnalyticsQueries global cache", () => {
     expect(calls()).toBe(1);
   });
 
-  test("refreshes after the TTL and shares one in-flight query", async () => {
+  test("serves a stale value past the TTL while refreshing in the background", async () => {
     const clock = { now: 0 };
     const { client, calls } = fakeClickHouse([() => [statsRow], () => [{ ...statsRow, total_requests: "3" }]]);
     const queries = new AnalyticsQueries(client, { globalCacheTtlMs: 1_000, now: () => clock.now });
     await Promise.all([queries.globalStats(), queries.globalStats()]);
     expect(calls()).toBe(1);
     clock.now = 1_000;
+    // The first call past the TTL still returns the stale value immediately...
+    expect((await queries.globalStats()).totalRequests).toBe(2);
+    expect(calls()).toBe(2);
+    // ...and the background refresh has updated the cache for the next call.
+    await Promise.resolve();
+    await Promise.resolve();
     expect((await queries.globalStats()).totalRequests).toBe(3);
     expect(calls()).toBe(2);
   });

@@ -1,6 +1,8 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import type postgres from "postgres";
 
+import { memoAsync } from "../cache/memo-async";
+
 export type UsageStats = {
   totalRequests: number;
   totalTokens: number;
@@ -70,47 +72,29 @@ export type AnalyticsQueriesOptions = {
 };
 
 export class AnalyticsQueries {
-  private readonly ttlMs: number;
-  private readonly now: () => number;
-  private readonly maxEntries: number;
-  private readonly cache = new Map<string, { value: unknown; fetchedAt: number }>();
-  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly memo: ReturnType<typeof memoAsync<string, unknown>>;
 
   constructor(
     private readonly clickhouse: ClickHouseClient,
     options: AnalyticsQueriesOptions = {},
   ) {
-    this.ttlMs = options.globalCacheTtlMs ?? 60_000;
-    this.maxEntries = options.memoMaxEntries ?? 5_000;
-    this.now = options.now ?? Date.now;
+    this.memo = memoAsync((key) => this.load(key), {
+      ttlMs: options.globalCacheTtlMs ?? 60_000,
+      maxEntries: options.memoMaxEntries ?? 5_000,
+      now: options.now ?? Date.now,
+    });
   }
 
-  /** Serves `key` from memory within the TTL; single-flight; stale-on-error. */
-  private memo<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const cached = this.cache.get(key);
-    if (cached && this.now() - cached.fetchedAt < this.ttlMs) return Promise.resolve(cached.value as T);
-    const pending = this.inFlight.get(key);
-    if (pending) return pending as Promise<T>;
-    const refresh = load()
-      .then((value) => {
-        this.cache.set(key, { value, fetchedAt: this.now() });
-        if (this.cache.size > this.maxEntries) {
-          const oldest = this.cache.keys().next().value;
-          if (oldest !== undefined) this.cache.delete(oldest);
-        }
-        return value;
-      })
-      .catch((error) => {
-        if (cached) return cached.value as T;
-        throw error;
-      })
-      .finally(() => this.inFlight.delete(key));
-    this.inFlight.set(key, refresh);
-    return refresh;
+  private load(key: string): Promise<unknown> {
+    if (key === "globalStats") return this.loadGlobalStats();
+    if (key === "modelStats") return this.loadModelStats();
+    const accountId = key.startsWith("userStats:") ? key.slice("userStats:".length) : undefined;
+    if (accountId !== undefined) return this.loadUserStats(accountId);
+    throw new Error(`Unknown analytics memo key: ${key}`);
   }
 
   userStats(accountId: string): Promise<UsageStats> {
-    return this.memo(`userStats:${accountId}`, () => this.loadUserStats(accountId));
+    return this.memo.get(`userStats:${accountId}`) as Promise<UsageStats>;
   }
 
   private async loadUserStats(accountId: string): Promise<UsageStats> {
@@ -140,11 +124,11 @@ export class AnalyticsQueries {
   }
 
   globalStats(): Promise<UsageStats> {
-    return this.memo("globalStats", () => this.loadGlobalStats());
+    return this.memo.get("globalStats") as Promise<UsageStats>;
   }
 
   modelStats(): Promise<ModelUsageStats[]> {
-    return this.memo("modelStats", () => this.loadModelStats());
+    return this.memo.get("modelStats") as Promise<ModelUsageStats[]>;
   }
 
   private async loadGlobalStats(): Promise<UsageStats> {
