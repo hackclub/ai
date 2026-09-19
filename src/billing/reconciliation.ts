@@ -207,6 +207,19 @@ const replicateCharge = async (
 };
 
 /**
+ * Moves a row the pass could not settle to the back of the queue so a
+ * backlog of not-ready rows cannot starve newer ones. Touches only
+ * `updated_at`; billing state is untouched, which is why this UPDATE lives
+ * here rather than in the engine.
+ */
+const deferRow = (sql: Sql, requestId: string) =>
+  sql`
+    UPDATE billing_reservations
+    SET updated_at = now()
+    WHERE request_id = ${requestId}::uuid AND state = 'pending_reconciliation'
+  `;
+
+/**
  * Settles reservations the gateway could not settle at request time
  * (client cancellation, truncated stream, missing usage, a prediction that
  * outlived the settlement window). The provider's own record supplies the
@@ -257,6 +270,7 @@ export async function reconcilePendingReservations(
           log(`released ${row.request_id}: no provider record to reconcile after ${ageMs}ms`);
           result.released += 1;
         } else {
+          await deferRow(options.sql, row.request_id);
           result.skipped += 1;
         }
         continue;
@@ -271,6 +285,7 @@ export async function reconcilePendingReservations(
           );
           result.released += 1;
         } else {
+          await deferRow(options.sql, row.request_id);
           result.skipped += 1;
         }
         continue;
@@ -279,6 +294,7 @@ export async function reconcilePendingReservations(
         // The provider knows the request, so the hold is kept until the
         // record can be billed, however long that takes.
         log(`skipped ${row.request_id}: ${charge.detail}`);
+        await deferRow(options.sql, row.request_id);
         result.skipped += 1;
         continue;
       }
