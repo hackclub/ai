@@ -2,9 +2,9 @@
   import ArrowDownIcon from "remixicon-svelte/icons/arrow-down-s-line";
   import { Button } from "#lib/components/ui/button/index.ts";
   import ModelCard from "#lib/components/model-card.svelte";
-  import type { CatalogModel } from "#lib/format.ts";
+  import type { ModelCardData } from "#lib/format.ts";
 
-  let { title, models }: { title: string; models: CatalogModel[] } = $props();
+  let { title, models }: { title: string; models: ModelCardData[] } = $props();
 
   const PREVIEW = 6;
   let expanded = $state(false);

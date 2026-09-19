@@ -94,6 +94,8 @@ export type CatalogModel = {
   };
 };
 
+export type ModelCardData = Pick<CatalogModel, "id" | "name"> & { description: string };
+
 export const modelTypeOf = (model: CatalogModel): ModelType => {
   const modality = model.architecture?.modality ?? "";
   const outputs = model.architecture?.output_modalities ?? [];
