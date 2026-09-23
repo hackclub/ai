@@ -43,7 +43,6 @@ Useful commands:
 bun run db:logs
 bun run db:down
 bun run db:reset # removes local database volumes
-bun run db:check
 ```
 
 `db:reset` is destructive and is intended only for local development.

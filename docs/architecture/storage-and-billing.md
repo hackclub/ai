@@ -28,6 +28,9 @@ integration suite; production sizing remains to be validated.
   commit of every notifying transaction through one lock held across the WAL
   flush, which capped finalizations at roughly 200 per second when each one
   enqueued a Graphile Worker job.
+- The event's shape is owned by `src/analytics/request-event.ts`: the
+  gateway or the reconciler supplies the observation, the engine the
+  settlement fields (identity and endpoint come from the reservation row).
 - Authorization and provider credentials must be removed from headers before
   an event enters the job payload.
 
@@ -127,16 +130,23 @@ upstream call takes through billing:
    any provider traffic.
 2. Dispatch through the provider adapter. A transport failure releases the
    reservation and rethrows.
-3. Stream the provider response to the caller byte-for-byte. The adapter
-   observes the same bytes to derive usage and captures the complete body.
-4. When the caller finishes reading or cancels, settle exactly once:
-   - Provider-reported usage: finalize with the actual cost and emit the
-     analytics event, including redacted headers and both bodies.
-   - Provider HTTP error (non-2xx): finalize at zero cost so the failed request
-     is still recorded, with `outcome = provider_error`.
-   - Successful status without authoritative usage (client cancellation,
-     truncated stream, missing usage block): mark the reservation pending
-     reconciliation. The hold stays in place until reconciled.
+3. Stream the provider response to the caller byte-for-byte through
+   `src/providers/metered-body.ts`: the adapter's usage reader observes a
+   copy of the same bytes, and the body is captured up to a cap.
+4. When the caller finishes reading or cancels, settle exactly once. The
+   adapter's completion alone decides how (`ProviderCompletion`:
+   `complete`, `provider_error`, `uncertain`); settlement never re-reads the
+   HTTP status.
+   - `complete`, provider-reported usage (whatever the status): finalize
+     with the actual cost and emit the analytics event, including redacted
+     headers and both bodies.
+   - `provider_error`, a non-2xx reply without usage: finalize at zero cost
+     so the failed request is still recorded, with `outcome = provider_error`.
+   - `uncertain`: mark the reservation pending reconciliation; the hold stays
+     until reconciled. This covers a successful status without authoritative
+     usage (client cancellation, truncated stream, missing usage block), an
+     OpenRouter 504 without usage (the generation may still be running and
+     billing), and a usage reader that threw (`completion_rejected`).
 
 Credential headers (`authorization`, `proxy-authorization`, `cookie`,
 `set-cookie`, `x-api-key`) are dropped before headers enter the job payload.
@@ -170,7 +180,12 @@ runs every five minutes (`src/billing/reconciliation.ts`):
    |---|---|---|
    | `openrouter` | generation metadata endpoint by generation id | finalized with recorded cost, `usage_source = reconciled`, analytics `outcome = reconciled` (no bodies) |
    | `replicate` | prediction by id, billed from terminal metrics and live model pricing | finalized; a running prediction or one without billable metrics is `not_ready` and stays pending (no 24 h release) |
-   | anything else | none | released after 24 hours without a ledger entry |
+   | `replicate-files` | none | uploads finalize at zero at request time; nothing to reconcile |
+   | `exa`, `mistral`, `typesafe` (declared without a lookup), unknown keys | none | released after 24 hours without a ledger entry |
+
+   Each provider's lookup lives in its module under `src/providers/`
+   (`ProviderModule`, registered in `src/server.ts`); reconciliation only
+   asks the registry and imports no provider code.
 
 3. A pending reservation with no provider record after 24 hours is released;
    younger ones are retried on the next run.

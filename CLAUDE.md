@@ -27,7 +27,7 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Svelte check | `bun run check` |
 | Tests (needs `db:up`) | `bun test` |
 | Production build / run | `bun run build` then `bun run start` |
-| Local databases | `bun run db:up` / `db:down` / `db:logs` / `db:check` |
+| Local databases | `bun run db:up` / `db:down` / `db:logs` |
 | Wipe local databases | `bun run db:reset` (destructive) |
 | Apply migrations | `bun run db:migrate` (`--status` lists pending) |
 | Seed a dev user, key, and session | `bun run dev:seed` |
@@ -55,7 +55,10 @@ running (`src/test/database.ts`, `docs/adr/0001`).
   only writer of `billing_*` tables; all money arithmetic is in the pure
   `plan.ts`, the state machine in `lifecycle.ts`. `money.ts` is the money
   type. `reconciliation.ts` settles uncertain reservations on a cron.
-- `src/providers/` — upstream adapters (OpenRouter, Replicate, JSON providers).
+- `src/providers/` — upstream adapters. `metered-body.ts` meters every
+  response body; each provider has a `provider.ts` module (cost extraction
+  and its reconciliation lookup, or `null`), registered in `src/server.ts`.
+  A new provider is a new module there, not a branch in `billing/`.
 - `src/analytics/` — outbox → ClickHouse drainer and dashboard queries.
 - `src/auth/` — API keys, sessions, Hack Club OAuth.
 - `src/routes/` + `src/lib/` — SvelteKit pages and shared UI/server code.

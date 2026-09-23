@@ -9,7 +9,6 @@
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres clickhouse",
     "db:reset": "docker compose down --volumes",
-    "db:check": "sh scripts/check-datastores.sh",
     "db:migrate": "bun scripts/migrate.ts",
     "build": "bunx --bun vite build",
     "start": "bun run db:migrate && bun ./build",
