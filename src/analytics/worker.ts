@@ -12,11 +12,10 @@ import postgres from "postgres";
 import type { BillingEngine } from "../billing/engine";
 import {
   expireStaleReservations,
+  type ProviderLookups,
   reconcilePendingReservations,
-  type ReplicateReconcileConfig,
 } from "../billing/reconciliation";
 import { log } from "../log";
-import type { OpenRouterConfig } from "../providers/openrouter/generation";
 import {
   type RequestEventDrainer,
   startRequestEventDrainer,
@@ -29,8 +28,7 @@ export const OUTBOX_RETENTION_TASK = "analytics.strip_parked_bodies";
 export type ReconciliationDependencies = {
   sql: postgres.Sql;
   billing: BillingEngine;
-  openRouter: OpenRouterConfig;
-  replicate: ReplicateReconcileConfig;
+  providers: ProviderLookups;
 };
 
 export type AnalyticsWorkerOptions = {
@@ -68,8 +66,7 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
       const reconciled = await reconcilePendingReservations({
         sql: deps.sql,
         billing: deps.billing,
-        openRouter: deps.openRouter,
-        replicate: deps.replicate,
+        providers: deps.providers,
         log,
       });
       helpers.logger.info(

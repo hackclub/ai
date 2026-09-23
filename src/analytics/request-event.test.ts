@@ -7,6 +7,8 @@ import { Usd } from "../billing/money";
 import { reconcilePendingReservations } from "../billing/reconciliation";
 import { exaRoutes } from "../gateway/routes/exa";
 import { createTestAccount, fakeFetch, post, testBilling } from "../gateway/routes/test-harness";
+import { openRouterProvider } from "../providers/openrouter/provider";
+import { providerRegistry } from "../providers/provider";
 import { testClickHouse, testDatabase } from "../test/database";
 import { toClickHouseEvent } from "./request-event";
 import { drainRequestEvents } from "./request-events";
@@ -139,20 +141,22 @@ describe("the request event from gateway to ClickHouse", () => {
     const result = await reconcilePendingReservations({
       sql,
       billing: engine,
-      openRouter: {
-        apiKey: "key",
-        baseUrl: "https://upstream.test/api/",
-        fetch: (async () =>
-          Response.json({
-            data: {
-              id: generationId,
-              model: "test/model",
-              total_cost: 0.002,
-              native_tokens_prompt: 5,
-              native_tokens_completion: 7,
-            },
-          })) as unknown as typeof fetch,
-      },
+      providers: providerRegistry([
+        openRouterProvider({
+          apiKey: "key",
+          baseUrl: "https://upstream.test/api/",
+          fetch: (async () =>
+            Response.json({
+              data: {
+                id: generationId,
+                model: "test/model",
+                total_cost: 0.002,
+                native_tokens_prompt: 5,
+                native_tokens_completion: 7,
+              },
+            })) as unknown as typeof fetch,
+        }),
+      ]),
     });
     expect(result.finalized).toBe(1);
 

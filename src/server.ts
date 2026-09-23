@@ -26,8 +26,11 @@ import { log } from "./log";
 import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
+import { openRouterProvider } from "./providers/openrouter/provider";
+import { providerRegistry } from "./providers/provider";
 import { createReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
+import { replicateFilesProvider, replicateProvider } from "./providers/replicate/provider";
 
 const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
 
@@ -83,6 +86,12 @@ export const createBackend = (env: Env): Backend => {
   const metered = { sql, billing, settlements, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
   const replicatePricing = createReplicatePricingSource({});
+  // Every provider key a reservation can carry; reconciliation asks it for lookups.
+  const providers = providerRegistry([
+    openRouterProvider(openRouter),
+    replicateProvider({ apiKey: env.replicateApiKey, pricing: replicatePricing }),
+    replicateFilesProvider,
+  ]);
   const replicateCatalog = createReplicateCatalog({
     apiKey: env.replicateApiKey,
     pricing: replicatePricing,
@@ -180,8 +189,7 @@ export const createBackend = (env: Env): Backend => {
       reconciliation: {
         sql,
         billing,
-        openRouter,
-        replicate: { apiKey: env.replicateApiKey, pricing: replicatePricing },
+        providers,
       },
       log: (message) => log.info({ message }, "billing.reconcile"),
     });

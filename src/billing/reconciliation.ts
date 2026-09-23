@@ -1,30 +1,16 @@
 import type postgres from "postgres";
 
 import { reconciledObservation } from "../analytics/request-event";
-import {
-  fetchReplicatePrediction,
-  isTerminal,
-  type ReplicateConfig,
-} from "../providers/replicate/predictions";
-import type { OpenRouterConfig } from "../providers/openrouter/generation";
-import { openRouterProvider } from "../providers/openrouter/provider";
-import { predictionCharge } from "../providers/replicate/billing";
-import type { ReplicatePricingSource } from "../providers/replicate/pricing";
 import type { BillingEngine } from "./engine";
-import { Usd } from "./money";
+import type { Usd } from "./money";
 
 type Sql = postgres.Sql;
-
-export type ReplicateReconcileConfig = ReplicateConfig & {
-  pricing: ReplicatePricingSource;
-};
 
 export type ReconcileOptions = {
   sql: Sql;
   billing: Pick<BillingEngine, "finalize" | "release">;
-  openRouter: OpenRouterConfig;
-  /** Enables reconciling Replicate predictions; without it they are skipped until released. */
-  replicate?: ReplicateReconcileConfig;
+  /** The lookup for each provider key; a key without one is released after `maxAgeMs`. */
+  providers: ProviderLookups;
   /** Age after which a reservation without a provider record is released. */
   maxAgeMs?: number;
   limit?: number;
@@ -61,37 +47,6 @@ export type ChargeLookup = (providerRequestId: string) => Promise<ProviderCharge
 
 /** What reconciliation needs from the providers: a lookup per provider key, or none. */
 export type ProviderLookups = { lookupFor(provider: string): ChargeLookup | null };
-
-/**
- * A Replicate prediction is billed from its terminal metrics and the live
- * pricing of the model that ran it. One still running, or a succeeded one
- * whose metrics lack the priced value, is left pending for the next pass.
- */
-const replicateCharge = async (
-  predictionId: string,
-  config: ReplicateReconcileConfig,
-): Promise<ProviderCharge> => {
-  const lookup = await fetchReplicatePrediction(predictionId, config);
-  if (lookup.state === "not_found") return { state: "not_found" };
-  const { prediction } = lookup;
-  if (!isTerminal(prediction)) {
-    return { state: "not_ready", detail: `prediction is ${prediction.status ?? "unknown"}` };
-  }
-  if (!prediction.model) {
-    return { state: "not_ready", detail: "prediction reports no model" };
-  }
-  const pricing = await config.pricing.get(prediction.model);
-  if (!pricing) return { state: "not_ready", detail: `no pricing for ${prediction.model}` };
-  const charge = predictionCharge(prediction, pricing);
-  if (charge.state === "not_ready") return charge;
-  return {
-    state: "charged",
-    costUsd: charge.costUsd,
-    model: prediction.model,
-    inputTokens: 0,
-    outputTokens: 0,
-  };
-};
 
 /**
  * Moves a row the pass could not settle to the back of the queue so a
@@ -136,16 +91,10 @@ export async function reconcilePendingReservations(
     LIMIT ${options.limit ?? 100}
   `;
 
-  const openRouter = openRouterProvider(options.openRouter).reconcile!;
   const lookupCharge = (row: PendingRow): Promise<ProviderCharge> | null => {
     if (!row.provider_request_id) return null;
-    if (row.provider === "openrouter") {
-      return openRouter(row.provider_request_id);
-    }
-    if (row.provider === "replicate" && options.replicate) {
-      return replicateCharge(row.provider_request_id, options.replicate);
-    }
-    return null;
+    const lookup = options.providers.lookupFor(row.provider);
+    return lookup ? lookup(row.provider_request_id) : null;
   };
 
   for (const row of rows) {

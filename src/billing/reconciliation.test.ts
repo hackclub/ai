@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { billingRecords, createTestAccount, onlyBillingRecord } from "../gateway/routes/test-harness";
+import type { OpenRouterConfig } from "../providers/openrouter/generation";
+import { openRouterProvider } from "../providers/openrouter/provider";
+import { type ProviderModule, providerRegistry } from "../providers/provider";
+import {
+  REPLICATE_FILES,
+  type ReplicateProviderConfig,
+  replicateFilesProvider,
+  replicateProvider,
+} from "../providers/replicate/provider";
 import { testDatabase } from "../test/database";
 import { BillingEngine } from "./engine";
 import { Usd } from "./money";
@@ -33,7 +42,7 @@ const openRouterUnused = openRouter(() => {
   throw new Error("OpenRouter must not be consulted");
 });
 
-const replicate = (respond: (url: string) => Response) => ({
+const replicate = (respond: (url: string) => Response): ReplicateProviderConfig => ({
   apiKey: "rkey",
   pricing: {
     get: async () => ({
@@ -47,6 +56,10 @@ const replicate = (respond: (url: string) => Response) => ({
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer rkey");
     return respond(String(input));
   }) as typeof fetch,
+});
+
+const replicateUnused = replicate(() => {
+  throw new Error("Replicate must not be consulted");
 });
 
 /** Provider request ids are unique per provider in the database. */
@@ -115,8 +128,23 @@ const stateOf = async (requestId: string) => {
   return row;
 };
 
-const reconcile = (options: Partial<Omit<ReconcileOptions, "sql" | "billing">> = {}) =>
-  reconcilePendingReservations({ sql, billing: engine, openRouter: openRouterUnused, ...options });
+/**
+ * Reconciles through a registry of the real provider modules, each with a
+ * faked upstream. A provider whose upstream a test does not name throws if
+ * consulted; `replicate: null` leaves Replicate unregistered.
+ */
+const reconcile = ({
+  openRouter = openRouterUnused,
+  replicate = replicateUnused,
+  ...options
+}: Partial<Omit<ReconcileOptions, "sql" | "billing" | "providers">> & {
+  openRouter?: OpenRouterConfig;
+  replicate?: ReplicateProviderConfig | null;
+} = {}) => {
+  const modules: ProviderModule[] = [openRouterProvider(openRouter), replicateFilesProvider];
+  if (replicate) modules.push(replicateProvider(replicate));
+  return reconcilePendingReservations({ sql, billing: engine, providers: providerRegistry(modules), ...options });
+};
 
 describe("reconcilePendingReservations with OpenRouter", () => {
   test("finalizes with the provider's cost and a reconciled analytics event", async () => {
@@ -277,12 +305,37 @@ describe("reconcilePendingReservations with Replicate", () => {
     expect((await stateOf(gone))?.state).toBe("released");
   });
 
-  test("skips rows when Replicate access is not configured", async () => {
-    const accountId = await newAccount();
-    const young = await pending(accountId, uniqueId("pred"), { provider: "replicate" });
+});
 
-    expect(await reconcile()).toEqual({ finalized: 0, released: 0, skipped: 1, failed: 0 });
-    expect((await stateOf(young))?.state).toBe("pending_reconciliation");
+describe("reconcilePendingReservations without a lookup", () => {
+  test("a provider without a registered module is deferred, then released after the max age", async () => {
+    const accountId = await newAccount();
+    const young = await pending(accountId, uniqueId("pred"), { provider: "replicate", age: "5 minutes" });
+    const old = await pending(accountId, uniqueId("pred"), { provider: "replicate", age: "25 hours" });
+
+    expect(await reconcile({ replicate: null })).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
+    expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
+    expect((await stateOf(old))?.state).toBe("released");
+  });
+
+  test("an unknown provider key behaves like one without a lookup", async () => {
+    const accountId = await newAccount();
+    const young = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "5 minutes" });
+    const old = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "25 hours" });
+
+    expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
+    expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
+    expect((await stateOf(old))?.state).toBe("released");
+  });
+
+  test("an old replicate-files row is released without any lookup", async () => {
+    const accountId = await newAccount();
+    // Every upstream throws if consulted, so a lookup would count as failed.
+    const old = await pending(accountId, uniqueId("file"), { provider: REPLICATE_FILES, age: "25 hours" });
+
+    expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
+    expect((await stateOf(old))?.state).toBe("released");
+    expect((await billingRecords(sql, accountId)).filter((record) => record.event)).toEqual([]);
   });
 });
 
