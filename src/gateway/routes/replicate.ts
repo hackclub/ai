@@ -23,6 +23,7 @@ import {
   recordReplicateResource,
   type ReplicateResourceKind,
 } from "../../providers/replicate/resources";
+import { meterJsonResponse } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
 import type {
   MeteredProviderResponse,
@@ -124,6 +125,7 @@ export const resolveModelReference = (reference: string): ModelReference => {
 
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
 const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
+const textDecoder = new TextDecoder();
 
 export type PredictionSettlement = {
   pricing: ReplicatePricing;
@@ -148,7 +150,7 @@ const awaitTerminal = async (
   const deadline = Date.now() + settlement.timeoutMs;
   let consecutiveFailures = 0;
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
-    await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)] ?? 5_000);
+    await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)]);
     let latest: PredictionSnapshot | null;
     try {
       latest = await settlement.lookup(initial.id);
@@ -178,27 +180,26 @@ export const meterPrediction = (
   requestBody: string,
   settlement: PredictionSettlement,
 ): MeteredProviderResponse => {
-  let settle: (completion: ProviderCompletion) => void = () => {};
-  const completion = new Promise<ProviderCompletion>((resolve) => {
-    settle = resolve;
-  });
-  let settled = false;
-  const settleOnce = (result: ProviderCompletion) => {
-    if (settled) return;
-    settled = true;
-    settle(result);
-  };
+  const { promise: completion, resolve: settle } = Promise.withResolvers<ProviderCompletion>();
   const chunks: Uint8Array[] = [];
   const reader = upstream.body?.getReader();
-  const captured = () => new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
+  // Only read once the stream has ended, errored or been cancelled, so the
+  // decoded text is cached and the chunks released rather than both being
+  // held for the settlement window.
+  let decoded: string | null = null;
+  const captured = () => {
+    decoded ??= textDecoder.decode(Buffer.concat(chunks));
+    chunks.length = 0;
+    return decoded;
+  };
   // The prediction id is kept on every uncertain outcome so reconciliation
   // can look the prediction up later instead of releasing the hold unbilled.
   const uncertain = (
     reason: string,
-    bodyCapture: "complete" | "partial" = "complete",
     predictionId: string | null = null,
+    bodyCapture: "complete" | "partial" = "complete",
   ) =>
-    settleOnce({
+    settle({
       state: "uncertain",
       providerRequestId: predictionId,
       reason,
@@ -221,36 +222,28 @@ export const meterPrediction = (
     try {
       final = await awaitTerminal(initial, settlement);
     } catch (error) {
-      uncertain(
-        error instanceof Error ? error.message : "Prediction lookup failed",
-        "complete",
-        predictionId,
-      );
+      uncertain(error instanceof Error ? error.message : "Prediction lookup failed", predictionId);
       return;
     }
     if (!final) {
       uncertain(
         `Prediction ${predictionId ?? "?"} did not finish within the settlement window`,
-        "complete",
         predictionId,
       );
       return;
     }
+    const finalId = final.id ?? predictionId;
     const metrics = final.metrics ?? {};
     // A successful run without the metric its price is keyed on cannot be
     // billed from the response. Holding it for reconciliation beats closing
     // it at $0 as if Replicate had reported nothing to charge.
     if (final.status === "succeeded" && !hasBillableMetrics(settlement.pricing, metrics)) {
-      uncertain(
-        `Prediction ${predictionId ?? "?"} succeeded without billable metrics`,
-        "complete",
-        final.id ?? predictionId,
-      );
+      uncertain(`Prediction ${predictionId ?? "?"} succeeded without billable metrics`, finalId);
       return;
     }
-    settleOnce({
+    settle({
       state: "complete",
-      providerRequestId: final.id ?? predictionId,
+      providerRequestId: finalId,
       usage: {
         inputTokens: 0,
         outputTokens: 0,
@@ -277,7 +270,7 @@ export const meterPrediction = (
         controller.close();
         void finish();
       } catch (error) {
-        uncertain(error instanceof Error ? error.message : "Response stream failed", "partial");
+        uncertain(error instanceof Error ? error.message : "Response stream failed", null, "partial");
         controller.error(error);
       }
     },
@@ -286,16 +279,16 @@ export const meterPrediction = (
       // rejected cancel must not leave `completion` unsettled, or the
       // reservation would only ever close by expiry.
       await reader.cancel(reason).catch(() => {});
-      const body = captured();
+      const text = captured();
       // Replicate creates the prediction before responding, so a cancelled
       // read still names a run that may be billed; keep its id for
       // reconciliation, exactly as `finish()` does.
-      const predictionId = upstream.ok ? (parsePrediction(body)?.id ?? null) : null;
-      settleOnce({
+      const predictionId = upstream.ok ? (parsePrediction(text)?.id ?? null) : null;
+      settle({
         state: "cancelled",
         providerRequestId: predictionId,
         reason: typeof reason === "string" ? reason : "Client cancelled response",
-        responseBody: body,
+        responseBody: text,
         bodyCapture: "partial",
       });
     },
@@ -312,7 +305,7 @@ export const meterPrediction = (
 };
 
 const LINK_KEYS = new Set(["get", "cancel", "next", "previous"]);
-const OPAQUE_KEYS = new Set(["input", "output", "logs"]);
+const OPAQUE_KEYS = new Set(["input", "output", "logs", "openapi_schema"]);
 
 /**
  * Replicate responses link back to api.replicate.com (`urls.get`,
@@ -359,12 +352,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const maxFilesPerDay = deps.maxFilesPerDay ?? 200;
 
   const resolvePricing = async (model: string) => {
-    let pricing: ReplicatePricing | null;
-    try {
-      pricing = await pricingSource.get(model);
-    } catch {
-      pricing = null;
-    }
+    const pricing = await pricingSource.get(model).catch(() => null);
     if (!pricing) {
       throw new HttpError(503, `Pricing for ${model} is unavailable right now. Please retry shortly.`);
     }
@@ -402,34 +390,26 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
    */
   const rewrittenJson = async (upstream: Response) => {
     const text = await upstream.text();
-    const headers = forwardableHeaders(upstream.headers);
     let parsed: unknown = null;
+    let body = text;
     try {
       parsed = JSON.parse(text) as unknown;
-    } catch {
-      return { parsed, response: new Response(text, { status: upstream.status, headers }) };
-    }
-    const body = JSON.stringify(rewriteUpstreamLinks(parsed, upstreamLinkPrefix, publicLinkPrefix));
-    return { parsed, response: new Response(body, { status: upstream.status, headers }) };
+      body = JSON.stringify(rewriteUpstreamLinks(parsed, upstreamLinkPrefix, publicLinkPrefix));
+    } catch {}
+    return {
+      parsed,
+      response: new Response(body, { status: upstream.status, headers: forwardableHeaders(upstream.headers) }),
+    };
   };
 
-  const forward = async (request: Request, path: string, init: RequestInit = {}) =>
-    passthrough(
-      await fetchImplementation(`${baseUrl}${path}`, {
-        headers: upstreamHeaders(request),
-        ...init,
-      }),
-    );
+  const callUpstream = (request: Request, path: string, init: RequestInit = {}) =>
+    fetchImplementation(`${baseUrl}${path}`, { headers: upstreamHeaders(request), ...init });
 
-  const forwardJson = async (request: Request, path: string, init: RequestInit = {}) =>
-    (
-      await rewrittenJson(
-        await fetchImplementation(`${baseUrl}${path}`, {
-          headers: upstreamHeaders(request),
-          ...init,
-        }),
-      )
-    ).response;
+  const forward = async (request: Request, path: string, init?: RequestInit) =>
+    passthrough(await callUpstream(request, path, init));
+
+  const forwardJson = async (request: Request, path: string, init?: RequestInit) =>
+    (await rewrittenJson(await callUpstream(request, path, init))).response;
 
   /** Resources are only visible to the user who created them through the proxy. */
   const assertOwner = async (kind: ReplicateResourceKind, id: string, userId: string) => {
@@ -438,10 +418,48 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     }
   };
 
+  const assertOwnedPrediction = async (id: string, userId: string) => {
+    if (!PREDICTION_ID.test(id)) throw new HttpError(400, "Invalid prediction ID");
+    await assertOwner("prediction", id, userId);
+  };
+
   const idOf = (value: unknown) =>
     value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
       ? (value as { id: string }).id
       : null;
+
+  /**
+   * Rewrites a created resource's response and records who owns it before
+   * the client can poll. The resource exists upstream (and any hold is
+   * placed), so a lost ownership row must not turn that into a 500; the user
+   * keeps the id from the body and the row can be repaired from the report.
+   */
+  const respondRecordingOwner = async (
+    { metered, requestId }: Awaited<ReturnType<typeof runProviderRoute>>,
+    principal: { userId: string; apiKeyId: string },
+    kind: ReplicateResourceKind,
+    model?: string,
+  ) => {
+    const { parsed, response } = await rewrittenJson(metered.response);
+    const id = metered.response.ok ? idOf(parsed) : null;
+    if (id) {
+      try {
+        await recordReplicateResource(deps.sql, {
+          kind,
+          id,
+          userId: principal.userId,
+          apiKeyId: principal.apiKeyId,
+          model,
+        });
+      } catch (error) {
+        deps.onSettlementError?.(
+          new Error(`Failed to record ownership of ${kind} ${id}`, { cause: error }),
+          requestId,
+        );
+      }
+    }
+    return response;
+  };
 
   const notListable = (what: string) => () => {
     throw new HttpError(
@@ -479,9 +497,9 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
         ? (payload.input as Record<string, unknown>)
         : {};
     const estimate = estimatePredictionCost(pricing, input);
-    const costUsd = estimate.toAtoms() < minimumHold.toAtoms() ? minimumHold : estimate;
+    const costUsd = estimate.lessThan(minimumHold) ? minimumHold : estimate;
     const requestBody = JSON.stringify(payload);
-    const { metered, requestId } = await runProviderRoute(deps, request, principal, {
+    const route = await runProviderRoute(deps, request, principal, {
       provider: "replicate",
       endpoint: "replicate/predictions",
       model,
@@ -493,39 +511,14 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       // that still executes (and still delivers to any webhook).
       execute: async () =>
         meterPrediction(
-          await fetchImplementation(`${baseUrl}${path}`, {
-            method: "POST",
-            headers: upstreamHeaders(request),
-            body: requestBody,
-          }),
+          await callUpstream(request, path, { method: "POST", body: requestBody }),
           requestBody,
           { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
         ),
     } satisfies ProviderRouteInput);
     // A prediction response is a single JSON document, so buffering it costs
     // nothing and lets ownership be recorded before the client can poll.
-    const { parsed, response } = await rewrittenJson(metered.response);
-    const id = metered.response.ok ? idOf(parsed) : null;
-    if (id) {
-      try {
-        await recordReplicateResource(deps.sql, {
-          kind: "prediction",
-          id,
-          userId: principal.userId,
-          apiKeyId: principal.apiKeyId,
-          model,
-        });
-      } catch (error) {
-        // The prediction exists upstream and its hold is placed; a lost
-        // ownership row must not turn that into a 500. The user keeps the id
-        // from the body; the row can be repaired by hand from this report.
-        deps.onSettlementError?.(
-          new Error(`Failed to record ownership of prediction ${id}`, { cause: error }),
-          requestId,
-        );
-      }
-    }
-    return response;
+    return respondRecordingOwner(route, principal, "prediction", model);
   };
 
   return new Elysia({ prefix: "/proxy/v1/replicate" })
@@ -534,88 +527,54 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     }))
     // Files
     .post("/files", async ({ request, principal }) => {
-      const form = await request.formData().catch(() => null);
-      const content = form?.get("content");
-      if (!(content instanceof File)) throw new HttpError(400, "File content is required");
-      if (content.size > maxUploadBytes) {
-        throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
-      }
+      // Checked before the body is parsed, so a user over quota never makes
+      // the gateway buffer a full-size upload.
       const recent = await countReplicateResources(deps.sql, principal.userId, "file", 24 * 60 * 60 * 1_000);
       if (recent >= maxFilesPerDay) {
         throw new HttpError(429, `Upload limit reached: ${maxFilesPerDay} files per 24 hours.`);
       }
+      const form = await request.formData().catch(() => new FormData());
+      const content = form.get("content");
+      if (!(content instanceof File)) throw new HttpError(400, "File content is required");
+      if (content.size > maxUploadBytes) {
+        throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
+      }
       const upload = new FormData();
       upload.append("content", content);
       // The official SDK sends metadata as a JSON blob part; curl users send a string.
-      const metadata = form?.get("metadata");
+      const metadata = form.get("metadata");
       if (typeof metadata === "string" || metadata instanceof Blob) {
         upload.append("metadata", metadata);
       }
-      for (const field of ["type", "filename"]) {
-        const value = form?.get(field);
-        if (typeof value === "string") upload.append(field, value);
-      }
-      const filename = form?.get("filename");
-      const { metered, requestId } = await runProviderRoute(deps, request, principal, {
+      const type = form.get("type");
+      if (typeof type === "string") upload.append("type", type);
+      const filename = form.get("filename");
+      if (typeof filename === "string") upload.append("filename", filename);
+      const route = await runProviderRoute(deps, request, principal, {
         provider: "replicate",
         endpoint: "replicate/files",
         model: "replicate/files",
         estimatedCostUsd: Usd.zero,
         attributes: { bytes: String(content.size) },
-        execute: async () => {
-          const upstream = await fetchImplementation(`${baseUrl}/v1/files`, {
-            method: "POST",
-            headers: { authorization: `Bearer ${deps.replicateApiKey}` },
-            body: upload,
-          });
-          const text = await upstream.text();
-          const completion: ProviderCompletion = upstream.ok
-            ? {
-                state: "complete",
-                providerRequestId: null,
-                usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: Usd.zero },
-                responseBody: text,
-                bodyCapture: "complete",
-              }
-            : {
-                state: "uncertain",
-                providerRequestId: null,
-                reason: `Replicate returned HTTP ${upstream.status}`,
-                responseBody: text,
-                bodyCapture: "complete",
-              };
-          return {
-            response: new Response(text, {
-              status: upstream.status,
-              statusText: upstream.statusText,
-              headers: upstream.headers,
+        execute: async () =>
+          meterJsonResponse(
+            await fetchImplementation(`${baseUrl}/v1/files`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${deps.replicateApiKey}` },
+              body: upload,
             }),
-            // Never the file bytes: analytics would store them.
-            requestBody: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
-            completion: Promise.resolve(completion),
-          };
-        },
+            {
+              // Never the file bytes: analytics would store them.
+              init: {
+                body: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
+              },
+              // Uploads are free. No provider request id: reconciliation
+              // would read it as a prediction id.
+              extractCost: () => Usd.zero,
+            },
+          ),
       } satisfies ProviderRouteInput);
-      const { parsed, response } = await rewrittenJson(metered.response);
-      const id = metered.response.ok ? idOf(parsed) : null;
-      if (id) {
-        try {
-          await recordReplicateResource(deps.sql, {
-            kind: "file",
-            id,
-            userId: principal.userId,
-            apiKeyId: principal.apiKeyId,
-          });
-        } catch (error) {
-          // The file exists upstream; a lost ownership row must not turn
-          // that into a 500. The user keeps the id from the body.
-          deps.onSettlementError?.(
-            new Error(`Failed to record ownership of file ${id}`, { cause: error }),
-            requestId,
-          );
-        }
-      }
-      return response;
+      return respondRecordingOwner(route, principal, "file");
     })
     .get("/files", notListable("files"))
     .get("/files/:id", async ({ request, params, principal }) => {
@@ -637,21 +596,18 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       const pathVersion = versionFromModelName(params.model);
       const { raw, body } = await readJson(request);
       const bodyVersion = typeof body.version === "string" ? body.version : undefined;
-      if (pathVersion) {
-        const reference = resolveModelReference(`${fullModelId}:${pathVersion}`);
-        if (bodyVersion && bodyVersion !== pathVersion && bodyVersion !== reference.version) {
-          throw new HttpError(400, "Conflicting version specified in path and request body.");
-        }
-        return billedPrediction(request, principal, reference, raw, body);
+      const reference = pathVersion
+        ? resolveModelReference(`${fullModelId}:${pathVersion}`)
+        : bodyVersion
+          ? resolveModelReference(bodyVersion)
+          : { model: fullModelId, version: null };
+      if (pathVersion && bodyVersion && bodyVersion !== pathVersion && bodyVersion !== reference.version) {
+        throw new HttpError(400, "Conflicting version specified in path and request body.");
       }
-      if (bodyVersion) {
-        const reference = resolveModelReference(bodyVersion);
-        if (reference.model !== fullModelId) {
-          throw new HttpError(400, "Conflicting model specified in path and request body.");
-        }
-        return billedPrediction(request, principal, reference, raw, body);
+      if (reference.model !== fullModelId) {
+        throw new HttpError(400, "Conflicting model specified in path and request body.");
       }
-      return billedPrediction(request, principal, { model: fullModelId, version: null }, raw, body);
+      return billedPrediction(request, principal, reference, raw, body);
     })
     // Upstream paths are built from the allowlisted id, never from the raw
     // params: Elysia decodes `%2F`, so a decoded `..` segment would otherwise
@@ -681,7 +637,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
         );
       }
       // `version` is what Replicate runs, so access is decided from it alone.
-      const reference = version ? resolveModelReference(version) : resolveModelReference(model ?? "");
+      const reference = resolveModelReference(version || model || "");
       if (version && model && parseOwnerName(model) !== reference.model) {
         throw new HttpError(400, "Conflicting model and version specified in request body.");
       }
@@ -689,13 +645,11 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     })
     .get("/predictions", notListable("predictions"))
     .get("/predictions/:id", async ({ request, params, principal }) => {
-      if (!PREDICTION_ID.test(params.id)) throw new HttpError(400, "Invalid prediction ID");
-      await assertOwner("prediction", params.id, principal.userId);
+      await assertOwnedPrediction(params.id, principal.userId);
       return forwardJson(request, `/v1/predictions/${params.id}`);
     })
     .post("/predictions/:id/cancel", async ({ request, params, principal }) => {
-      if (!PREDICTION_ID.test(params.id)) throw new HttpError(400, "Invalid prediction ID");
-      await assertOwner("prediction", params.id, principal.userId);
+      await assertOwnedPrediction(params.id, principal.userId);
       return forwardJson(request, `/v1/predictions/${params.id}/cancel`, { method: "POST" });
     });
 };

@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
+import type { FinalizeInput, Reservation, ReserveInput } from "../../billing/engine";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
 import { blockedPrompts } from "../../config/blocked-prompts";
+import type { Fetch } from "../../providers/openrouter/adapter";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
+import type { ProviderCompletion } from "../../providers/types";
 import { BLOCKED_MESSAGE } from "../abuse";
+import { type BillingLifecycle, SettlementTracker } from "../metered-request";
 import {
   meterPrediction,
+  type PredictionSettlement,
   replicateRoutes,
   resolveModelReference,
   rewriteUpstreamLinks,
@@ -19,6 +24,21 @@ import {
 
 const knownVersion = Object.keys(allowedReplicateModelVersions)[0] ?? "";
 const knownModel = allowedReplicateModelVersions[knownVersion] ?? "";
+
+const pricing: ReplicatePricing = {
+  kind: "hardware",
+  hardware: "T4",
+  perSecondUsd: Usd.parse("0.001"),
+  medianRunUsd: Usd.parse("0.002"),
+};
+
+function expectState<S extends ProviderCompletion["state"]>(
+  completion: ProviderCompletion,
+  state: S,
+): asserts completion is Extract<ProviderCompletion, { state: S }> {
+  expect(completion.state).toBe(state);
+  if (completion.state !== state) throw new Error(`expected ${state}`);
+}
 
 describe("Replicate allowlist", () => {
   test("accepts listed models and strips version suffixes", () => {
@@ -91,31 +111,34 @@ describe("rewriteUpstreamLinks", () => {
 });
 
 describe("meterPrediction", () => {
-  const pricing: ReplicatePricing = {
-    kind: "hardware",
-    hardware: "T4",
-    perSecondUsd: Usd.parse("0.001"),
-    medianRunUsd: Usd.parse("0.002"),
-  };
-  const drain = async (response: Response) => response.text();
   const noSleep = async () => {};
+  const meter = (upstream: Response, settlement: Partial<PredictionSettlement> = {}) =>
+    meterPrediction(upstream, "{}", {
+      pricing,
+      lookup: async () => null,
+      timeoutMs: 10_000,
+      sleep: noSleep,
+      ...settlement,
+    });
+  /** Reads the body to the end, as a client would, then waits for settlement. */
+  const settle = async (upstream: Response, settlement?: Partial<PredictionSettlement>) => {
+    const metered = meter(upstream, settlement);
+    await metered.response.text();
+    return metered.completion;
+  };
 
   test("bills a terminal response from its metrics without polling", async () => {
     const lookups: string[] = [];
-    const upstream = Response.json({ id: "p1", status: "succeeded", metrics: { predict_time: 1.5 } });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
-      lookup: async (id) => {
-        lookups.push(id);
-        return null;
+    const completion = await settle(
+      Response.json({ id: "p1", status: "succeeded", metrics: { predict_time: 1.5 } }),
+      {
+        lookup: async (id) => {
+          lookups.push(id);
+          return null;
+        },
       },
-      timeoutMs: 1_000,
-      sleep: noSleep,
-    });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("complete");
-    if (completion.state !== "complete") return;
+    );
+    expectState(completion, "complete");
     expect(completion.usage.costUsd.toString()).toBe(Usd.parse("0.0015").toString());
     expect(completion.providerRequestId).toBe("p1");
     expect(lookups).toEqual([]);
@@ -123,22 +146,15 @@ describe("meterPrediction", () => {
 
   test("polls an async prediction until it finishes, then bills it", async () => {
     let polls = 0;
-    const upstream = Response.json({ id: "p2", status: "starting" }, { status: 201 });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p2", status: "starting" }, { status: 201 }), {
       lookup: async () => {
         polls += 1;
         return polls < 3
           ? { id: "p2", status: "processing" }
           : { id: "p2", status: "failed", metrics: { predict_time: 4 } };
       },
-      timeoutMs: 10_000,
-      sleep: noSleep,
     });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("complete");
-    if (completion.state !== "complete") return;
+    expectState(completion, "complete");
     // A failed run still bills the hardware time Replicate reports.
     expect(completion.usage.costUsd.toString()).toBe(Usd.parse("0.004").toString());
     expect(polls).toBe(3);
@@ -146,118 +162,74 @@ describe("meterPrediction", () => {
 
   test("treats an aborted prediction as terminal", async () => {
     let polls = 0;
-    const upstream = Response.json({ id: "p5", status: "starting" }, { status: 201 });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p5", status: "starting" }, { status: 201 }), {
       lookup: async () => {
         polls += 1;
         return { id: "p5", status: "aborted" };
       },
-      timeoutMs: 10_000,
-      sleep: noSleep,
     });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("complete");
-    if (completion.state !== "complete") return;
+    expectState(completion, "complete");
     expect(completion.usage.costUsd.toString()).toBe(Usd.zero.toString());
     expect(polls).toBe(1);
   });
 
   test("leaves the reservation uncertain when the prediction never finishes", async () => {
-    const upstream = Response.json({ id: "p3", status: "starting" }, { status: 201 });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p3", status: "starting" }, { status: 201 }), {
       lookup: async () => ({ id: "p3", status: "processing" }),
       timeoutMs: 1,
       sleep: () => Bun.sleep(2),
     });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("uncertain");
-    if (completion.state !== "uncertain") return;
+    expectState(completion, "uncertain");
     expect(completion.reason).toContain("p3");
     // The id is what reconciliation needs to bill the prediction later.
     expect(completion.providerRequestId).toBe("p3");
   });
 
   test("holds a succeeded prediction without billable metrics for reconciliation", async () => {
-    const upstream = Response.json({ id: "p6", status: "succeeded", metrics: { total_time: 3 } });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
-      lookup: async () => null,
-      timeoutMs: 1_000,
-      sleep: noSleep,
-    });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("uncertain");
-    if (completion.state !== "uncertain") return;
+    const completion = await settle(
+      Response.json({ id: "p6", status: "succeeded", metrics: { total_time: 3 } }),
+    );
+    expectState(completion, "uncertain");
     expect(completion.providerRequestId).toBe("p6");
     expect(completion.reason).toContain("without billable metrics");
   });
 
   test("marks provider errors and lookup failures uncertain", async () => {
-    const errored = meterPrediction(Response.json({ detail: "bad" }, { status: 422 }), "{}", {
-      pricing,
-      lookup: async () => null,
-      timeoutMs: 1_000,
-      sleep: noSleep,
-    });
-    await drain(errored.response);
-    expect((await errored.completion).state).toBe("uncertain");
+    const errored = await settle(Response.json({ detail: "bad" }, { status: 422 }));
+    expect(errored.state).toBe("uncertain");
 
-    const broken = meterPrediction(Response.json({ id: "p4", status: "starting" }), "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p4", status: "starting" }), {
       lookup: async () => {
         throw new Error("lookup exploded");
       },
-      timeoutMs: 1_000,
-      sleep: noSleep,
     });
-    await drain(broken.response);
-    const completion = await broken.completion;
-    expect(completion.state).toBe("uncertain");
-    if (completion.state !== "uncertain") return;
+    expectState(completion, "uncertain");
     expect(completion.reason).toBe("lookup exploded");
     expect(completion.providerRequestId).toBe("p4");
   });
 
   test("retries a transient lookup failure instead of abandoning settlement", async () => {
     let calls = 0;
-    const upstream = Response.json({ id: "p10", status: "starting" }, { status: 201 });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p10", status: "starting" }, { status: 201 }), {
       lookup: async () => {
         calls += 1;
         if (calls === 1) throw new Error("502 from Replicate");
         return { id: "p10", status: "succeeded", metrics: { predict_time: 1 } };
       },
-      timeoutMs: 10_000,
-      sleep: noSleep,
     });
-    await drain(metered.response);
-    const completion = await metered.completion;
     expect(completion.state).toBe("complete");
     expect(calls).toBe(2);
   });
 
   test("gives up after a run of consecutive lookup failures", async () => {
     let calls = 0;
-    const upstream = Response.json({ id: "p11", status: "starting" }, { status: 201 });
-    const metered = meterPrediction(upstream, "{}", {
-      pricing,
+    const completion = await settle(Response.json({ id: "p11", status: "starting" }, { status: 201 }), {
       lookup: async () => {
         calls += 1;
         throw new Error("still down");
       },
-      timeoutMs: 10_000,
-      sleep: noSleep,
     });
-    await drain(metered.response);
-    const completion = await metered.completion;
-    expect(completion.state).toBe("uncertain");
-    if (completion.state !== "uncertain") return;
+    expectState(completion, "uncertain");
     expect(completion.reason).toBe("still down");
     expect(completion.providerRequestId).toBe("p11");
     expect(calls).toBe(5);
@@ -267,7 +239,7 @@ describe("meterPrediction", () => {
     const upstream = new Response(
       new ReadableStream<Uint8Array>({
         pull(controller) {
-          controller.enqueue(new TextEncoder().encode('{"id":"p7","status":"starting"}'));
+          controller.enqueue(Buffer.from('{"id":"p7","status":"starting"}'));
         },
         cancel() {
           throw new Error("socket already closed");
@@ -275,187 +247,152 @@ describe("meterPrediction", () => {
       }),
       { status: 201, headers: { "content-type": "application/json" } },
     );
-    const metered = meterPrediction(upstream, "{}", { pricing, lookup: async () => null, timeoutMs: 1_000, sleep: noSleep });
+    const metered = meter(upstream);
     const reader = metered.response.body?.getReader();
     await reader?.read();
     await reader?.cancel("client disconnected");
     const completion = await metered.completion;
-    expect(completion.state).toBe("cancelled");
-    if (completion.state !== "cancelled") return;
+    expectState(completion, "cancelled");
     expect(completion.providerRequestId).toBe("p7");
     expect(completion.reason).toBe("client disconnected");
   });
-
-  test("settles once: a cancellation that wins the race is not overwritten by a later pull failure", async () => {
-    let pulls = 0;
-    const upstream = new Response(
-      new ReadableStream<Uint8Array>({
-        pull(controller) {
-          pulls += 1;
-          if (pulls === 1) {
-            controller.enqueue(new TextEncoder().encode('{"id":"p8","status":"starting"}'));
-            return;
-          }
-          throw new Error("stream broke after cancel");
-        },
-        cancel() {},
-      }),
-      { status: 201, headers: { "content-type": "application/json" } },
-    );
-    const metered = meterPrediction(upstream, "{}", { pricing, lookup: async () => null, timeoutMs: 1_000, sleep: noSleep });
-    const reader = metered.response.body?.getReader();
-    await reader?.read();
-    await reader?.cancel("client disconnected");
-    const completion = await metered.completion;
-    // The settleOnce guard means the first outcome (cancelled) wins, even if
-    // Bun were to invoke `pull` again after `cancel` and throw.
-    expect(completion.state).toBe("cancelled");
-  });
 });
 
-describe("billedPrediction ownership failures", () => {
-  const pricing: ReplicatePricing = {
-    kind: "hardware",
-    hardware: "T4",
-    perSecondUsd: Usd.parse("0.001"),
-    medianRunUsd: Usd.parse("0.002"),
+const principalRow = {
+  user_id: "11111111-1111-1111-1111-111111111111",
+  api_key_id: "22222222-2222-2222-2222-222222222222",
+  billing_account_id: "33333333-3333-3333-3333-333333333333",
+  billing_account_status: "active",
+  is_banned: false,
+  is_idv_verified: true,
+  skip_idv: true,
+};
+
+/** Answers the api-key lookup, the daily upload count, and the ownership insert. */
+const fakeSql = ({ uploadsToday = 0, failOwnershipInsert = false } = {}) =>
+  (async (strings: TemplateStringsArray) => {
+    const query = strings.join("?");
+    if (query.includes("FROM api_keys")) return [principalRow];
+    if (query.includes("count(*)")) return [{ n: String(uploadsToday) }];
+    if (failOwnershipInsert && query.includes("replicate_resources") && query.includes("INSERT")) {
+      throw new Error("insert failed");
+    }
+    return [];
+  }) as unknown as ReplicateRouteDependencies["sql"];
+
+const reservationFor = (requestId: string, state: Reservation["state"]): Reservation => ({
+  id: `res-${requestId}`,
+  requestId,
+  accountId: principalRow.billing_account_id,
+  provider: "replicate",
+  providerRequestId: null,
+  state,
+  estimatedCostUsd: "0.000000000000",
+  actualCostUsd: state === "finalized" ? "0.000000000000" : null,
+  unfundedCostUsd: "0.000000000000",
+  expiresAt: new Date(Date.now() + 60_000),
+});
+
+/**
+ * An in-memory billing lifecycle that records reserve/finalize calls.
+ * `settled()` waits for every settlement started so far, since routes do not
+ * hand the metered request back to the caller.
+ */
+const fakeBilling = () => {
+  const reserves: ReserveInput[] = [];
+  const finalizes: FinalizeInput[] = [];
+  const settlements = new SettlementTracker();
+  const billing: BillingLifecycle = {
+    settlements,
+    async reserve(input) {
+      reserves.push(input);
+      return reservationFor(input.requestId, "reserved");
+    },
+    async finalize(input) {
+      finalizes.push(input);
+      return reservationFor(input.requestId, "finalized");
+    },
+    async release(requestId) {
+      return reservationFor(requestId, "released");
+    },
+    async markPendingReconciliation(requestId) {
+      return reservationFor(requestId, "pending_reconciliation");
+    },
   };
+  return { billing, reserves, finalizes, settled: () => settlements.drain(1_000) };
+};
 
+const buildApp = (deps: Partial<ReplicateRouteDependencies> & { fetch: Fetch }) =>
+  replicateRoutes({
+    sql: fakeSql(),
+    billing: fakeBilling().billing,
+    replicateApiKey: "test-key",
+    enforceIdv: false,
+    pricing: { get: async () => pricing },
+    ...deps,
+  });
+
+type App = ReturnType<typeof replicateRoutes>;
+
+const postPrediction = (app: App, body: unknown) =>
+  app.handle(
+    new Request("http://localhost/proxy/v1/replicate/predictions", {
+      method: "POST",
+      headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+
+const uploadFile = (app: App, content: BlobPart = new Uint8Array(8)) => {
+  const form = new FormData();
+  form.append("content", new Blob([content]), "upload.bin");
+  return app.handle(
+    new Request("http://localhost/proxy/v1/replicate/files", {
+      method: "POST",
+      headers: { authorization: "Bearer sk-hc-v1-test" },
+      body: form,
+    }),
+  );
+};
+
+const refuseFetch = (calls: string[] = []): Fetch => async (input) => {
+  calls.push(String(input));
+  throw new Error("upstream must not be called");
+};
+
+describe("POST /predictions", () => {
   test("returns the prediction even when recording ownership fails, and reports it", async () => {
-    const userId = "11111111-1111-1111-1111-111111111111";
-    const apiKeyId = "22222222-2222-2222-2222-222222222222";
-    const billingAccountId = "33333333-3333-3333-3333-333333333333";
-
-    const fakeSql = (async (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      if (query.includes("FROM api_keys")) {
-        return [
-          {
-            api_key_id: apiKeyId,
-            user_id: userId,
-            billing_account_id: billingAccountId,
-            billing_account_status: "active",
-            is_banned: false,
-            is_idv_verified: true,
-            skip_idv: true,
-          },
-        ];
-      }
-      if (query.includes("replicate_resources") && query.includes("INSERT")) {
-        throw new Error("insert failed");
-      }
-      return [];
-    }) as unknown as ReplicateRouteDependencies["sql"];
-
-    const reservation = (requestId: string, state: "reserved" | "finalized") => ({
-      id: `res-${requestId}`,
-      requestId,
-      accountId: billingAccountId,
-      provider: "replicate",
-      providerRequestId: null,
-      state,
-      estimatedCostUsd: "0.010000000000",
-      actualCostUsd: null,
-      unfundedCostUsd: "0.000000000000",
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-
-    const billing = {
-      reserve: async (input: { requestId: string }) => reservation(input.requestId, "reserved"),
-      finalize: async (input: { requestId: string }) => reservation(input.requestId, "finalized"),
-      release: async (requestId: string) => reservation(requestId, "finalized"),
-      markPendingReconciliation: async (requestId: string) => reservation(requestId, "finalized"),
-    } as unknown as ReplicateRouteDependencies["billing"];
-
-    const fakeFetch = (async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes(`/v1/models/${knownModel}/predictions`)) {
-        return Response.json(
-          { id: "p9", status: "succeeded", metrics: { predict_time: 1 }, urls: {} },
-          { status: 201 },
-        );
-      }
-      throw new Error(`Unexpected fetch: ${url}`);
-    }) as typeof fetch;
-
     const errors: Array<{ error: unknown; requestId: string }> = [];
-
-    const app = replicateRoutes({
-      sql: fakeSql,
-      billing,
-      replicateApiKey: "test-key",
-      enforceIdv: false,
-      fetch: fakeFetch,
-      pricing: { get: async () => pricing },
+    const app = buildApp({
+      sql: fakeSql({ failOwnershipInsert: true }),
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes(`/v1/models/${knownModel}/predictions`)) {
+          return Response.json(
+            { id: "p9", status: "succeeded", metrics: { predict_time: 1 }, urls: {} },
+            { status: 201 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
       onSettlementError: (error, requestId) => errors.push({ error, requestId }),
     });
 
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/predictions", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
-        body: JSON.stringify({ version: knownModel, input: {} }),
-      }),
-    );
+    const response = await postPrediction(app, { version: knownModel, input: {} });
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as { id: string };
     expect(body.id).toBe("p9");
     expect(errors).toHaveLength(1);
-    expect(String((errors[0]?.error as Error)?.message)).toContain("p9");
+    expect((errors[0]?.error as Error).message).toContain("p9");
   });
-});
-
-describe("billedPrediction request validation", () => {
-  const pricing: ReplicatePricing = {
-    kind: "hardware",
-    hardware: "T4",
-    perSecondUsd: Usd.parse("0.001"),
-    medianRunUsd: Usd.parse("0.002"),
-  };
-
-  const fakeSql = (async (strings: TemplateStringsArray) => {
-    const query = strings.join("?");
-    if (query.includes("FROM api_keys")) {
-      return [
-        {
-          api_key_id: "22222222-2222-2222-2222-222222222222",
-          user_id: "11111111-1111-1111-1111-111111111111",
-          billing_account_id: "33333333-3333-3333-3333-333333333333",
-          billing_account_status: "active",
-          is_banned: false,
-          is_idv_verified: true,
-          skip_idv: true,
-        },
-      ];
-    }
-    return [];
-  }) as unknown as ReplicateRouteDependencies["sql"];
-
-  const buildApp = (fetchCalls: string[]) =>
-    replicateRoutes({
-      sql: fakeSql,
-      billing: {} as never, // must not be reached when the request is refused
-      replicateApiKey: "test-key",
-      enforceIdv: false,
-      fetch: (async (input: RequestInfo | URL) => {
-        fetchCalls.push(String(input));
-        throw new Error("Unexpected fetch call");
-      }) as unknown as typeof fetch,
-      pricing: { get: async () => pricing },
-    });
 
   test("refuses a prediction whose input carries a blocked prompt", async () => {
     const fetchCalls: string[] = [];
-    const app = buildApp(fetchCalls);
+    // billing must not be reached when the request is refused
+    const app = buildApp({ billing: {} as never, fetch: refuseFetch(fetchCalls) });
 
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/predictions", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
-        body: JSON.stringify({ version: knownModel, input: { prompt: blockedPrompts[0] } }),
-      }),
-    );
+    const response = await postPrediction(app, { version: knownModel, input: { prompt: blockedPrompts[0] } });
 
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: string };
@@ -465,243 +402,64 @@ describe("billedPrediction request validation", () => {
 
   test("rejects webhook fields", async () => {
     const fetchCalls: string[] = [];
-    const app = buildApp(fetchCalls);
+    const app = buildApp({ billing: {} as never, fetch: refuseFetch(fetchCalls) });
 
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/predictions", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
-        body: JSON.stringify({
-          version: knownModel,
-          input: {},
-          webhook: "https://attacker.example/hook?secret=1",
-        }),
-      }),
-    );
+    const response = await postPrediction(app, {
+      version: knownModel,
+      input: {},
+      webhook: "https://attacker.example/hook?secret=1",
+    });
 
     expect(response.status).toBe(400);
     expect(fetchCalls).toEqual([]);
   });
 });
 
-type FakeReservation = {
-  id: string;
-  requestId: string;
-  accountId: string;
-  provider: string;
-  providerRequestId: string | null;
-  state: "reserved" | "finalized";
-  estimatedCostUsd: string;
-  actualCostUsd: string | null;
-  unfundedCostUsd: string;
-  expiresAt: Date;
-};
-
-/** A billing fake that records every reserve/finalize call for assertions. */
-const fakeFileBilling = () => {
-  const reserves: Array<{ requestId: string; estimatedCostUsd: Usd }> = [];
-  const finalizes: Array<{
-    requestId: string;
-    actualCostUsd: Usd;
-    analytics: Record<string, unknown>;
-  }> = [];
-  const reservation = (requestId: string, state: "reserved" | "finalized"): FakeReservation => ({
-    id: `res-${requestId}`,
-    requestId,
-    accountId: "a1",
-    provider: "replicate",
-    providerRequestId: null,
-    state,
-    estimatedCostUsd: "0.000000000000",
-    actualCostUsd: state === "finalized" ? "0.000000000000" : null,
-    unfundedCostUsd: "0.000000000000",
-    expiresAt: new Date(Date.now() + 60_000),
-  });
-  const billing = {
-    reserve: async (input: { requestId: string; estimatedCostUsd: Usd }) => {
-      reserves.push({ requestId: input.requestId, estimatedCostUsd: input.estimatedCostUsd });
-      return reservation(input.requestId, "reserved");
-    },
-    finalize: async (input: {
-      requestId: string;
-      actualCostUsd: Usd;
-      analytics: Record<string, unknown>;
-    }) => {
-      finalizes.push({
-        requestId: input.requestId,
-        actualCostUsd: input.actualCostUsd,
-        analytics: input.analytics,
-      });
-      return reservation(input.requestId, "finalized");
-    },
-    release: async (requestId: string) => reservation(requestId, "finalized"),
-    markPendingReconciliation: async (requestId: string) => reservation(requestId, "finalized"),
-  } as unknown as ReplicateRouteDependencies["billing"];
-  return { billing, reserves, finalizes };
-};
-
-describe("POST /files size limit", () => {
-  const principalSql = (async () => [
-    {
-      user_id: "u1",
-      api_key_id: "k1",
-      billing_account_id: "a1",
-      billing_account_status: "active",
-      is_banned: false,
-      is_idv_verified: true,
-      skip_idv: false,
-    },
-  ]) as unknown as ReplicateRouteDependencies["sql"];
-
-  const buildApp = (fetchImpl: typeof fetch) =>
-    replicateRoutes({
-      sql: principalSql,
-      billing: fakeFileBilling().billing,
-      replicateApiKey: "test",
-      enforceIdv: false,
-      maxUploadBytes: 16,
-      fetch: fetchImpl,
-    });
+describe("POST /files", () => {
+  const created = (id: string): Fetch => async () => Response.json({ id }, { status: 201 });
 
   test("rejects an upload over the limit with 413 before contacting Replicate", async () => {
-    const app = buildApp((async () => {
-      throw new Error("upstream must not be called");
-    }) as unknown as typeof fetch);
+    const fetchCalls: string[] = [];
+    const app = buildApp({ maxUploadBytes: 16, fetch: refuseFetch(fetchCalls) });
 
-    const form = new FormData();
-    form.append("content", new Blob([new Uint8Array(32)]), "big.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app, new Uint8Array(32));
 
     expect(response.status).toBe(413);
     const body = (await response.json()) as { error: string };
     expect(body.error).toContain("upload limit");
+    expect(fetchCalls).toEqual([]);
   });
 
   test("accepts an upload at or under the limit and reaches the upstream", async () => {
-    const app = buildApp((async () =>
-      Response.json({ id: "f1" }, { status: 201 })) as unknown as typeof fetch);
+    const app = buildApp({ maxUploadBytes: 16, fetch: created("f1") });
 
-    const form = new FormData();
-    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app, new Uint8Array(8));
 
     expect(response.status).toBe(201);
   });
-});
-
-describe("POST /files ownership failures", () => {
-  const principalSql = (async () => [
-    {
-      user_id: "u1",
-      api_key_id: "k1",
-      billing_account_id: "a1",
-      billing_account_status: "active",
-      is_banned: false,
-      is_idv_verified: true,
-      skip_idv: false,
-    },
-  ]) as unknown as ReplicateRouteDependencies["sql"];
 
   test("keeps the file id when the ownership insert fails", async () => {
-    const fakeSql = (async (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      if (query.includes("FROM api_keys")) {
-        return await principalSql(strings as unknown as TemplateStringsArray);
-      }
-      if (query.includes("replicate_resources") && query.includes("INSERT")) {
-        throw new Error("insert failed");
-      }
-      return [];
-    }) as unknown as ReplicateRouteDependencies["sql"];
-
     const errors: Array<{ error: unknown; requestId: string }> = [];
-
-    const app = replicateRoutes({
-      sql: fakeSql,
-      billing: fakeFileBilling().billing,
-      replicateApiKey: "test",
-      enforceIdv: false,
-      fetch: (async () => Response.json({ id: "f2" }, { status: 201 })) as unknown as typeof fetch,
+    const app = buildApp({
+      sql: fakeSql({ failOwnershipInsert: true }),
+      fetch: created("f2"),
       onSettlementError: (error, requestId) => errors.push({ error, requestId }),
     });
 
-    const form = new FormData();
-    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app);
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as { id: string };
     expect(body.id).toBe("f2");
     expect(errors).toHaveLength(1);
-    expect(String((errors[0]?.error as Error)?.message)).toContain("f2");
+    expect((errors[0]?.error as Error).message).toContain("f2");
   });
-});
-
-describe("POST /files metering", () => {
-  const principalSql = (async () => [
-    {
-      user_id: "u1",
-      api_key_id: "k1",
-      billing_account_id: "a1",
-      billing_account_status: "active",
-      is_banned: false,
-      is_idv_verified: true,
-      skip_idv: false,
-    },
-  ]) as unknown as ReplicateRouteDependencies["sql"];
 
   test("records an upload as a zero-cost metered request", async () => {
-    const fakeSql = (async (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      if (query.includes("FROM api_keys")) {
-        return await principalSql(strings as unknown as TemplateStringsArray);
-      }
-      if (query.includes("count(*)")) return [{ n: "0" }];
-      return [];
-    }) as unknown as ReplicateRouteDependencies["sql"];
+    const { billing, reserves, finalizes, settled } = fakeBilling();
+    const app = buildApp({ billing, fetch: created("f3") });
 
-    const { billing, reserves, finalizes } = fakeFileBilling();
-
-    const app = replicateRoutes({
-      sql: fakeSql,
-      billing,
-      replicateApiKey: "test",
-      enforceIdv: false,
-      fetch: (async () =>
-        Response.json({ id: "f3" }, { status: 201 })) as unknown as typeof fetch,
-    });
-
-    const form = new FormData();
-    form.append("content", new Blob([Buffer.from("secret file bytes")]), "small.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app, Buffer.from("secret file bytes"));
 
     expect(response.status).toBe(201);
     expect(response.headers.get("x-request-id")).toBeTruthy();
@@ -710,91 +468,37 @@ describe("POST /files metering", () => {
     expect(reserves).toHaveLength(1);
     expect(reserves[0]?.estimatedCostUsd.toAtoms()).toBe(0n);
 
-    // finalize() is called asynchronously once the completion promise
-    // resolves; give the microtask queue a turn.
-    await Bun.sleep(0);
+    await settled();
     expect(finalizes).toHaveLength(1);
     expect(finalizes[0]?.actualCostUsd.toAtoms()).toBe(0n);
-    expect(String(finalizes[0]?.analytics.request_body)).not.toContain("secret file bytes");
+    expect(String(finalizes[0]?.analytics?.request_body)).not.toContain("secret file bytes");
   });
 
   test("caps uploads per user", async () => {
-    const fakeSql = (async (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      if (query.includes("FROM api_keys")) {
-        return await principalSql(strings as unknown as TemplateStringsArray);
-      }
-      if (query.includes("count(*)")) return [{ n: "200" }];
-      return [];
-    }) as unknown as ReplicateRouteDependencies["sql"];
+    const fetchCalls: string[] = [];
+    const app = buildApp({ sql: fakeSql({ uploadsToday: 200 }), fetch: refuseFetch(fetchCalls) });
 
-    let fetchCalled = false;
-    const { billing } = fakeFileBilling();
-
-    const app = replicateRoutes({
-      sql: fakeSql,
-      billing,
-      replicateApiKey: "test",
-      enforceIdv: false,
-      fetch: (async () => {
-        fetchCalled = true;
-        throw new Error("upstream must not be called");
-      }) as unknown as typeof fetch,
-    });
-
-    const form = new FormData();
-    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app);
 
     expect(response.status).toBe(429);
-    expect(fetchCalled).toBe(false);
+    expect(fetchCalls).toEqual([]);
   });
 
   test("an upstream failure is recorded, not billed", async () => {
-    const fakeSql = (async (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      if (query.includes("FROM api_keys")) {
-        return await principalSql(strings as unknown as TemplateStringsArray);
-      }
-      if (query.includes("count(*)")) return [{ n: "0" }];
-      return [];
-    }) as unknown as ReplicateRouteDependencies["sql"];
-
-    const { billing, finalizes } = fakeFileBilling();
-
-    const app = replicateRoutes({
-      sql: fakeSql,
+    const { billing, finalizes, settled } = fakeBilling();
+    const app = buildApp({
       billing,
-      replicateApiKey: "test",
-      enforceIdv: false,
-      fetch: (async () =>
-        new Response("upstream failure", { status: 500 })) as unknown as typeof fetch,
+      fetch: async () => new Response("upstream failure", { status: 500 }),
     });
 
-    const form = new FormData();
-    form.append("content", new Blob([new Uint8Array(8)]), "small.bin");
-
-    const response = await app.handle(
-      new Request("http://localhost/proxy/v1/replicate/files", {
-        method: "POST",
-        headers: { authorization: "Bearer sk-hc-v1-test" },
-        body: form,
-      }),
-    );
+    const response = await uploadFile(app);
 
     expect(response.status).toBe(500);
     await response.text();
-    await Bun.sleep(0);
+    await settled();
 
     expect(finalizes).toHaveLength(1);
     expect(finalizes[0]?.actualCostUsd.toAtoms()).toBe(0n);
-    expect(finalizes[0]?.analytics.outcome).toBe("provider_error");
+    expect(finalizes[0]?.analytics?.outcome).toBe("provider_error");
   });
 });
