@@ -159,13 +159,6 @@ const post = (path: string, body: unknown, init: RequestInit = {}) =>
 const successBody = { requestId: "r1", costDollars: { total: 0.002 }, results: [] };
 
 describe("exaRoutes", () => {
-  test("503s when Exa is not configured", async () => {
-    const { app } = build(() => Response.json(successBody), { exaApiKey: null });
-    const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi" }));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "Exa is not configured" });
-  });
-
   test("rejects streaming on endpoints other than answer", async () => {
     const { app, calls, upstream } = build(() => Response.json(successBody));
     const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi", stream: true }));

@@ -13,7 +13,7 @@ import {
 } from "./shared";
 
 export type ExaRouteDependencies = MeteredRouteDependencies & {
-  exaApiKey: string | null;
+  exaApiKey: string;
   /** Fixed hold per request; Exa reports actual cost afterwards. */
   reservationUsd?: string;
   baseUrl?: string;
@@ -51,7 +51,6 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody, {
       acceptApiKeyHeader: true,
     });
-    if (!deps.exaApiKey) throw new HttpError(503, "Exa is not configured");
 
     const body = parseJsonObject(rawBody);
     // Only /answer streams; its cost arrives in the last event.

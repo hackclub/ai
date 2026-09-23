@@ -12,7 +12,7 @@ import {
 } from "./shared";
 
 export type OcrRouteDependencies = MeteredRouteDependencies & {
-  mistralApiKey: string | null;
+  mistralApiKey: string;
   /** Fixed hold per request. */
   reservationUsd?: string;
   /** Mistral OCR price per processed page. */
@@ -88,7 +88,6 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
   return new Elysia({ prefix: "/proxy/v1" }).post("/ocr", async ({ request }) => {
     const rawBody = await request.text();
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
-    if (!deps.mistralApiKey) throw new HttpError(503, "OCR is not configured");
 
     const body = parseJsonObject(rawBody);
     if (!isValidOcrDocument(body.document)) throw new HttpError(400, INVALID_DOCUMENT);

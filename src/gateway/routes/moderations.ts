@@ -2,7 +2,6 @@ import type { Fetch } from "../../providers/openrouter/adapter";
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
-import { HttpError } from "../http-error";
 import type { RateLimiter } from "../rate-limit";
 import { authorizeProviderRequest, defaultRateLimiter, parseJsonObject } from "./shared";
 
@@ -10,7 +9,7 @@ export type ModerationRouteDependencies = {
   sql: postgres.Sql;
   enforceIdv: boolean;
   moderationApiUrl: string;
-  moderationApiKey: string | null;
+  moderationApiKey: string;
   rateLimiter?: RateLimiter;
   fetch?: Fetch;
 };
@@ -26,7 +25,6 @@ export const moderationRoutes = (deps: ModerationRouteDependencies) => {
   return new Elysia({ prefix: "/proxy/v1" }).post("/moderations", async ({ request }) => {
     const rawBody = await request.text();
     await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
-    if (!deps.moderationApiKey) throw new HttpError(503, "Moderation is not configured");
     const body = parseJsonObject(rawBody);
 
     const upstream = await fetchImplementation(deps.moderationApiUrl, {

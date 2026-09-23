@@ -30,7 +30,7 @@ export type ReconciliationDependencies = {
   sql: postgres.Sql;
   billing: BillingEngine;
   openRouter: OpenRouterConfig;
-  replicate?: ReplicateReconcileConfig;
+  replicate: ReplicateReconcileConfig;
 };
 
 export type AnalyticsWorkerOptions = {

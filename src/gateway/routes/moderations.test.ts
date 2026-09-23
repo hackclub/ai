@@ -74,13 +74,6 @@ const request = (body: unknown, init: RequestInit = {}) =>
   });
 
 describe("moderationRoutes", () => {
-  test("503s when no moderation key is configured", async () => {
-    const { app } = build(() => Response.json({ results: [] }), { moderationApiKey: "" });
-    const response = await app.handle(request({ input: "hi" }));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "Moderation is not configured" });
-  });
-
   test("forwards a bearer token built from the configured key and the parsed body", async () => {
     const { app, upstream } = build(() => Response.json({ results: [] }));
     const body = { input: "hi" };

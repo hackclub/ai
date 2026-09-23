@@ -44,14 +44,16 @@ const deps = (state: State) => {
           return state.replicate?.clone() ?? new Response("", { status: 404 });
         }
         if (url === "https://api.mistral.ai/v1/models") {
-          return state.mistral?.clone() ?? new Response("", { status: 401 });
+          return state.mistral?.clone() ?? Response.json({ data: [] });
         }
         if (url === "https://api.exa.ai/search") {
-          return state.exa?.clone() ?? new Response("", { status: 401 });
+          return state.exa?.clone() ?? Response.json({ error: "Invalid request body" }, { status: 400 });
         }
         throw new Error(`Unexpected fetch ${url}`);
       }) as typeof fetch,
     },
+    mistral: { apiKey: "m" },
+    exa: { apiKey: "e" },
   };
 };
 
@@ -128,19 +130,6 @@ describe("createHealthCheck", () => {
     expect(body.openRouter).toBeTrue();
   });
 
-  test("omits Mistral and Exa when they are not configured", async () => {
-    const d = deps({
-      postgres: true,
-      clickhouse: true,
-      key: Response.json({ data: { limit_remaining: 1, usage: 0 } }),
-    });
-    const response = await createHealthCheck({ ...d, cacheMs: 0 })();
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as HealthReport;
-    expect(body.mistral).toBeUndefined();
-    expect(body.exa).toBeUndefined();
-  });
-
   test("is down while background services failed to start", async () => {
     const d = deps({
       postgres: true,
@@ -167,12 +156,7 @@ describe("createHealthCheck", () => {
       mistral: Response.json({ data: [] }),
       exa: Response.json({ error: "Invalid request body" }, { status: 400 }),
     });
-    const response = await createHealthCheck({
-      ...d,
-      mistral: { apiKey: "m" },
-      exa: { apiKey: "e" },
-      cacheMs: 0,
-    })();
+    const response = await createHealthCheck({ ...d, cacheMs: 0 })();
     expect(response.status).toBe(200);
     const body = (await response.json()) as HealthReport;
     expect(body.mistral).toBeTrue();
@@ -187,12 +171,7 @@ describe("createHealthCheck", () => {
       mistral: Response.json({ detail: "Invalid API Key" }, { status: 401 }),
       exa: Response.json({ tag: "INVALID_API_KEY" }, { status: 401 }),
     });
-    const response = await createHealthCheck({
-      ...d,
-      mistral: { apiKey: "m" },
-      exa: { apiKey: "e" },
-      cacheMs: 0,
-    })();
+    const response = await createHealthCheck({ ...d, cacheMs: 0 })();
     expect(response.status).toBe(503);
     const body = (await response.json()) as HealthReport;
     expect(body.mistral).toBeFalse();

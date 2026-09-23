@@ -4,6 +4,5 @@ import { requireUser } from "#lib/server/page.ts";
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireUser(locals);
-  const catalog = locals.backend.replicateCatalog;
-  return { categories: catalog ? await catalog.categories() : [] };
+  return { categories: await locals.backend.replicateCatalog.categories() };
 };

@@ -10,10 +10,9 @@ export type HealthOptions = {
    * browser session cookie; skipped when either value is missing.
    */
   replicate?: { username: string; sessionId: string } | null;
-  /** Mistral (OCR). Skipped when no key is configured. */
-  mistral?: { apiKey: string; baseUrl?: string } | null;
-  /** Exa. Skipped when no key is configured. */
-  exa?: { apiKey: string; baseUrl?: string } | null;
+  /** Mistral (OCR). */
+  mistral: { apiKey: string; baseUrl?: string };
+  exa: { apiKey: string; baseUrl?: string };
   cacheMs?: number;
   now?: () => number;
   /** Returns the error that stopped background services from starting, or null. */
@@ -27,9 +26,8 @@ export type HealthReport = {
   openRouter: boolean;
   /** False when the job worker or outbox drainer failed to start. */
   startup: boolean;
-  /** Present only when the provider is configured. */
-  mistral?: boolean;
-  exa?: boolean;
+  mistral: boolean;
+  exa: boolean;
   /** OpenRouter credits purchased minus used, as the previous gateway reported. */
   balanceRemaining?: number;
   /** Remaining spend allowed on the shared key; the previous gateway's name. */
@@ -47,8 +45,8 @@ const numberOrUndefined = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 /**
- * GET /up. Checks PostgreSQL, ClickHouse, OpenRouter, and any configured
- * provider (Mistral, Exa, Replicate) and caches the verdict so a probe storm
+ * GET /up. Checks PostgreSQL, ClickHouse, OpenRouter, Mistral, Exa, and
+ * (when its browser session is set) Replicate's credit, and caches the verdict so a probe storm
  * cannot amplify load. The previous gateway's balance and Replicate credit
  * fields are kept for monitors that read them.
  */
@@ -105,7 +103,6 @@ export const createHealthCheck = (options: HealthOptions) => {
 
   /** Authenticated listing; a rejected key answers 401. */
   const mistralOk = () => {
-    if (!options.mistral) return Promise.resolve(undefined);
     const base = (options.mistral.baseUrl ?? "https://api.mistral.ai").replace(/\/$/, "");
     return fetchImplementation(`${base}/v1/models`, {
       headers: { authorization: `Bearer ${options.mistral.apiKey}` },
@@ -120,7 +117,6 @@ export const createHealthCheck = (options: HealthOptions) => {
    * 400 (invalid body) and a bad one 401, without running a search.
    */
   const exaOk = () => {
-    if (!options.exa) return Promise.resolve(undefined);
     const base = (options.exa.baseUrl ?? "https://api.exa.ai").replace(/\/$/, "");
     return fetchImplementation(`${base}/search`, {
       method: "POST",
@@ -150,7 +146,7 @@ export const createHealthCheck = (options: HealthOptions) => {
       !options.replicate ||
       (replicateUnusedCredit !== undefined && replicateUnusedCredit > REPLICATE_MIN_CREDIT);
 
-    const providersOk = mistral !== false && exa !== false;
+    const providersOk = mistral && exa;
     const startupOk = (options.startupError?.() ?? null) === null;
 
     return {
@@ -162,8 +158,8 @@ export const createHealthCheck = (options: HealthOptions) => {
       clickhouse: clickhouseOk,
       openRouter: openRouterOk,
       startup: startupOk,
-      ...(mistral !== undefined ? { mistral } : {}),
-      ...(exa !== undefined ? { exa } : {}),
+      mistral,
+      exa,
       ...(balanceRemaining !== undefined ? { balanceRemaining } : {}),
       ...(key?.limitRemaining !== undefined
         ? { dailyKeyUsageRemaining: key.limitRemaining, keyLimitRemaining: key.limitRemaining }

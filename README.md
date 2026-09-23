@@ -79,23 +79,22 @@ ClickHouse, and checks the event is searchable
 
 ```bash
 bun install --frozen-lockfile
-cp .env.example .env   # fill in OPENROUTER_API_KEY and any provider keys
+cp .env.example .env   # fill in every provider key; all are required
 bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 via Docker
 bun run dev:seed       # local user, API key, and browser session (dev only)
 bun run dev            # http://localhost:3000
 ```
 
 `dev:seed` prints an API key for the proxy and a cookie that signs you into
-the dashboard without Hack Club OAuth. Providers are enabled by their keys:
-`/proxy/v1/replicate/*` is mounted only when `REPLICATE_API_KEY` is set, and
-Exa and OCR answer `503` with "<Provider> is not configured" until
-`EXA_API_KEY` / `MISTRAL_API_KEY` are set. `TYPESAFE_API_KEY` is different:
-unlike the other provider keys, it is required at startup for the Jev route.
-`bun run dev:reset-db` wipes the local databases and re-applies the
+the dashboard without Hack Club OAuth. Every provider is always mounted, so
+the server refuses to start unless all of their keys are set:
+`OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, `HACK_CLUB_CLIENT_ID`,
+`HACK_CLUB_CLIENT_SECRET`, `OPENAI_MODERATION_API_KEY`, `MISTRAL_API_KEY`,
+`EXA_API_KEY` and `REPLICATE_API_KEY`. `bun run dev:reset-db` wipes the local databases and re-applies the
 migrations.
 
-The server needs `DATABASE_URL` and `OPENROUTER_API_KEY`; see `.env.example`
-for the optional settings. On startup it creates the Graphile Worker schema,
+The server also needs `DATABASE_URL`; see `.env.example` for the optional
+settings. On startup it creates the Graphile Worker schema,
 starts the in-process ClickHouse delivery worker, and listens on `PORT`.
 Error reporting goes to Sentry when `SENTRY_DSN` is set (`sendDefaultPii`
 is off, so bearer keys and cookies are never sent).

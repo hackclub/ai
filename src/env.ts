@@ -16,21 +16,23 @@ export type Env = {
   /** Models shown on the landing page and in quickstart snippets. */
   featuredModels: string[];
   enforceIdv: boolean;
-  /** Hack Club OAuth; sign-in routes are disabled when either is missing. */
-  hackClubClientId: string | null;
-  hackClubClientSecret: string | null;
+  hackClubClientId: string;
+  hackClubClientSecret: string;
   /** Sentry error reporting; disabled when unset. */
   sentryDsn: string | null;
   openAiModerationApiUrl: string;
-  openAiModerationApiKey: string | null;
-  mistralApiKey: string | null;
+  openAiModerationApiKey: string;
+  mistralApiKey: string;
   /** Mistral OCR price per page in USD; Mistral reports no cost itself. */
   mistralOcrPagePriceUsd: string;
   /** Mistral OCR price per page when annotations are requested. */
   mistralOcrAnnotationPagePriceUsd: string;
-  exaApiKey: string | null;
-  replicateApiKey: string | null;
-  /** Browser session used by GET /up to read Replicate's unused credit. */
+  exaApiKey: string;
+  replicateApiKey: string;
+  /**
+   * Browser session used by GET /up to read Replicate's unused credit. Not a
+   * provider credential, so optional: /up skips the credit check without it.
+   */
   replicateUsername: string | null;
   replicateSessionId: string | null;
   typesafeApiKey: string;
@@ -100,17 +102,17 @@ export const loadEnv = (
     openRouterBaseUrl: source.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api",
     featuredModels: list(source.FEATURED_MODELS),
     enforceIdv: source.ENFORCE_IDV === "true",
-    hackClubClientId: source.HACK_CLUB_CLIENT_ID || null,
-    hackClubClientSecret: source.HACK_CLUB_CLIENT_SECRET || null,
+    hackClubClientId: required(source, "HACK_CLUB_CLIENT_ID"),
+    hackClubClientSecret: required(source, "HACK_CLUB_CLIENT_SECRET"),
     sentryDsn: source.SENTRY_DSN || null,
     openAiModerationApiUrl:
       source.OPENAI_MODERATION_API_URL || "https://api.openai.com/v1/moderations",
-    openAiModerationApiKey: source.OPENAI_MODERATION_API_KEY || null,
-    mistralApiKey: source.MISTRAL_API_KEY || null,
+    openAiModerationApiKey: required(source, "OPENAI_MODERATION_API_KEY"),
+    mistralApiKey: required(source, "MISTRAL_API_KEY"),
     mistralOcrPagePriceUsd: source.MISTRAL_OCR_PAGE_PRICE_USD || "0.001",
     mistralOcrAnnotationPagePriceUsd: source.MISTRAL_OCR_ANNOTATION_PAGE_PRICE_USD || "0.003",
-    exaApiKey: source.EXA_API_KEY || null,
-    replicateApiKey: source.REPLICATE_API_KEY || null,
+    exaApiKey: required(source, "EXA_API_KEY"),
+    replicateApiKey: required(source, "REPLICATE_API_KEY"),
     replicateUsername: source.REPLICATE_USERNAME || null,
     replicateSessionId: source.REPLICATE_SESSION_ID || null,
     typesafeApiKey: required(source, "TYPESAFE_API_KEY"),

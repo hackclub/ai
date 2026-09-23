@@ -27,8 +27,6 @@ import { OpenRouterAdapter } from "./providers/openrouter/adapter";
 import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
-// The orchestrator's termination grace period must exceed this so the
-// process is not SIGKILLed mid-drain.
 const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
 
 export type Backend = {
@@ -38,25 +36,15 @@ export type Backend = {
   billing: BillingEngine;
   settlements: SettlementTracker;
   catalog: ModelCatalog;
-  /** Replicate model listing for the dashboard; null when REPLICATE_API_KEY is unset. */
-  replicateCatalog: ReplicateCatalog | null;
+  replicateCatalog: ReplicateCatalog;
   queries: AnalyticsQueries;
   env: Env;
-  /**
-   * Starts the job worker; idempotent. A failure is recorded for /up, logged
-   * and sent to Sentry, then rethrown for the entrypoint to decide on.
-   */
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
   /** The error that stopped `start`, if any; read by /up. */
   startupError: () => Error | null;
 };
 
-/**
- * Builds every backend service from the environment. Used by the standalone
- * API entrypoint and by the SvelteKit server hook, which embeds the same
- * Elysia app for non-page routes.
- */
 export const createBackend = (env: Env): Backend => {
   const sql = postgres(env.databaseUrl, { max: 16 });
   const clickhouse = createClient({
@@ -94,11 +82,11 @@ export const createBackend = (env: Env): Backend => {
   };
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
-  const replicatePricing = env.replicateApiKey ? createReplicatePricingSource({}) : null;
-  const replicateCatalog =
-    env.replicateApiKey && replicatePricing
-      ? createReplicateCatalog({ apiKey: env.replicateApiKey, pricing: replicatePricing })
-      : null;
+  const replicatePricing = createReplicatePricingSource({});
+  const replicateCatalog = createReplicateCatalog({
+    apiKey: env.replicateApiKey,
+    pricing: replicatePricing,
+  });
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -127,29 +115,21 @@ export const createBackend = (env: Env): Backend => {
     }),
     keysApiRoutes({ sql, baseUrl: env.baseUrl, secureCookies: env.nodeEnv === "production" }),
     webhookRoutes({ sql }),
+    replicateRoutes({
+      ...metered,
+      replicateApiKey: env.replicateApiKey,
+      publicBaseUrl: env.baseUrl,
+      pricing: replicatePricing,
+      maxUploadBytes: env.maxRequestBodyBytes,
+    }),
+    hackClubAuthRoutes({
+      sql,
+      clientId: env.hackClubClientId,
+      clientSecret: env.hackClubClientSecret,
+      baseUrl: env.baseUrl,
+      secureCookies: env.nodeEnv === "production",
+    }),
   ];
-  if (env.replicateApiKey && replicatePricing) {
-    routes.push(
-      replicateRoutes({
-        ...metered,
-        replicateApiKey: env.replicateApiKey,
-        publicBaseUrl: env.baseUrl,
-        pricing: replicatePricing,
-        maxUploadBytes: env.maxRequestBodyBytes,
-      }),
-    );
-  }
-  if (env.hackClubClientId && env.hackClubClientSecret) {
-    routes.push(
-      hackClubAuthRoutes({
-        sql,
-        clientId: env.hackClubClientId,
-        clientSecret: env.hackClubClientSecret,
-        baseUrl: env.baseUrl,
-        secureCookies: env.nodeEnv === "production",
-      }),
-    );
-  }
 
   let startupError: Error | null = null;
 
@@ -166,8 +146,8 @@ export const createBackend = (env: Env): Backend => {
         env.replicateUsername && env.replicateSessionId
           ? { username: env.replicateUsername, sessionId: env.replicateSessionId }
           : null,
-      mistral: env.mistralApiKey ? { apiKey: env.mistralApiKey } : null,
-      exa: env.exaApiKey ? { apiKey: env.exaApiKey } : null,
+      mistral: { apiKey: env.mistralApiKey },
+      exa: { apiKey: env.exaApiKey },
       startupError: () => startupError,
     }),
     proxy: {
@@ -202,10 +182,7 @@ export const createBackend = (env: Env): Backend => {
         sql,
         billing,
         openRouter,
-        replicate:
-          env.replicateApiKey && replicatePricing
-            ? { apiKey: env.replicateApiKey, pricing: replicatePricing }
-            : undefined,
+        replicate: { apiKey: env.replicateApiKey, pricing: replicatePricing },
       },
       log: (message) => log.info({ message }, "billing.reconcile"),
     });
