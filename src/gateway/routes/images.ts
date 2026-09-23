@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
 import type { OpenRouterAdapter } from "../../providers/openrouter/adapter";
+import { OPENROUTER } from "../../providers/openrouter/provider";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -100,7 +101,7 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
     const chatBody = buildImageChatRequest(input, principal.userId);
 
     const { metered, requestId } = await runProviderRoute(deps, request, principal, {
-      provider: "openrouter",
+      provider: OPENROUTER,
       endpoint: "images/generations",
       model: input.model,
       estimatedCostUsd: reservation,

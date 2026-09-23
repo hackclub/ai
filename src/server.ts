@@ -25,12 +25,15 @@ import { webhookRoutes } from "./gateway/webhooks";
 import { log } from "./log";
 import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
+import { exaProvider } from "./providers/exa/provider";
+import { mistralProvider } from "./providers/mistral/provider";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
 import { openRouterProvider } from "./providers/openrouter/provider";
 import { providerRegistry } from "./providers/provider";
 import { createReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 import { replicateFilesProvider, replicateProvider } from "./providers/replicate/provider";
+import { typesafeProvider } from "./providers/typesafe/provider";
 
 const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
 
@@ -91,6 +94,9 @@ export const createBackend = (env: Env): Backend => {
     openRouterProvider(openRouter),
     replicateProvider({ apiKey: env.replicateApiKey, pricing: replicatePricing }),
     replicateFilesProvider,
+    exaProvider,
+    mistralProvider,
+    typesafeProvider,
   ]);
   const replicateCatalog = createReplicateCatalog({
     apiKey: env.replicateApiKey,

@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
+import { EXA, exaCost, exaRequestId } from "../../providers/exa/provider";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { executeSseProvider } from "../../providers/sse-provider";
 import { HttpError } from "../http-error";
@@ -21,20 +22,6 @@ export type ExaRouteDependencies = MeteredRouteDependencies & {
 
 export const EXA_ENDPOINTS = ["search", "findSimilar", "contents", "answer"] as const;
 export type ExaEndpoint = (typeof EXA_ENDPOINTS)[number];
-
-
-/** `costDollars.total` from an Exa response, or null. */
-export const exaCost = (body: unknown): Usd | null => {
-  if (body === null || typeof body !== "object") return null;
-  const cost = (body as { costDollars?: { total?: unknown } }).costDollars?.total;
-  if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) return null;
-  return Usd.fromNumber(cost);
-};
-
-export const exaRequestId = (body: unknown) =>
-  body !== null && typeof body === "object" && typeof (body as { requestId?: unknown }).requestId === "string"
-    ? (body as { requestId: string }).requestId
-    : null;
 
 /**
  * `POST /proxy/v1/exa/{search,findSimilar,contents,answer}`, metered by Exa's
@@ -64,7 +51,7 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
     const headers = { "content-type": "application/json", "x-api-key": deps.exaApiKey };
 
     const { metered } = await runProviderRoute(deps, request, principal, {
-      provider: "exa",
+      provider: EXA,
       endpoint: label,
       model: label,
       estimatedCostUsd: reservation,

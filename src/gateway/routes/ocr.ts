@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
+import { MISTRAL, ocrCost, redactOcrResponse, requestsAnnotations } from "../../providers/mistral/provider";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -24,12 +25,6 @@ export type OcrRouteDependencies = MeteredRouteDependencies & {
   annotationPagePriceUsd?: string;
   baseUrl?: string;
 };
-
-/** Request fields that switch Mistral to its annotation pricing. */
-const ANNOTATION_FIELDS = ["document_annotation_format", "bbox_annotation_format"] as const;
-
-export const requestsAnnotations = (body: Record<string, unknown>) =>
-  ANNOTATION_FIELDS.some((field) => body[field] !== undefined && body[field] !== null);
 
 const INVALID_DOCUMENT =
   "Invalid document. Provide a valid document with type 'image_url', 'document_url', or 'file'. URLs must use HTTPS or be valid base64-encoded data URIs.";
@@ -55,28 +50,6 @@ export const isValidOcrDocument = (document: unknown): boolean => {
   return false;
 };
 
-/** Keeps page shape for analytics without storing extracted text. */
-export const redactOcrResponse = (body: unknown): string => {
-  if (!body || typeof body !== "object") return JSON.stringify({ redacted: true });
-  const value = body as Record<string, unknown>;
-  if (!Array.isArray(value.pages)) return JSON.stringify({ redacted: true });
-  return JSON.stringify({
-    ...value,
-    pages: value.pages.map((page: Record<string, unknown>) => ({
-      index: page.index,
-      dimensions: page.dimensions,
-      markdown_length: typeof page.markdown === "string" ? page.markdown.length : 0,
-      images_count: Array.isArray(page.images) ? page.images.length : 0,
-    })),
-  });
-};
-
-export const ocrPageCount = (body: unknown): number | null => {
-  if (!body || typeof body !== "object") return null;
-  const pages = (body as { pages?: unknown }).pages;
-  return Array.isArray(pages) ? pages.length : null;
-};
-
 /** `POST /proxy/v1/ocr`, forwarded to Mistral and billed per page. */
 export const ocrRoutes = (deps: OcrRouteDependencies) => {
   const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();
@@ -96,7 +69,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
     const requestBody = JSON.stringify(body);
 
     const { metered } = await runProviderRoute(deps, request, principal, {
-      provider: "mistral",
+      provider: MISTRAL,
       endpoint: "ocr",
       model,
       estimatedCostUsd: reservation,
@@ -113,10 +86,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
             body: requestBody,
             signal: request.signal,
           },
-          extractCost: (response) => {
-            const pages = ocrPageCount(response);
-            return pages === null ? null : pagePrice.multiply(BigInt(pages));
-          },
+          extractCost: (response) => ocrCost(response, pagePrice),
           redactResponseBody: redactOcrResponse,
         }),
     });

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { billingRecords, createTestAccount, onlyBillingRecord } from "../gateway/routes/test-harness";
+import { EXA, exaProvider } from "../providers/exa/provider";
+import { mistralProvider } from "../providers/mistral/provider";
 import type { OpenRouterConfig } from "../providers/openrouter/generation";
 import { openRouterProvider } from "../providers/openrouter/provider";
 import { type ProviderModule, providerRegistry } from "../providers/provider";
@@ -10,6 +12,7 @@ import {
   replicateFilesProvider,
   replicateProvider,
 } from "../providers/replicate/provider";
+import { typesafeProvider } from "../providers/typesafe/provider";
 import { testDatabase } from "../test/database";
 import { BillingEngine } from "./engine";
 import { Usd } from "./money";
@@ -141,7 +144,13 @@ const reconcile = ({
   openRouter?: OpenRouterConfig;
   replicate?: ReplicateProviderConfig | null;
 } = {}) => {
-  const modules: ProviderModule[] = [openRouterProvider(openRouter), replicateFilesProvider];
+  const modules: ProviderModule[] = [
+    openRouterProvider(openRouter),
+    replicateFilesProvider,
+    exaProvider,
+    mistralProvider,
+    typesafeProvider,
+  ];
   if (replicate) modules.push(replicateProvider(replicate));
   return reconcilePendingReservations({ sql, billing: engine, providers: providerRegistry(modules), ...options });
 };
@@ -322,6 +331,17 @@ describe("reconcilePendingReservations without a lookup", () => {
     const accountId = await newAccount();
     const young = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "5 minutes" });
     const old = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "25 hours" });
+
+    expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
+    expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
+    expect((await stateOf(old))?.state).toBe("released");
+  });
+
+  test("an exa row with a provider id is never looked up: deferred while young, released when old", async () => {
+    const accountId = await newAccount();
+    // Every upstream throws if consulted, so a lookup would count as failed.
+    const young = await pending(accountId, uniqueId("exa-"), { provider: EXA, age: "5 minutes" });
+    const old = await pending(accountId, uniqueId("exa-"), { provider: EXA, age: "24 hours 1 minute" });
 
     expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
     expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });

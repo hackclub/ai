@@ -3,6 +3,15 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
+import {
+  DEFAULT_JEV_MODEL,
+  JEV_MODEL,
+  jevCost,
+  jevModelLabel,
+  jevResponseModel,
+  jevTokens,
+  TYPESAFE,
+} from "../../providers/typesafe/provider";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -24,50 +33,6 @@ export type JevRouteDependencies = MeteredRouteDependencies & {
    */
   inputPricePerMillionTokensUsd?: string;
   baseUrl?: string;
-};
-
-const DEFAULT_MODEL = "jev-latest";
-const TOKENS_PER_PRICE_UNIT = 1_000_000n;
-/**
- * The configured input price is Jev's. Any other model TypeSafe might serve
- * is priced differently, so only the Jev family is forwarded.
- */
-const JEV_MODEL = /^jev(-[a-z0-9.]+)?$/i;
-
-const nonNegativeInteger = (value: unknown): number | null =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
-
-/** `usage.input_tokens` / `usage.output_tokens` from a systemone response, or null when absent. */
-export const jevTokens = (body: unknown): { inputTokens: number; outputTokens: number } | null => {
-  if (body === null || typeof body !== "object") return null;
-  const usage = (body as { usage?: unknown }).usage;
-  if (usage === null || typeof usage !== "object") return null;
-  const { input_tokens, output_tokens } = usage as { input_tokens?: unknown; output_tokens?: unknown };
-  const inputTokens = nonNegativeInteger(input_tokens);
-  if (inputTokens === null) return null;
-  return { inputTokens, outputTokens: nonNegativeInteger(output_tokens) ?? 0 };
-};
-
-/** Input tokens priced at `pricePerMillion`; output tokens are free. Null without usage. */
-export const jevCost = (body: unknown, pricePerMillion: Usd): Usd | null => {
-  const tokens = jevTokens(body);
-  if (!tokens) return null;
-  return Usd.fromAtoms((pricePerMillion.toAtoms() * BigInt(tokens.inputTokens)) / TOKENS_PER_PRICE_UNIT);
-};
-
-/** `jev/<model>`, preferring the versioned id the response reports over the alias requested. */
-export const jevModelLabel = (model: unknown, fallback: unknown = DEFAULT_MODEL) => {
-  const chosen = typeof model === "string" && model ? model : fallback;
-  return `jev/${typeof chosen === "string" && chosen ? chosen : DEFAULT_MODEL}`;
-};
-
-const responseModel = (raw: string): string | null => {
-  try {
-    const model = (JSON.parse(raw) as { model?: unknown })?.model;
-    return typeof model === "string" && model ? model : null;
-  } catch {
-    return null;
-  }
 };
 
 /**
@@ -97,7 +62,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     const principal = await authorize(request, rawBody);
 
     const body = parseJsonObject(rawBody);
-    const model = typeof body.model === "string" && body.model ? body.model : DEFAULT_MODEL;
+    const model = typeof body.model === "string" && body.model ? body.model : DEFAULT_JEV_MODEL;
     if (!JEV_MODEL.test(model)) {
       throw new HttpError(400, `Unknown model ${model}. Only Jev models are available.`);
     }
@@ -105,7 +70,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     const requestBody = JSON.stringify(body);
 
     const input: ProviderRouteInput = {
-      provider: "typesafe",
+      provider: TYPESAFE,
       endpoint: "jev/systemone",
       model: jevModelLabel(body.model),
       estimatedCostUsd: reservation,
@@ -122,7 +87,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
           ...metered,
           completion: metered.completion.then((completion) =>
             metered.response.ok
-              ? { ...completion, model: jevModelLabel(responseModel(completion.responseBody), body.model) }
+              ? { ...completion, model: jevModelLabel(jevResponseModel(completion.responseBody), body.model) }
               : completion,
           ),
         };

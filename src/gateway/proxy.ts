@@ -7,6 +7,7 @@ import { estimateLanguageReservation } from "../billing/estimate-language-reserv
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
 import { isEventStream } from "../providers/metered-body";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
+import { OPENROUTER } from "../providers/openrouter/provider";
 import { forwardableHeaders } from "../providers/response-headers";
 import { HttpError } from "./http-error";
 import { jsonWithEtag } from "./etag";
@@ -212,7 +213,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       request,
       principal,
       {
-        provider: "openrouter",
+        provider: OPENROUTER,
         endpoint,
         model: body.model,
         estimatedCostUsd: estimateFor(kind, model, body),

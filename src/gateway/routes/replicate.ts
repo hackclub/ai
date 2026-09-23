@@ -10,6 +10,7 @@ import {
   type ReplicatePricingSource,
 } from "../../providers/replicate/pricing";
 import { fetchReplicatePrediction } from "../../providers/replicate/predictions";
+import { REPLICATE } from "../../providers/replicate/provider";
 import {
   countReplicateResources,
   ownsReplicateResource,
@@ -308,7 +309,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     const costUsd = estimate.lessThan(minimumHold) ? minimumHold : estimate;
     const requestBody = JSON.stringify(payload);
     const route = await runProviderRoute(deps, request, principal, {
-      provider: "replicate",
+      provider: REPLICATE,
       endpoint: "replicate/predictions",
       model,
       estimatedCostUsd: costUsd,
