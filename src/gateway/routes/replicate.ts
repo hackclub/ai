@@ -3,20 +3,13 @@ import { Elysia } from "elysia";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
+import { meterPrediction } from "../../providers/replicate/metering";
 import {
   createReplicatePricingSource,
   estimatePredictionCost,
-  hasBillableMetrics,
-  predictionCost,
-  type ReplicatePricing,
   type ReplicatePricingSource,
 } from "../../providers/replicate/pricing";
-import {
-  fetchReplicatePrediction,
-  isTerminal,
-  parsePrediction,
-  type PredictionSnapshot,
-} from "../../providers/replicate/predictions";
+import { fetchReplicatePrediction } from "../../providers/replicate/predictions";
 import {
   countReplicateResources,
   ownsReplicateResource,
@@ -25,10 +18,6 @@ import {
 } from "../../providers/replicate/resources";
 import { meterJsonResponse } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
-import type {
-  MeteredProviderResponse,
-  ProviderCompletion,
-} from "../../providers/types";
 import { assertNotBlockedClient } from "../abuse";
 import { HttpError } from "../http-error";
 import {
@@ -121,189 +110,6 @@ export const resolveModelReference = (reference: string): ModelReference => {
   if (versionId === undefined) return { model, version: null };
   validateVersionAccess(model, versionId);
   return { model, version: `${model}:${versionId}` };
-};
-
-const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
-const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
-const textDecoder = new TextDecoder();
-
-export type PredictionSettlement = {
-  pricing: ReplicatePricing;
-  /** Fetches the current state of a prediction by id. */
-  lookup: (id: string) => Promise<PredictionSnapshot | null>;
-  timeoutMs: number;
-  sleep?: (ms: number) => Promise<void>;
-};
-
-/**
- * Waits until a prediction reaches a terminal status. A `Prefer: wait`
- * response is usually terminal already; otherwise the prediction is polled
- * with a gentle backoff until the deadline passes.
- */
-const awaitTerminal = async (
-  initial: PredictionSnapshot,
-  settlement: PredictionSettlement,
-): Promise<PredictionSnapshot | null> => {
-  if (isTerminal(initial)) return initial;
-  if (!initial.id) return null;
-  const sleep = settlement.sleep ?? Bun.sleep;
-  const deadline = Date.now() + settlement.timeoutMs;
-  let consecutiveFailures = 0;
-  for (let attempt = 0; Date.now() < deadline; attempt += 1) {
-    await sleep(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)]);
-    let latest: PredictionSnapshot | null;
-    try {
-      latest = await settlement.lookup(initial.id);
-      consecutiveFailures = 0;
-    } catch (error) {
-      // A transient upstream error is retried; a run of them is given up on
-      // so a dead upstream still resolves within the settlement window.
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= MAX_CONSECUTIVE_LOOKUP_FAILURES) throw error;
-      continue;
-    }
-    if (isTerminal(latest)) return latest;
-  }
-  return null;
-};
-
-/**
- * Wraps a Replicate prediction response for the metered lifecycle. The body
- * streams to the client untouched; once it has been read, the prediction is
- * followed to a terminal status and billed from its reported metrics. Failed
- * and cancelled predictions still bill any hardware time Replicate reports.
- * Anything that prevents reading final metrics resolves as uncertain so the
- * reservation is held for reconciliation instead of being guessed.
- */
-export const meterPrediction = (
-  upstream: Response,
-  requestBody: string,
-  settlement: PredictionSettlement,
-): MeteredProviderResponse => {
-  const { promise: completion, resolve: settle } = Promise.withResolvers<ProviderCompletion>();
-  const chunks: Uint8Array[] = [];
-  const reader = upstream.body?.getReader();
-  // Only read once the stream has ended, errored or been cancelled, so the
-  // decoded text is cached and the chunks released rather than both being
-  // held for the settlement window.
-  let decoded: string | null = null;
-  const captured = () => {
-    decoded ??= textDecoder.decode(Buffer.concat(chunks));
-    chunks.length = 0;
-    return decoded;
-  };
-  // The prediction id is kept on every uncertain outcome so reconciliation
-  // can look the prediction up later instead of releasing the hold unbilled.
-  const uncertain = (
-    reason: string,
-    predictionId: string | null = null,
-    bodyCapture: "complete" | "partial" = "complete",
-  ) =>
-    settle(
-      upstream.ok
-        ? { state: "uncertain", providerRequestId: predictionId, reason, responseBody: captured(), bodyCapture }
-        : { state: "provider_error", providerRequestId: predictionId, responseBody: captured(), bodyCapture },
-    );
-  const finish = async () => {
-    const body = captured();
-    if (!upstream.ok) {
-      uncertain(`Replicate returned HTTP ${upstream.status}`);
-      return;
-    }
-    const initial = parsePrediction(body);
-    if (!initial) {
-      uncertain("Replicate response was not a prediction object");
-      return;
-    }
-    const predictionId = initial.id ?? null;
-    let final: PredictionSnapshot | null;
-    try {
-      final = await awaitTerminal(initial, settlement);
-    } catch (error) {
-      uncertain(error instanceof Error ? error.message : "Prediction lookup failed", predictionId);
-      return;
-    }
-    if (!final) {
-      uncertain(
-        `Prediction ${predictionId ?? "?"} did not finish within the settlement window`,
-        predictionId,
-      );
-      return;
-    }
-    const finalId = final.id ?? predictionId;
-    const metrics = final.metrics ?? {};
-    // A successful run without the metric its price is keyed on cannot be
-    // billed from the response. Holding it for reconciliation beats closing
-    // it at $0 as if Replicate had reported nothing to charge.
-    if (final.status === "succeeded" && !hasBillableMetrics(settlement.pricing, metrics)) {
-      uncertain(`Prediction ${predictionId ?? "?"} succeeded without billable metrics`, finalId);
-      return;
-    }
-    settle({
-      state: "complete",
-      providerRequestId: finalId,
-      usage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        costUsd: predictionCost(settlement.pricing, metrics),
-      },
-      responseBody: body,
-      bodyCapture: "complete",
-    });
-  };
-  if (!reader) {
-    void finish();
-    return { response: upstream, requestBody, completion };
-  }
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const next = await reader.read();
-        if (!next.done) {
-          chunks.push(next.value.slice());
-          controller.enqueue(next.value);
-          return;
-        }
-        controller.close();
-        void finish();
-      } catch (error) {
-        uncertain(error instanceof Error ? error.message : "Response stream failed", null, "partial");
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      // The upstream may already be gone (aborted fetch, closed socket). A
-      // rejected cancel must not leave `completion` unsettled, or the
-      // reservation would only ever close by expiry.
-      await reader.cancel(reason).catch(() => {});
-      const text = captured();
-      // Replicate creates the prediction before responding, so a cancelled
-      // read still names a run that may be billed; keep its id for
-      // reconciliation, exactly as `finish()` does.
-      const predictionId = upstream.ok ? (parsePrediction(text)?.id ?? null) : null;
-      settle(
-        upstream.ok
-          ? {
-              state: "uncertain",
-              providerRequestId: predictionId,
-              reason: typeof reason === "string" ? reason : "Client cancelled response",
-              responseBody: text,
-              bodyCapture: "partial",
-            }
-          : { state: "provider_error", providerRequestId: predictionId, responseBody: text, bodyCapture: "partial" },
-      );
-    },
-  });
-  return {
-    response: new Response(body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: upstream.headers,
-    }),
-    requestBody,
-    completion,
-  };
 };
 
 const LINK_KEYS = new Set(["get", "cancel", "next", "previous"]);
