@@ -287,8 +287,8 @@ describe("POST /files", () => {
     const upload = await record();
     expect(upload).toMatchObject({
       state: "finalized",
-      provider: "replicate",
-      providerRequestId: null,
+      provider: "replicate-files",
+      providerRequestId: "f3",
       estimatedCostUsd: "0.000000000000",
       actualCostUsd: "0.000000000000",
     });

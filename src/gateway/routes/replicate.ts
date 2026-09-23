@@ -10,7 +10,7 @@ import {
   type ReplicatePricingSource,
 } from "../../providers/replicate/pricing";
 import { fetchReplicatePrediction } from "../../providers/replicate/predictions";
-import { REPLICATE } from "../../providers/replicate/provider";
+import { REPLICATE, REPLICATE_FILES } from "../../providers/replicate/provider";
 import {
   countReplicateResources,
   ownsReplicateResource,
@@ -146,6 +146,12 @@ const readJson = async (request: Request) => {
   return { raw, body: parseJsonObject(raw) };
 };
 
+/** The `id` of a created Replicate resource (prediction or file), or null. */
+const idOf = (value: unknown) =>
+  value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
+    ? (value as { id: string }).id
+    : null;
+
 /** Every Replicate proxy route under /proxy/v1/replicate. */
 export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const fetchImplementation = (deps.fetch ?? fetch) as typeof fetch;
@@ -231,11 +237,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     if (!PREDICTION_ID.test(id)) throw new HttpError(400, "Invalid prediction ID");
     await assertOwner("prediction", id, userId);
   };
-
-  const idOf = (value: unknown) =>
-    value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
-      ? (value as { id: string }).id
-      : null;
 
   /**
    * Rewrites a created resource's response and records who owns it before
@@ -360,7 +361,7 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       const filename = form.get("filename");
       if (typeof filename === "string") upload.append("filename", filename);
       const route = await runProviderRoute(deps, request, principal, {
-        provider: "replicate",
+        provider: REPLICATE_FILES,
         endpoint: "replicate/files",
         model: "replicate/files",
         estimatedCostUsd: Usd.zero,
@@ -377,9 +378,9 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
               init: {
                 body: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
               },
-              // Uploads are free. No provider request id: reconciliation
-              // would read it as a prediction id.
+              // Uploads are free.
               extractCost: () => Usd.zero,
+              extractProviderRequestId: idOf,
             },
           ),
       } satisfies ProviderRouteInput);
