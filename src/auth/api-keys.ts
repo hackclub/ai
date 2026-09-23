@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 
 import { HttpError } from "../gateway/http-error";
+import { BANNED_MESSAGE } from "./users";
 
 type Sql = postgres.Sql;
 
@@ -26,8 +27,8 @@ type PrincipalRow = {
   skip_idv: boolean;
 };
 
-const BANNED_MESSAGE = "You are banned from using this service.";
 const SUSPENDED_MESSAGE = "This billing account is suspended.";
+const MAX_ACTIVE_KEYS = 50;
 const IDV_MESSAGE =
   "Identity verification required. Please verify at https://identity.hackclub.com";
 
@@ -105,3 +106,115 @@ export const touchApiKey = (sql: Sql, apiKeyId: string) => {
       AND (last_used_at IS NULL OR last_used_at < now() - INTERVAL '1 minute')
   `.catch(() => {});
 };
+
+export type IssuedApiKey = {
+  id: string;
+  /** The plaintext key. It is shown once and never stored. */
+  key: string;
+  keyPrefix: string;
+};
+
+export async function issueApiKey(
+  sql: Sql,
+  userId: string,
+  name: string,
+): Promise<IssuedApiKey> {
+  const generated = generateApiKey();
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
+    VALUES (
+      ${userId}::uuid,
+      ${generated.keyHash},
+      ${generated.keyPrefix},
+      ${name}
+    )
+    RETURNING id
+  `;
+  if (!row) throw new Error("PostgreSQL did not return the new API key");
+  return { id: row.id, key: generated.key, keyPrefix: generated.keyPrefix };
+}
+
+export type ApiKeySummary = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+};
+
+export async function listApiKeys(sql: Sql, userId: string): Promise<ApiKeySummary[]> {
+  const rows = await sql<
+    { id: string; name: string; key_prefix: string; created_at: Date; last_used_at: Date | null }[]
+  >`
+    SELECT id, name, key_prefix, created_at, last_used_at
+    FROM api_keys
+    WHERE user_id = ${userId}::uuid AND revoked_at IS NULL
+    ORDER BY created_at DESC
+  `;
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    keyPrefix: row.key_prefix,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+  }));
+}
+
+/** Validates the name and the active-key cap, then issues a key. */
+export async function createApiKey(sql: Sql, userId: string, rawName: unknown) {
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  if (name.length < 1 || name.length > 100) {
+    throw new HttpError(400, "Key name must be between 1 and 100 characters");
+  }
+  const [count] = await sql<{ count: number }[]>`
+    SELECT count(*)::integer AS count
+    FROM api_keys
+    WHERE user_id = ${userId}::uuid AND revoked_at IS NULL
+  `;
+  if ((count?.count ?? 0) >= MAX_ACTIVE_KEYS) {
+    throw new HttpError(400, "Maximum API key limit reached");
+  }
+  const issued = await issueApiKey(sql, userId, name);
+  return { key: issued.key, name, id: issued.id };
+}
+
+/**
+ * Revokes one of the user's keys. False when the key does not exist or is
+ * someone else's; an owned key that is already revoked still returns true.
+ */
+export async function revokeOwnedApiKey(sql: Sql, userId: string, apiKeyId: string): Promise<boolean> {
+  const [owned] = await sql<{ id: string }[]>`
+    SELECT id FROM api_keys WHERE id = ${apiKeyId}::uuid AND user_id = ${userId}::uuid
+  `;
+  if (!owned) return false;
+  await sql`
+    UPDATE api_keys
+    SET revoked_at = now()
+    WHERE id = ${apiKeyId}::uuid AND user_id = ${userId}::uuid AND revoked_at IS NULL
+  `;
+  return true;
+}
+
+/** Revokes by plaintext token. Used by the internal and GitHub webhooks. */
+export async function revokeApiKeyByToken(sql: Sql, token: string) {
+  const [row] = await sql<
+    { id: string; name: string; revoked: boolean; owner_email: string | null }[]
+  >`
+    SELECT api_key.id, api_key.name, api_key.revoked_at IS NOT NULL AS revoked,
+      app_user.email AS owner_email
+    FROM api_keys AS api_key
+    JOIN users AS app_user ON app_user.id = api_key.user_id
+    WHERE api_key.key_hash = ${hashApiKey(token)}
+    LIMIT 1
+  `;
+  if (!row) return { found: false as const };
+  if (!row.revoked) {
+    await sql`UPDATE api_keys SET revoked_at = now() WHERE id = ${row.id}::uuid`;
+  }
+  return {
+    found: true as const,
+    alreadyRevoked: row.revoked,
+    keyName: row.name,
+    ownerEmail: row.owner_email,
+  };
+}

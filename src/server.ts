@@ -7,6 +7,7 @@ import { AnalyticsQueries } from "./analytics/queries";
 import { startAnalyticsWorker } from "./analytics/worker";
 import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
+import { createSessions, type Sessions } from "./auth/sessions";
 import { BillingEngine } from "./billing/engine";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
@@ -31,6 +32,8 @@ const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
 
 export type Backend = {
   app: ReturnType<typeof createApp>;
+  /** Resolves the dashboard's session cookie; hooks.server.ts calls it per page request. */
+  sessions: Sessions;
   sql: postgres.Sql;
   clickhouse: ClickHouseClient;
   billing: BillingEngine;
@@ -53,6 +56,9 @@ export const createBackend = (env: Env): Backend => {
   });
   const settlements = new SettlementTracker();
   const billing = new BillingEngine(sql);
+  // Unchanged derivation (plans/README: the maintainer keeps Secure tied to NODE_ENV).
+  const secureCookies = env.nodeEnv === "production";
+  const sessions = createSessions({ sql, secureCookies });
   Sentry.init({
     dsn: env.sentryDsn ?? undefined,
     enabled: env.sentryDsn !== null,
@@ -112,7 +118,7 @@ export const createBackend = (env: Env): Backend => {
       allowedImageModels: env.allowedImageModels,
       attributionHeaders,
     }),
-    keysApiRoutes({ sql, baseUrl: env.baseUrl, secureCookies: env.nodeEnv === "production" }),
+    keysApiRoutes({ sql, baseUrl: env.baseUrl, sessions }),
     webhookRoutes({ sql }),
     replicateRoutes({
       ...metered,
@@ -126,7 +132,8 @@ export const createBackend = (env: Env): Backend => {
       clientId: env.hackClubClientId,
       clientSecret: env.hackClubClientSecret,
       baseUrl: env.baseUrl,
-      secureCookies: env.nodeEnv === "production",
+      secureCookies,
+      sessions,
     }),
   ];
 
@@ -185,6 +192,7 @@ export const createBackend = (env: Env): Backend => {
   };
   return {
     app,
+    sessions,
     sql,
     clickhouse,
     billing,

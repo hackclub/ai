@@ -2,7 +2,7 @@ import type { PageServerLoad } from "./$types";
 
 import { quickstartCurl } from "#lib/server/examples.ts";
 import { requireUser } from "#lib/server/page.ts";
-import { listApiKeys } from "../../gateway/keys-api";
+import { listApiKeys } from "../../auth/api-keys";
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireUser(locals);

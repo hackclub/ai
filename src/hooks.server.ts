@@ -1,6 +1,5 @@
 import type { Handle, ServerInit } from "@sveltejs/kit/hooks";
 
-import { SESSION_COOKIE, cookieName, cookieValue, sessionUser } from "./auth/sessions";
 import { loadEnv } from "./env";
 import { isApiPath, isCrossOriginFormSubmission } from "./hooks.paths";
 import { log } from "./log";
@@ -63,12 +62,6 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   event.locals.backend = backend;
-  event.locals.user = await sessionUser(
-    backend.sql,
-    cookieValue(
-      event.request.headers.get("cookie"),
-      cookieName(SESSION_COOKIE, backend.env.nodeEnv === "production"),
-    ),
-  );
+  event.locals.user = await backend.sessions.user(event.request.headers.get("cookie"));
   return resolve(event);
 };

@@ -1,10 +1,8 @@
 import type postgres from "postgres";
 
-import { hashApiKey } from "./api-keys";
-
 type Sql = postgres.Sql;
 
-export const SESSION_COOKIE = "session_token";
+const SESSION_COOKIE = "session_token";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export type SessionUser = {
@@ -33,9 +31,11 @@ type SessionRow = {
   billing_account_id: string;
 };
 
-const hashToken = hashApiKey;
+/** SHA-256 of the token. Byte-identical to `hashApiKey`, so stored sessions keep matching. */
+const hashToken = (token: string): Uint8Array =>
+  new Uint8Array(new Bun.CryptoHasher("sha256").update(token).digest());
 
-export async function createSession(sql: Sql, userId: string) {
+async function createSession(sql: Sql, userId: string) {
   const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await sql`
@@ -45,12 +45,17 @@ export async function createSession(sql: Sql, userId: string) {
   return { token, expiresAt };
 }
 
-export async function deleteSession(sql: Sql, token: string) {
+async function deleteSession(sql: Sql, token: string) {
   await sql`DELETE FROM sessions WHERE token_hash = ${hashToken(token)}`;
 }
 
-/** Resolves a session cookie to its user, or null when absent or expired. */
-export async function sessionUser(
+/**
+ * Resolves a session cookie to its user, or null when absent or expired.
+ * The INNER JOIN on `billing_accounts` is safe: every user has a billing
+ * account. `createUser` is the only writer of `users` and creates both in
+ * one transaction, and nothing deletes an account.
+ */
+async function sessionUser(
   sql: Sql,
   token: string | undefined,
 ): Promise<SessionUser | null> {
@@ -123,3 +128,41 @@ export const serializeCookie = (
   options: { maxAge: number; path: string; secure: boolean },
 ) =>
   `${name}=${encodeURIComponent(value)}; Path=${options.path}; Max-Age=${options.maxAge}; HttpOnly; SameSite=Lax${options.secure ? "; Secure" : ""}`;
+
+export type Sessions = {
+  /** The signed-in user for a request's Cookie header, or null when absent, expired, duplicated or unknown. */
+  user(cookieHeader: string | null): Promise<SessionUser | null>;
+  /** Creates a session for the user; returns the Set-Cookie header value that carries it. */
+  start(userId: string): Promise<string>;
+  /** Deletes the request's session if there is one; returns the Set-Cookie value that clears the cookie. */
+  end(cookieHeader: string | null): Promise<string>;
+};
+
+/**
+ * The single owner of the session cookie. `secureCookies` is derived once in
+ * `createBackend`; it selects the `__Host-` name and the `Secure` attribute.
+ */
+export const createSessions = (options: { sql: Sql; secureCookies: boolean }): Sessions => {
+  const { sql, secureCookies: secure } = options;
+  const name = cookieName(SESSION_COOKIE, secure);
+  return {
+    user: (cookieHeader) => sessionUser(sql, cookieValue(cookieHeader, name)),
+    start: async (userId) => {
+      const session = await createSession(sql, userId);
+      return serializeCookie(name, session.token, { maxAge: SESSION_TTL_MS / 1_000, path: "/", secure });
+    },
+    end: async (cookieHeader) => {
+      const token = cookieValue(cookieHeader, name);
+      if (token) await deleteSession(sql, token);
+      return serializeCookie(name, "", { maxAge: 0, path: "/", secure });
+    },
+  };
+};
+
+export type SessionAccess =
+  | { ok: true; user: SessionUser }
+  | { ok: false; reason: "signed-out" | "banned" };
+
+/** Whether a resolved session user may use the dashboard and /api. Adapters map the reason to their own error. */
+export const sessionAccess = (user: SessionUser | null): SessionAccess =>
+  !user ? { ok: false, reason: "signed-out" } : user.isBanned ? { ok: false, reason: "banned" } : { ok: true, user };

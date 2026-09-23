@@ -1,6 +1,6 @@
 import type { Backend } from "../../server";
 import type { SessionUser } from "../../auth/sessions";
-import { listApiKeys } from "../../gateway/keys-api";
+import { listApiKeys } from "../../auth/api-keys";
 
 export type ActivityRow = {
   requestId: string;

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { createUser, issueApiKey } from "../auth/users";
+import { issueApiKey } from "../auth/api-keys";
+import { createUser } from "../auth/users";
 import { createApp } from "../app";
 import { testBilling } from "./routes/test-harness";
 import { ModelCatalog } from "../models/catalog";

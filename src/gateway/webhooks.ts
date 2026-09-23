@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
-import { revokeApiKeyByToken } from "./keys-api";
+import { revokeApiKeyByToken } from "../auth/api-keys";
 
 type Sql = postgres.Sql;
 

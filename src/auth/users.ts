@@ -1,8 +1,9 @@
 import type postgres from "postgres";
 
-import { generateApiKey } from "./api-keys";
-
 type Sql = postgres.Sql;
+
+/** Shown to a banned user by the proxy, `/api` and the dashboard. */
+export const BANNED_MESSAGE = "You are banned from using this service.";
 
 export type CreateUserInput = {
   slackId: string;
@@ -62,39 +63,4 @@ export async function createUser(
 
     return { userId: user.id, billingAccountId: account.id };
   });
-}
-
-export type IssuedApiKey = {
-  id: string;
-  /** The plaintext key. It is shown once and never stored. */
-  key: string;
-  keyPrefix: string;
-};
-
-export async function issueApiKey(
-  sql: Sql,
-  userId: string,
-  name: string,
-): Promise<IssuedApiKey> {
-  const generated = generateApiKey();
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
-    VALUES (
-      ${userId}::uuid,
-      ${generated.keyHash},
-      ${generated.keyPrefix},
-      ${name}
-    )
-    RETURNING id
-  `;
-  if (!row) throw new Error("PostgreSQL did not return the new API key");
-  return { id: row.id, key: generated.key, keyPrefix: generated.keyPrefix };
-}
-
-export async function revokeApiKey(sql: Sql, userId: string, apiKeyId: string) {
-  await sql`
-    UPDATE api_keys
-    SET revoked_at = now()
-    WHERE id = ${apiKeyId}::uuid AND user_id = ${userId}::uuid AND revoked_at IS NULL
-  `;
 }

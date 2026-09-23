@@ -3,15 +3,7 @@ import type postgres from "postgres";
 
 import { HttpError } from "../gateway/http-error";
 import { assertSameOrigin } from "../gateway/origin-check";
-import {
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
-  cookieName,
-  cookieValue,
-  createSession,
-  deleteSession,
-  serializeCookie,
-} from "./sessions";
+import { type Sessions, cookieName, cookieValue, serializeCookie } from "./sessions";
 import { createUser } from "./users";
 
 type Sql = postgres.Sql;
@@ -31,7 +23,10 @@ export type HackClubAuthOptions = {
   clientId: string;
   clientSecret: string;
   baseUrl: string;
+  /** Selects the `__Host-` name and `Secure` attribute of the `oauth_state` cookie. */
   secureCookies: boolean;
+  /** Starts and ends the dashboard session. */
+  sessions: Sessions;
   fetch?: typeof fetch;
   onSignedIn?: (userId: string, identity: HackClubIdentity) => void;
 };
@@ -117,12 +112,6 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
       path: "/",
       secure: options.secureCookies,
     });
-  const sessionCookie = (value: string, maxAge: number) =>
-    serializeCookie(cookieName(SESSION_COOKIE, options.secureCookies), value, {
-      maxAge,
-      path: "/",
-      secure: options.secureCookies,
-    });
 
   return new Elysia({ prefix: "/auth" })
     .get("/login", () => {
@@ -175,21 +164,13 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
       };
 
       const userId = await upsertHackClubUser(options.sql, identity);
-      const session = await createSession(options.sql, userId);
+      const session = await options.sessions.start(userId);
       options.onSignedIn?.(userId, identity);
 
-      return redirect("/dashboard", [
-        clearState,
-        sessionCookie(session.token, SESSION_TTL_MS / 1_000),
-      ]);
+      return redirect("/dashboard", [clearState, session]);
     })
     .post("/logout", async ({ request }) => {
       assertSameOrigin(request, options.baseUrl);
-      const token = cookieValue(
-        request.headers.get("cookie"),
-        cookieName(SESSION_COOKIE, options.secureCookies),
-      );
-      if (token) await deleteSession(options.sql, token);
-      return redirect("/", [sessionCookie("", 0)]);
+      return redirect("/", [await options.sessions.end(request.headers.get("cookie"))]);
     });
 };

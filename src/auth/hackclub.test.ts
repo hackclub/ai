@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import type { Sql } from "postgres";
 
+import { testDatabase } from "../test/database";
 import { hackClubAuthRoutes } from "./hackclub";
-import { cookieValue } from "./sessions";
+import { cookieValue, createSessions } from "./sessions";
 
-// These paths never reach the database or Hack Club.
+const { sql } = await testDatabase();
+
+// These paths never reach Hack Club.
 const routes = (secureCookies: boolean) =>
   hackClubAuthRoutes({
-    sql: {} as Sql,
+    sql,
     clientId: "client",
     clientSecret: "secret",
     baseUrl: "http://gateway.test",
     secureCookies,
+    sessions: createSessions({ sql, secureCookies }),
     fetch: (async () => {
       throw new Error("unexpected fetch");
     }) as unknown as typeof fetch,

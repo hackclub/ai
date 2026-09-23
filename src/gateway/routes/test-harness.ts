@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 
-import { createUser, issueApiKey } from "../../auth/users";
+import { issueApiKey } from "../../auth/api-keys";
+import { createUser } from "../../auth/users";
 import { BillingEngine, type JsonValue } from "../../billing/engine";
 import type { ReservationState } from "../../billing/lifecycle";
 import type { Fetch } from "../../providers/openrouter/adapter";
