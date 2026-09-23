@@ -1,19 +1,7 @@
 /**
- * Applies pending migrations in migrations/postgres and migrations/clickhouse
- * with dbmate (https://github.com/amacneil/dbmate).
- *
  *   bun run db:migrate            # apply pending
  *   bun run db:migrate --status   # list applied/pending; exits 2 if any pending
  *   bun run db:migrate --only=postgres   # one store (also --only=clickhouse)
- *
- * This wrapper only does what dbmate cannot: build both URLs from the app's
- * variables, hold a PostgreSQL advisory lock so two deploys never migrate at
- * once, and convert the tracking tables of the runner dbmate replaced.
- *
- * Reads process.env directly (not `loadEnv()`), so it runs as a deploy step
- * without provider API keys. Every file needs `-- migrate:up` and
- * `-- migrate:down` markers, and each ClickHouse file must hold exactly one
- * statement: ClickHouse rejects multi-statement queries.
  */
 import { createClient } from "@clickhouse/client";
 import { $ } from "bun";

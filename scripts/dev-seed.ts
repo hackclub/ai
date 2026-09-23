@@ -1,10 +1,3 @@
-/**
- * Creates (or reuses) a local development user with a $3/day allowance, issues
- * an API key, and opens a 30-day browser session so the dashboard can be used
- * without Hack Club sign-in. Development only.
- *
- *   bun run dev:seed
- */
 import postgres from "postgres";
 
 import { createSession, SESSION_COOKIE } from "../src/auth/sessions";
@@ -26,7 +19,7 @@ if (!user) {
   const created = await createUser(sql, {
     slackId,
     name: "Local Dev",
-    email: "dev@localhost",
+    email: "dev@localhost.com",
     dailyAllowanceUsd: "3",
   });
   await sql`UPDATE users SET is_idv_verified = true WHERE id = ${created.userId}::uuid`;
