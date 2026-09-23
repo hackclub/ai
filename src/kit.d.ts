@@ -1,11 +1,11 @@
 import type { SessionUser } from "./auth/sessions";
-import type { Backend } from "./server";
+import type { DashboardReadModel } from "./dashboard/read-model";
 
 declare global {
   namespace App {
     interface Locals {
       user: SessionUser | null;
-      backend: Backend;
+      dashboard: DashboardReadModel;
     }
   }
 }

@@ -1,4 +1,4 @@
-import { type ClickHouseClient, createClient } from "@clickhouse/client";
+import { createClient } from "@clickhouse/client";
 import * as Sentry from "@sentry/bun";
 import type { AnyElysia } from "elysia";
 import postgres from "postgres";
@@ -9,6 +9,7 @@ import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
 import { createSessions, type Sessions } from "./auth/sessions";
 import { BillingEngine } from "./billing/engine";
+import { DashboardReadModel } from "./dashboard/read-model";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
 import { keysApiRoutes } from "./gateway/keys-api";
@@ -25,7 +26,7 @@ import { log } from "./log";
 import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
-import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
+import { createReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
 const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
@@ -34,14 +35,8 @@ export type Backend = {
   app: ReturnType<typeof createApp>;
   /** Resolves the dashboard's session cookie; hooks.server.ts calls it per page request. */
   sessions: Sessions;
-  sql: postgres.Sql;
-  clickhouse: ClickHouseClient;
-  billing: BillingEngine;
-  settlements: SettlementTracker;
-  catalog: ModelCatalog;
-  replicateCatalog: ReplicateCatalog;
-  queries: AnalyticsQueries;
-  env: Env;
+  /** Everything a SvelteKit loader reads. */
+  dashboard: DashboardReadModel;
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
 };
@@ -92,6 +87,7 @@ export const createBackend = (env: Env): Backend => {
     apiKey: env.replicateApiKey,
     pricing: replicatePricing,
   });
+  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env });
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -193,14 +189,7 @@ export const createBackend = (env: Env): Backend => {
   return {
     app,
     sessions,
-    sql,
-    clickhouse,
-    billing,
-    settlements,
-    catalog,
-    replicateCatalog,
-    queries,
-    env,
+    dashboard,
     start: async () => {
       try {
         await startServices();

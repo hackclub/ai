@@ -1,12 +1,10 @@
 import type { LayoutServerLoad } from "./$types";
 
-import { dailySpending } from "../analytics/queries";
-
 export const load: LayoutServerLoad = async ({ locals }) => {
-  const { backend, user } = locals;
-  const env = backend.env;
+  const { dashboard, user } = locals;
+  const { site } = dashboard;
 
-  const spending = user ? await dailySpending(backend.sql, user.billingAccountId) : null;
+  const spending = user ? await dashboard.spending(user) : null;
 
   return {
     user: user
@@ -22,9 +20,9 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         }
       : null,
     spending,
-    devMode: env.nodeEnv === "development",
-    baseUrl: env.baseUrl,
-    enforceIdv: env.enforceIdv,
-    featuredModel: env.featuredModels[0] ?? "openai/gpt-4o-mini",
+    devMode: site.devMode,
+    baseUrl: site.baseUrl,
+    enforceIdv: site.enforceIdv,
+    featuredModel: site.featuredModel,
   };
 };

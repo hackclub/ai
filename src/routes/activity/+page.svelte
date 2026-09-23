@@ -3,7 +3,7 @@
   import PageHeader from "#lib/components/page-header.svelte";
   import { Button } from "#lib/components/ui/button/index.ts";
   import { displayModelName, formatDuration, formatFullTime, formatPrice, formatRelativeTime, hashColor } from "#lib/format.ts";
-  import type { ActivityPage, ActivityRow } from "#lib/server/activity.ts";
+  import type { ActivityPage, ActivityRow } from "../../dashboard/read-model";
 
   let { data } = $props();
 

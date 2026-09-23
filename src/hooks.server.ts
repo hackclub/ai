@@ -61,7 +61,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     return Response.redirect("https://docs.ai.hackclub.com", 302);
   }
 
-  event.locals.backend = backend;
+  event.locals.dashboard = backend.dashboard;
   event.locals.user = await backend.sessions.user(event.request.headers.get("cookie"));
   return resolve(event);
 };

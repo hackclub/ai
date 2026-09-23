@@ -77,7 +77,8 @@ const responseExample = `{
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireUser(locals);
-  const baseUrl = locals.backend.env.baseUrl;
+  const { site } = locals.dashboard;
+  const baseUrl = site.baseUrl;
   const source = sources(baseUrl);
   const [curl, javascript, python, response] = await Promise.all([
     highlight(source.curl, "bash"),

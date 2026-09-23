@@ -3,6 +3,7 @@ import postgres from "postgres";
 import { issueApiKey } from "../src/auth/api-keys";
 import { createSessions } from "../src/auth/sessions";
 import { createUser } from "../src/auth/users";
+import { featuredModel } from "../src/dashboard/read-model";
 import { loadEnv } from "../src/env";
 
 const env = loadEnv();
@@ -43,7 +44,7 @@ Try it:
   curl ${env.baseUrl}/proxy/v1/chat/completions \\
     -H "Authorization: Bearer ${key.key}" \\
     -H "Content-Type: application/json" \\
-    -d '{"model": "${env.featuredModels[0] ?? "openai/gpt-4o-mini"}", "messages": [{"role": "user", "content": "Hi"}]}'
+    -d '{"model": "${featuredModel(env.featuredModels)}", "messages": [{"role": "user", "content": "Hi"}]}'
 
 Dashboard without sign-in: set this cookie for ${env.baseUrl} in your browser
 (DevTools > Application > Cookies, or paste in the console):
