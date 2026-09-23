@@ -1,4 +1,4 @@
-import type { Handle } from "@sveltejs/kit/hooks";
+import type { Handle, ServerInit } from "@sveltejs/kit/hooks";
 
 import { SESSION_COOKIE, cookieName, cookieValue, sessionUser } from "./auth/sessions";
 import { loadEnv } from "./env";
@@ -17,9 +17,20 @@ const registry = globalThis as typeof globalThis & {
 };
 
 const backend = (registry.__hcaiBackend ??= createBackend(loadEnv()));
-// A start failure is not fatal here: pages still work and /up answers 503.
-// start() has already logged and reported it.
-registry.__hcaiBackendStarted ??= backend.start().catch(() => {});
+
+/**
+ * Runs before the first request. The dashboard is useless without the
+ * backend, so a start failure exits like src/index.ts does; start() has
+ * already logged and reported it.
+ */
+export const init: ServerInit = async () => {
+  try {
+    await (registry.__hcaiBackendStarted ??= backend.start());
+  } catch {
+    await backend.shutdown().catch(() => {});
+    process.exit(1);
+  }
+};
 
 // adapter-bun handles SIGTERM/SIGINT itself: it stops listening, waits for
 // in-flight requests (up to SHUTDOWN_TIMEOUT), then emits this event. Closing
@@ -41,12 +52,7 @@ if (!registry.__hcaiShutdownInstalled) {
 
 export const handle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url;
-  if (isApiPath(pathname)) {
-    // Resolves once per process; a no-op afterwards. Startup failure is not
-    // fatal here (pages still work), and /up reports it.
-    await registry.__hcaiBackendStarted;
-    return backend.app.handle(event.request);
-  }
+  if (isApiPath(pathname)) return backend.app.handle(event.request);
 
   if (isCrossOriginFormSubmission(event.request, event.url.origin)) {
     return Response.json({ error: "Cross-site form submissions are forbidden" }, { status: 403 });

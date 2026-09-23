@@ -4,7 +4,7 @@ Read this before changing anything. `README.md` covers setup;
 `docs/architecture/storage-and-billing.md` covers the billing invariants;
 `plans/README.md` lists pending improvement plans.
 
-## Stack (pre-releases are load-bearing)
+## Stack
 
 Bun 1.4 · Elysia 2.0 pre-release (exact pin in `package.json`) · SvelteKit 3
 `next` + `@sveltejs/adapter-bun` `next` · Svelte 5 runes · Tailwind v4 ·

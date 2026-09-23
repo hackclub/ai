@@ -30,8 +30,6 @@ jobs:
       - run: bun audit
       - run: bun run build
         env:
-          # vite.config.js loads .env into process.env; the build itself
-          # does not need real values.
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
           OPENROUTER_API_KEY: ci
           TYPESAFE_API_KEY: ci
@@ -51,9 +49,6 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      # Unit files already ran in the `unit` job; only the Docker-gated
-      # files run here. The script starts compose, creates and migrates
-      # hcai_test, and sets the opt-in variables.
       - run: bun run test:integration $(find src -name "*.integration.test.ts")
         env:
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai

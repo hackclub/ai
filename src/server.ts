@@ -41,8 +41,6 @@ export type Backend = {
   env: Env;
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
-  /** The error that stopped `start`, if any; read by /up. */
-  startupError: () => Error | null;
 };
 
 export const createBackend = (env: Env): Backend => {
@@ -131,8 +129,6 @@ export const createBackend = (env: Env): Backend => {
     }),
   ];
 
-  let startupError: Error | null = null;
-
   const app = createApp({
     onError: (error) => {
       log.error({ err: error }, "unhandled request error");
@@ -148,7 +144,6 @@ export const createBackend = (env: Env): Backend => {
           : null,
       mistral: { apiKey: env.mistralApiKey },
       exa: { apiKey: env.exaApiKey },
-      startupError: () => startupError,
     }),
     proxy: {
       sql,
@@ -169,9 +164,8 @@ export const createBackend = (env: Env): Backend => {
   const startServices = async () => {
     const pending = await pendingPostgresMigrations(sql);
     if (pending.length > 0) {
-      log.error(
-        { count: pending.length, migrations: pending, hint: "Run: bun run db:migrate" },
-        "pending PostgreSQL migrations",
+      throw new Error(
+        `${pending.length} pending PostgreSQL migrations (${pending.join(", ")}); run bun run db:migrate`,
       );
     }
     // Also creates the job-queue schema, which finalization depends on.
@@ -200,12 +194,10 @@ export const createBackend = (env: Env): Backend => {
     start: async () => {
       try {
         await startServices();
-        startupError = null;
       } catch (error) {
-        startupError = error instanceof Error ? error : new Error(String(error));
-        log.error({ err: startupError }, "backend start failed");
-        Sentry.captureException(startupError, { tags: { stage: "startup" } });
-        throw startupError;
+        log.error({ err: error }, "backend start failed");
+        Sentry.captureException(error, { tags: { stage: "startup" } });
+        throw error;
       }
     },
     shutdown: async () => {
@@ -218,6 +210,5 @@ export const createBackend = (env: Env): Backend => {
       await sql.end();
       await clickhouse.close();
     },
-    startupError: () => startupError,
   };
 };

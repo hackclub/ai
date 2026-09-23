@@ -32,9 +32,10 @@ ClickHouse accepts one statement per query, so each ClickHouse file holds
 exactly one statement, and since ClickHouse DDL is not transactional that
 statement must be idempotent (`IF NOT EXISTS`). `bun run db:migrate --status`
 lists pending files (exit 2 if any), and `--only=postgres` or
-`--only=clickhouse` limits a run to one store. Run `db:migrate` as a deploy
-step before starting the server; the server logs a warning at startup if
-files are pending but never applies them itself.
+`--only=clickhouse` limits a run to one store. `bun run start` runs
+`db:migrate` before the server; its advisory lock makes concurrent replicas
+safe. The server itself never applies migrations: it refuses to start while
+PostgreSQL files are pending.
 
 Useful commands:
 
