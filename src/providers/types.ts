@@ -11,6 +11,8 @@ export type ProviderCompletion =
   | {
       state: "complete";
       providerRequestId: string | null;
+      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
+      model?: string;
       usage: NormalizedUsage;
       responseBody: string;
       bodyCapture: "complete" | "truncated";
@@ -18,6 +20,8 @@ export type ProviderCompletion =
   | {
       state: "uncertain";
       providerRequestId: string | null;
+      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
+      model?: string;
       reason: string;
       responseBody: string;
       bodyCapture: "complete" | "partial" | "truncated";
@@ -25,6 +29,8 @@ export type ProviderCompletion =
   | {
       state: "cancelled";
       providerRequestId: string | null;
+      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
+      model?: string;
       reason: string;
       responseBody: string;
       bodyCapture: "partial" | "truncated";

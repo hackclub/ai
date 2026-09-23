@@ -104,8 +104,6 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     body.model = model;
     const requestBody = JSON.stringify(body);
 
-    // Analytics read `model` at settlement, so the label can be upgraded to
-    // the versioned id the response reports (e.g. jev/jev-1.13.0) before then.
     const input: ProviderRouteInput = {
       provider: "typesafe",
       endpoint: "jev/systemone",
@@ -119,14 +117,14 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
           extractCost: (response) => jevCost(response, inputPrice),
           extractTokens: jevTokens,
         });
+        // The completion carries the served model (e.g. jev/jev-1.13.0) for analytics.
         return {
           ...metered,
-          completion: metered.completion.then((completion) => {
-            if (metered.response.ok) {
-              input.model = jevModelLabel(responseModel(completion.responseBody), body.model);
-            }
-            return completion;
-          }),
+          completion: metered.completion.then((completion) =>
+            metered.response.ok
+              ? { ...completion, model: jevModelLabel(responseModel(completion.responseBody), body.model) }
+              : completion,
+          ),
         };
       },
     };

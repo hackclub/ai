@@ -181,7 +181,7 @@ const analyticsEvent = (
     user_id: input.analytics?.userId ?? null,
     api_key_id: input.analytics?.apiKeyId ?? null,
     endpoint: input.endpoint,
-    model: input.model,
+    model: completion.model ?? input.model,
     outcome,
     error_code: errorCode,
     http_status: response.status,

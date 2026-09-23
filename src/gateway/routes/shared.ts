@@ -111,9 +111,7 @@ export type ProviderRouteInput = Omit<MeteredRequestInput, "requestId" | "accoun
 /**
  * The lifecycle every metered provider route shares: one request id, the
  * analytics block, the billing-error → 429 mapping, and the settlement-error
- * callback. `input` is completed IN PLACE and handed to `runMeteredRequest`
- * as the same object, because the Jev route mutates `input.model` after the
- * upstream response arrives and analytics read it at settlement.
+ * callback.
  *
  * By default the returned `metered.response` is rewrapped with a fresh
  * `Headers` object carrying `x-request-id`, so callers that return it
@@ -132,9 +130,9 @@ export async function runProviderRoute(
   options: { rewrapResponse?: boolean } = {},
 ): Promise<{ metered: MeteredRequest; requestId: string }> {
   const requestId = crypto.randomUUID();
-  const attributes = input.attributes;
-  delete input.attributes;
-  const full = Object.assign(input as unknown as MeteredRequestInput, {
+  const { attributes, ...route } = input;
+  const full: MeteredRequestInput = {
+    ...route,
     requestId,
     accountId: principal.billingAccountId,
     analytics: {
@@ -143,7 +141,7 @@ export async function runProviderRoute(
       requestHeaders: request.headers,
       attributes: { ip: clientIp(request.headers), ...(attributes ?? {}) },
     },
-  });
+  };
   let metered: MeteredRequest;
   try {
     metered = await runMeteredRequest(deps.billing, full, deps.settlements);
