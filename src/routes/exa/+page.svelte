@@ -154,7 +154,7 @@
       <div>
         <dt class="text-muted-foreground text-xs">Limits</dt>
         <dd class="text-muted-foreground mt-1 text-sm text-pretty">
-          Up to 100 results per search. Streaming is not supported; a request with <code class="font-mono text-xs">stream: true</code> is rejected.
+          Up to 100 results per search. Only <code class="font-mono text-xs">/answer</code> streams; <code class="font-mono text-xs">stream: true</code> on any other endpoint is rejected.
         </dd>
       </div>
       <div class="sm:col-span-2">

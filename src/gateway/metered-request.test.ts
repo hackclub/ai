@@ -397,6 +397,27 @@ describe("runMeteredRequest", () => {
       expect(calls.some((call) => call.method === "finalize")).toBeFalse();
     },
   );
+
+  test("holds a successful response for reconciliation when completion rejects", async () => {
+    const { billing, calls } = fakeBilling();
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(async () => ({
+        response: new Response("ok", { status: 200 }),
+        requestBody: "{}",
+        completion: Promise.reject(new Error("adapter bug")),
+      })),
+    );
+
+    const outcome = await request.settled;
+    expect(outcome.kind).toBe("pending_reconciliation");
+    const pending = calls.find((call) => call.method === "markPendingReconciliation");
+    if (pending?.method !== "markPendingReconciliation") {
+      throw new Error("Expected pending reconciliation");
+    }
+    expect(pending.reason).toBe("completion_rejected");
+    expect(calls.some((call) => call.method === "finalize")).toBeFalse();
+  });
 });
 
 describe("redactHeaders", () => {

@@ -68,4 +68,22 @@ describe("Usd arithmetic", () => {
   test("zero is not negative", () => {
     expect(Usd.zero.isNegative()).toBeFalse();
   });
+
+  test("subtract can go below zero", () => {
+    const value = Usd.parse("0.01").subtract(Usd.parse("0.03"));
+    expect(value.toString()).toBe("-0.020000000000");
+    expect(value.isNegative()).toBeTrue();
+  });
+
+  test("min, sum and comparisons are exact at the smallest unit", () => {
+    const one = Usd.fromAtoms(1n);
+    const two = Usd.fromAtoms(2n);
+    expect(Usd.min(two, one)).toBe(one);
+    expect(Usd.sum([one, two, one]).equals(Usd.fromAtoms(4n))).toBeTrue();
+    expect(Usd.sum([]).isZero()).toBeTrue();
+    expect(one.lessThan(two)).toBeTrue();
+    expect(two.lessThan(two)).toBeFalse();
+    expect(one.isPositive()).toBeTrue();
+    expect(Usd.zero.isPositive()).toBeFalse();
+  });
 });

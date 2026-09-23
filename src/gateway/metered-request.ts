@@ -4,6 +4,7 @@ import type {
   Reservation,
 } from "../billing/engine";
 import { Usd } from "../billing/money";
+import { log } from "../log";
 import type {
   MeteredProviderResponse,
   ProviderCompletion,
@@ -290,7 +291,20 @@ export async function runMeteredRequest(
   }
   const timeToFirstByteMs = elapsedMs(startedAt);
 
-  const raw = metered.completion.then((completion) =>
+  // Adapters resolve `completion` on every path, but the type cannot promise
+  // it. A rejection is treated as an unknown outcome so the reservation is
+  // still settled (held for reconciliation) rather than left to expire.
+  const completion = metered.completion.catch((error: unknown): ProviderCompletion => {
+    log.error("provider completion rejected", { error, requestId: input.requestId });
+    return {
+      state: "uncertain",
+      providerRequestId: null,
+      reason: "completion_rejected",
+      responseBody: "",
+      bodyCapture: "partial",
+    };
+  });
+  const raw = completion.then((completion) =>
     settleCompletion(
       billing,
       {

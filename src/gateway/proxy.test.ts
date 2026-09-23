@@ -225,4 +225,42 @@ describe("proxyRoutes", () => {
     expect(response.status).toBe(200);
     expect(recordedEstimates).toEqual(["0.050000000000"]);
   });
+
+  test("scales the hold by n and rejects n outside 1..8", async () => {
+    const recordedEstimates: string[] = [];
+    const recording = proxyRoutes({
+      sql: fakeSql,
+      billing: {
+        ...fakeBilling,
+        async reserve(input: { requestId: string; estimatedCostUsd: Usd }) {
+          recordedEstimates.push(input.estimatedCostUsd.toString());
+          return reservationFor(input.requestId);
+        },
+      } as unknown as BillingEngine,
+      catalog: fakeCatalog,
+      adapter: fakeAdapter,
+      openRouterApiKey: "or-key",
+      enforceIdv: false,
+      reservationFallbackOutputTokens: 1_000,
+    });
+    const send = (n: unknown) =>
+      recording.handle(
+        new Request("http://gateway.test/proxy/v1/chat/completions", {
+          method: "POST",
+          headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
+          body: JSON.stringify({ model: "some/model", messages: [], n }),
+        }),
+      );
+
+    expect((await send(3)).status).toBe(200);
+    expect(recordedEstimates).toEqual(["0.150000000000"]);
+    for (const n of [0, 9, 1.5, "2"]) {
+      const response = await send(n);
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: string }).error).toBe(
+        "n must be an integer from 1 to 8",
+      );
+    }
+    expect(recordedEstimates).toHaveLength(1);
+  });
 });

@@ -81,11 +81,21 @@ export const parseJsonObject = (raw: string): Record<string, unknown> => {
   return body as Record<string, unknown>;
 };
 
+/**
+ * OpenAI's SDKs retry every 429 twice unless told otherwise. A spending
+ * refusal cannot clear within their backoff, so those retries are wasted.
+ */
+const NO_RETRY = { "x-should-retry": "false" };
+
 export const billingErrorToHttp = (error: unknown) => {
   if (error instanceof InsufficientFundsError) {
-    return new HttpError(429, "Spending limit reached. Need a higher limit? hey@mahadk.com");
+    return new HttpError(
+      429,
+      "Spending limit reached. Need a higher limit? hey@mahadk.com",
+      NO_RETRY,
+    );
   }
-  if (error instanceof LimitExceededError) return new HttpError(429, error.message);
+  if (error instanceof LimitExceededError) return new HttpError(429, error.message, NO_RETRY);
   return null;
 };
 

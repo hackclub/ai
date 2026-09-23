@@ -50,15 +50,6 @@ export type Backend = {
   setStartupError: (error: Error | null) => void;
 };
 
-const notifySlack = (webhookUrl: string) => async (payload: unknown) => {
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw new Error(`Slack webhook failed with status ${response.status}`);
-};
-
 /**
  * Builds every backend service from the environment. Used by the standalone
  * API entrypoint and by the SvelteKit server hook, which embeds the same
@@ -147,9 +138,6 @@ export const createBackend = (env: Env): Backend => {
     );
   }
   if (env.hackClubClientId && env.hackClubClientSecret) {
-    const slack = env.slackGeoblockWebhookUrl
-      ? notifySlack(env.slackGeoblockWebhookUrl)
-      : null;
     routes.push(
       hackClubAuthRoutes({
         sql,
@@ -157,28 +145,6 @@ export const createBackend = (env: Env): Backend => {
         clientSecret: env.hackClubClientSecret,
         baseUrl: env.baseUrl,
         secureCookies: env.nodeEnv === "production",
-        onFlaggedCountry: async (identity) => {
-          if (!slack) return;
-          const primary =
-            identity.addresses?.find((address) => address.primary) ??
-            identity.addresses?.[0];
-          const name = `${identity.first_name} ${identity.last_name}`.trim() || "Unknown";
-          await slack({
-            text: `Blocked address country detected for ${identity.slack_id} (${primary?.country ?? "unknown"})`,
-            blocks: [
-              { type: "header", text: { type: "plain_text", text: "Blocked address country detected" } },
-              {
-                type: "section",
-                fields: [
-                  { type: "mrkdwn", text: `*Name:*\n${name}` },
-                  { type: "mrkdwn", text: `*Email:*\n${identity.primary_email}` },
-                  { type: "mrkdwn", text: `*Slack ID:*\n${identity.slack_id}` },
-                  { type: "mrkdwn", text: `*Country:*\n${primary?.country ?? "unknown"}` },
-                ],
-              },
-            ],
-          });
-        },
       }),
     );
   }

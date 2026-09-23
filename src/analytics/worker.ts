@@ -100,13 +100,8 @@ export const startAnalyticsWorker = async (
 ): Promise<AnalyticsWorker> => {
   await migrateJobQueue(options.connectionString);
   const sql = postgres(options.connectionString, { max: 1 });
-  const drainer = startRequestEventDrainer({
-    sql,
-    clickhouse: options.clickhouse,
-    intervalMs: options.drainIntervalMs,
-    onError: (error) =>
-      log.error("request event delivery failed", { error }),
-  });
+  // Start the runner before the drainer: if run() rejects, nothing is left
+  // polling on a connection that no caller holds a stop() for.
   const runner = await run({
     connectionString: options.connectionString,
     // The drainer's max: 1 pool is shared with the retention task below; the
@@ -138,6 +133,16 @@ export const startAnalyticsWorker = async (
           ]
         : []),
     ]),
+  }).catch(async (error: unknown) => {
+    await sql.end().catch(() => {});
+    throw error;
+  });
+  const drainer = startRequestEventDrainer({
+    sql,
+    clickhouse: options.clickhouse,
+    intervalMs: options.drainIntervalMs,
+    onError: (error) =>
+      log.error("request event delivery failed", { error }),
   });
   return {
     runner,

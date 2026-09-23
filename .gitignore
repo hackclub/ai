@@ -48,3 +48,5 @@ package-lock.json
 
 # Delta agent worktrees and clones
 /.delta
+
+plans/

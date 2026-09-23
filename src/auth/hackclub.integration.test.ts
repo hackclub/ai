@@ -20,7 +20,6 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     last_name: "User",
     verification_status: "verified",
     ysws_eligible: true,
-    addresses: [{ country: "US", primary: true }],
   };
   const tokenRequests: string[] = [];
 

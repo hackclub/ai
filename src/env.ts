@@ -19,8 +19,6 @@ export type Env = {
   /** Hack Club OAuth; sign-in routes are disabled when either is missing. */
   hackClubClientId: string | null;
   hackClubClientSecret: string | null;
-  /** Slack incoming webhook notified when a flagged-country address signs in. */
-  slackGeoblockWebhookUrl: string | null;
   /** Sentry error reporting; disabled when unset. */
   sentryDsn: string | null;
   openAiModerationApiUrl: string;
@@ -104,7 +102,6 @@ export const loadEnv = (
     enforceIdv: source.ENFORCE_IDV === "true",
     hackClubClientId: source.HACK_CLUB_CLIENT_ID || null,
     hackClubClientSecret: source.HACK_CLUB_CLIENT_SECRET || null,
-    slackGeoblockWebhookUrl: source.SLACK_GEOBLOCK_WEBHOOK_URL || null,
     sentryDsn: source.SENTRY_DSN || null,
     openAiModerationApiUrl:
       source.OPENAI_MODERATION_API_URL || "https://api.openai.com/v1/moderations",

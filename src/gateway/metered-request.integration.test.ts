@@ -96,7 +96,11 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
         model: "test/model",
         estimatedCostUsd: Usd.parse("0.01"),
         analytics: {
-          requestHeaders: { authorization: "Bearer secret", "x-client": "t" },
+          requestHeaders: {
+            authorization: "Bearer secret",
+            "x-client": "dropped: not on the allow-list",
+            "x-title": "t",
+          },
         },
         execute: () =>
           adapter.execute({
@@ -123,7 +127,7 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
       expect(event?.payload.input_tokens).toBe(4);
       expect(event?.payload.output_tokens).toBe(3);
       expect(event?.payload.response_body).toBe(wireBody);
-      expect(event?.payload.request_headers).toEqual({ "x-client": "t" });
+      expect(event?.payload.request_headers).toEqual({ "x-title": "t" });
     },
   );
 

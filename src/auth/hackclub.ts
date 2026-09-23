@@ -24,7 +24,6 @@ export type HackClubIdentity = {
   last_name: string;
   verification_status: string;
   ysws_eligible: boolean;
-  addresses?: Array<{ country: string; primary: boolean }>;
 };
 
 export type HackClubAuthOptions = {
@@ -34,25 +33,15 @@ export type HackClubAuthOptions = {
   baseUrl: string;
   secureCookies: boolean;
   fetch?: typeof fetch;
-  /** Called with the identity when a flagged-country address is present. */
-  onFlaggedCountry?: (identity: HackClubIdentity) => Promise<void>;
   onSignedIn?: (userId: string, identity: HackClubIdentity) => void;
 };
 
 const AUTH_BASE = "https://auth.hackclub.com";
-const SCOPES = "email name slack_id verification_status address";
+const SCOPES = "email name slack_id verification_status";
 const STATE_COOKIE = "oauth_state";
 
 const avatarUrlForSlackId = (slackId: string) =>
   `https://cachet.hackclub.com/users/${encodeURIComponent(slackId)}/r`;
-
-// Fraud is concentrated from these places; sign-in is reported, not blocked.
-const FLAGGED_COUNTRIES = new Set(["CN", "CHINA", "HK", "HONG KONG", "IN", "INDIA"]);
-
-const hasFlaggedCountry = (identity: HackClubIdentity) =>
-  identity.addresses?.some((address) =>
-    FLAGGED_COUNTRIES.has(address.country.trim().toUpperCase()),
-  ) ?? false;
 
 const redirect = (location: string, cookies: string[] = []) => {
   const headers = new Headers({ location });
@@ -184,17 +173,6 @@ export const hackClubAuthRoutes = (options: HackClubAuthOptions) => {
       const { identity } = (await meResponse.json()) as {
         identity: HackClubIdentity;
       };
-
-      if (hasFlaggedCountry(identity)) {
-        try {
-          await options.onFlaggedCountry?.(identity);
-        } catch {
-          throw new HttpError(
-            400,
-            "Please contact support and send this error code: willow-savannah-tunnel-windermere",
-          );
-        }
-      }
 
       const userId = await upsertHackClubUser(options.sql, identity);
       const session = await createSession(options.sql, userId);

@@ -33,6 +33,9 @@ integration suite; production sizing remains to be validated.
 
 ## Billing concepts
 
+How the engine implements these (the counter/hold model, the lifecycle
+table, a worked example) is in [`src/billing/README.md`](../../src/billing/README.md).
+
 The engine does not have a built-in daily limit.
 
 - A **funding policy** creates recurring spendable windows, such as a daily or
@@ -81,6 +84,7 @@ Language-model reservations use a deliberately simple upper-bound estimate:
 estimated input tokens = ceil(serialized billable input characters / 4)
 estimated output tokens = caller maximum, when present
                         = model/provider maximum otherwise
+                        × n (completions requested, 1 to 8; 400 above 8)
 
 reservation =
     estimated input tokens × input token price

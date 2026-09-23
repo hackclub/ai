@@ -23,6 +23,10 @@ export type OpenRouterAdapterOptions = {
   baseUrl?: string;
   fetch?: Fetch;
   maxCapturedBytes?: number;
+  /** Total attempts for a transient refusal; defaults to 3. */
+  maxAttempts?: number;
+  /** Injectable for tests; resolves after `ms`. */
+  sleep?: (ms: number) => Promise<void>;
 };
 
 /**
@@ -59,12 +63,20 @@ const providerError = (value: unknown): string | null => {
 };
 
 class OpenRouterResponseObserver {
-  private requestId: string | null = null;
+  private requestId: string | null;
   private usage: NormalizedUsage | null = null;
   private error: string | null = null;
   private readonly parser: ServerSentEventParser | null;
 
-  constructor(readonly eventStream: boolean) {
+  /**
+   * `headerRequestId` comes from `X-Generation-Id`, so a request cancelled
+   * before any body arrives can still be reconciled; body ids override it.
+   */
+  constructor(
+    readonly eventStream: boolean,
+    headerRequestId: string | null,
+  ) {
+    this.requestId = headerRequestId;
     this.parser = eventStream
       ? new ServerSentEventParser(({ data }) => {
           if (data === "[DONE]") return;
@@ -123,6 +135,26 @@ const uncertainCompletion = (
   bodyCapture,
 });
 
+/**
+ * OpenRouter reports usage only once generation has finished (the last
+ * stream event, or the whole JSON body), so usage seen before a cancel or a
+ * stream error is final and can be billed instead of reconciled later.
+ */
+const completeIfUsageSeen = (
+  observation: ObservedUsage,
+  body: string,
+  truncated: boolean,
+): ProviderCompletion | null =>
+  observation.usage
+    ? {
+        state: "complete",
+        providerRequestId: observation.requestId,
+        usage: observation.usage,
+        responseBody: body,
+        bodyCapture: truncated ? "truncated" : "complete",
+      }
+    : null;
+
 const meterResponse = (
   upstream: Response,
   requestBody: string,
@@ -138,6 +170,7 @@ const meterResponse = (
   const observer = new OpenRouterResponseObserver(
     upstream.headers.get("content-type")?.includes("text/event-stream") ??
       false,
+    upstream.headers.get("x-generation-id") || null,
   );
 
   if (!upstream.body) {
@@ -205,13 +238,15 @@ const meterResponse = (
       } catch (error) {
         if (cancelled) return;
         const captured = responseText(chunks);
+        const observation = observer.finish(captured);
         settleOnce(
-          uncertainCompletion(
-            observer.finish(captured),
-            captured,
-            truncated ? "truncated" : "partial",
-            error instanceof Error ? error.message : "Response stream failed",
-          ),
+          completeIfUsageSeen(observation, captured, truncated) ??
+            uncertainCompletion(
+              observation,
+              captured,
+              truncated ? "truncated" : "partial",
+              error instanceof Error ? error.message : "Response stream failed",
+            ),
         );
         controller.error(error);
       }
@@ -225,7 +260,7 @@ const meterResponse = (
       await reader.cancel(reason).catch(() => {});
       const captured = responseText(chunks);
       const observation = observer.finish(captured);
-      settleOnce({
+      settleOnce(completeIfUsageSeen(observation, captured, truncated) ?? {
         state: "cancelled",
         providerRequestId: observation.requestId,
         reason: typeof reason === "string" ? reason : "Client cancelled stream",
@@ -246,10 +281,45 @@ const meterResponse = (
   };
 };
 
+/** Longest upstream Retry-After we wait out; beyond it the refusal is returned. */
+const MAX_RETRY_AFTER_MS = 10_000;
+
+/**
+ * Delay before retrying a transient refusal, or null to return it as-is.
+ * Only refusals sent before any provider accepted the request are retried:
+ * 429 and 502/503, and a 402 that OpenRouter marks as its transient
+ * in-flight budget. Timeouts and 504s are not, because the first attempt may
+ * still be generating (and billed) with no generation id to reconcile.
+ */
+const retryDelayMs = async (response: Response, attempt: number): Promise<number | null> => {
+  const { status } = response;
+  if (status === 402) {
+    const body = await response.clone().text().catch(() => "");
+    if (!body.includes("openrouter_in_flight_budget")) return null;
+  } else if (status !== 429 && status !== 502 && status !== 503) {
+    return null;
+  }
+  const retryAfter = retryAfterMs(response.headers.get("retry-after"));
+  if (retryAfter !== null) return retryAfter <= MAX_RETRY_AFTER_MS ? retryAfter : null;
+  // 0.5s, 1s, 2s... capped at 8s, with up to 25% jitter (as the OpenAI SDKs).
+  const base = Math.min(500 * 2 ** attempt, 8_000);
+  return base * (1 - Math.random() * 0.25);
+};
+
+const retryAfterMs = (header: string | null): number | null => {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+};
+
 export class OpenRouterAdapter {
   private readonly baseUrl: string;
   private readonly fetchImplementation: Fetch;
   private readonly maxCapturedBytes: number;
+  private readonly maxAttempts: number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: OpenRouterAdapterOptions = {}) {
     this.baseUrl = (options.baseUrl ?? "https://openrouter.ai/api").replace(
@@ -259,6 +329,8 @@ export class OpenRouterAdapter {
     this.fetchImplementation = options.fetch ?? fetch;
     this.maxCapturedBytes =
       options.maxCapturedBytes ?? MAX_CAPTURED_RESPONSE_BYTES;
+    this.maxAttempts = options.maxAttempts ?? 3;
+    this.sleep = options.sleep ?? ((ms) => Bun.sleep(ms));
   }
 
   async execute(request: OpenRouterRequest): Promise<MeteredProviderResponse> {
@@ -267,16 +339,24 @@ export class OpenRouterAdapter {
     headers.set("authorization", `Bearer ${request.apiKey}`);
     headers.set("content-type", "application/json");
 
-    const upstream = await this.fetchImplementation(
-      `${this.baseUrl}/v1/${request.endpoint.replace(/^\//, "")}`,
-      {
+    const url = `${this.baseUrl}/v1/${request.endpoint.replace(/^\//, "")}`;
+    // Every attempt runs under the caller's single reservation. Retries
+    // happen before the response reaches the client, so none is ever
+    // retried after bytes were sent.
+    for (let attempt = 0; ; attempt += 1) {
+      const upstream = await this.fetchImplementation(url, {
         method: "POST",
         headers,
         body: requestBody,
         signal: request.signal,
-      },
-    );
-
-    return meterResponse(upstream, requestBody, this.maxCapturedBytes);
+      });
+      const delay =
+        attempt + 1 < this.maxAttempts ? await retryDelayMs(upstream, attempt) : null;
+      if (delay === null || request.signal?.aborted) {
+        return meterResponse(upstream, requestBody, this.maxCapturedBytes);
+      }
+      await upstream.body?.cancel().catch(() => {});
+      await this.sleep(delay);
+    }
   }
 }

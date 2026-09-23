@@ -28,6 +28,17 @@ export async function executeJsonProvider(
 ): Promise<MeteredProviderResponse> {
   const fetchImplementation = options.fetch ?? fetch;
   const upstream = await fetchImplementation(options.url, options.init);
+  return meterJsonResponse(upstream, options);
+}
+
+/** Buffers a JSON provider response and derives its billing outcome. */
+export async function meterJsonResponse(
+  upstream: Response,
+  options: Pick<
+    JsonProviderOptions,
+    "init" | "extractCost" | "extractProviderRequestId" | "extractTokens" | "redactResponseBody"
+  >,
+): Promise<MeteredProviderResponse> {
   const raw = await upstream.text();
 
   let parsed: unknown = null;

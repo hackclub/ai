@@ -44,12 +44,42 @@ export class Usd {
     return new Usd(atoms);
   }
 
+  static min(left: Usd, right: Usd): Usd {
+    return left.atoms <= right.atoms ? left : right;
+  }
+
+  static sum(values: Iterable<Usd>): Usd {
+    let atoms = 0n;
+    for (const value of values) atoms += value.atoms;
+    return new Usd(atoms);
+  }
+
   add(other: Usd): Usd {
     return new Usd(this.atoms + other.atoms);
   }
 
+  subtract(other: Usd): Usd {
+    return new Usd(this.atoms - other.atoms);
+  }
+
   multiply(multiplier: bigint): Usd {
     return new Usd(this.atoms * multiplier);
+  }
+
+  equals(other: Usd): boolean {
+    return this.atoms === other.atoms;
+  }
+
+  lessThan(other: Usd): boolean {
+    return this.atoms < other.atoms;
+  }
+
+  isZero(): boolean {
+    return this.atoms === 0n;
+  }
+
+  isPositive(): boolean {
+    return this.atoms > 0n;
   }
 
   isNegative(): boolean {

@@ -41,13 +41,19 @@ export const splitClickHouseStatements = (text: string): string[] => {
     .filter((statement) => statement.length > 0);
 };
 
-/** Sentinel table (schema-qualified for Postgres, `db.table` for ClickHouse) that proves a given migration file was already applied by Docker's initdb bootstrap. */
+/**
+ * Sentinel that proves a given migration file was already applied by Docker's
+ * initdb bootstrap: a Postgres table, or `table.column` for a file that only
+ * adds a column (`db.table` for ClickHouse). Files that are idempotent need
+ * no entry; they are simply applied again.
+ */
 export const POSTGRES_BOOTSTRAP_SENTINELS: Record<string, string> = {
   "0001_billing.sql": "billing_reservations",
   "0002_identity.sql": "users",
   "0003_sessions.sql": "sessions",
   "0004_replicate_resources.sql": "replicate_resources",
   "0005_request_event_outbox.sql": "request_event_outbox",
+  "0006_request_event_outbox_claims.sql": "request_event_outbox.claimed_at",
 };
 
 export const CLICKHOUSE_BOOTSTRAP_SENTINELS: Record<string, string> = {
@@ -137,10 +143,14 @@ export const ensurePostgresBootstrap = async (
   for (const file of missing) {
     const sentinel = POSTGRES_BOOTSTRAP_SENTINELS[file];
     if (!sentinel) continue; // not in the map: applied normally, below.
-    const exists = await sql<{ to_regclass: string | null }[]>`
-      SELECT to_regclass(${"public." + sentinel}) AS to_regclass
-    `;
-    if (exists[0]?.to_regclass === null) continue;
+    const [table, column] = sentinel.split(".");
+    const exists = column
+      ? await sql`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = ${table!} AND column_name = ${column}
+        `
+      : await sql`SELECT 1 WHERE to_regclass(${"public." + table}) IS NOT NULL`;
+    if (exists.length === 0) continue;
     await sql`
       INSERT INTO schema_migrations (version)
       VALUES (${file})

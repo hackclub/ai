@@ -221,6 +221,7 @@ describe("runProviderRoute", () => {
     expect((thrown as HttpError).message).toBe(
       "Spending limit reached. Need a higher limit? hey@mahadk.com",
     );
+    expect((thrown as HttpError).toResponse().headers.get("x-should-retry")).toBe("false");
   });
 
   test("a rejected settled promise invokes onSettlementError with the request id and does not reject the route", async () => {

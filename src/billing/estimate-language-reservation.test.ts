@@ -30,6 +30,30 @@ describe("estimateLanguageReservation", () => {
     expect(estimate.amountUsd.toString()).toBe("0.000000004096");
   });
 
+  test("reserves the output bound once per requested completion", () => {
+    const estimate = estimateLanguageReservation({
+      serializedBillableInput: "12345678",
+      inputTokenPriceUsd: "0.001",
+      outputTokenPriceUsd: "0.002",
+      requestedMaxOutputTokens: 10,
+      modelMaxOutputTokens: 1_000,
+      completions: 3,
+    });
+
+    expect(estimate.estimatedInputTokens).toBe(2);
+    expect(estimate.reservedOutputTokens).toBe(30);
+    expect(estimate.amountUsd.toString()).toBe("0.062000000000");
+    expect(() =>
+      estimateLanguageReservation({
+        serializedBillableInput: "",
+        inputTokenPriceUsd: "0",
+        outputTokenPriceUsd: "0",
+        modelMaxOutputTokens: 1,
+        completions: 0,
+      }),
+    ).toThrow(RangeError);
+  });
+
   test("never reserves beyond the model output limit", () => {
     const estimate = estimateLanguageReservation({
       serializedBillableInput: "",

@@ -6,6 +6,8 @@ export type LanguageReservationInput = {
   outputTokenPriceUsd: string;
   requestedMaxOutputTokens?: number;
   modelMaxOutputTokens: number;
+  /** Completions generated per request (OpenAI `n`); each has its own output. */
+  completions?: number;
   fixedCostUsd?: string;
 };
 
@@ -31,6 +33,10 @@ export function estimateLanguageReservation(
   input: LanguageReservationInput,
 ): LanguageReservationEstimate {
   assertTokenLimit("modelMaxOutputTokens", input.modelMaxOutputTokens);
+  const completions = input.completions ?? 1;
+  if (!Number.isSafeInteger(completions) || completions < 1) {
+    throw new RangeError("completions must be a positive safe integer");
+  }
 
   if (input.requestedMaxOutputTokens !== undefined) {
     assertTokenLimit(
@@ -59,10 +65,9 @@ export function estimateLanguageReservation(
   );
   const desiredOutputTokens =
     input.requestedMaxOutputTokens ?? input.modelMaxOutputTokens;
-  const reservedOutputTokens = Math.min(
-    desiredOutputTokens,
-    input.modelMaxOutputTokens,
-  );
+  // The prompt is billed once; every completion can use the full output.
+  const reservedOutputTokens =
+    Math.min(desiredOutputTokens, input.modelMaxOutputTokens) * completions;
 
   const amountUsd = inputPrice
     .multiply(BigInt(estimatedInputTokens))

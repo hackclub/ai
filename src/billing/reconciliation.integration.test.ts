@@ -166,7 +166,7 @@ describe("reconciliation with PostgreSQL", () => {
     expect(young.failed).toBe(0);
 
     await sql`
-      UPDATE billing_reservations SET updated_at = now() - INTERVAL '25 hours'
+      UPDATE billing_reservations SET created_at = now() - INTERVAL '25 hours'
       WHERE request_id = ${requestId}::uuid
     `;
     const old = await reconcilePendingReservations({ sql, billing: engine, openRouter });

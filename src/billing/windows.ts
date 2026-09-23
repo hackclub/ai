@@ -10,7 +10,6 @@ import type postgres from "postgres";
 export function materializeFundingWindows(
   tx: postgres.TransactionSql,
   accountId: string,
-  now: Date,
 ) {
   return tx`
     WITH policies AS (
@@ -18,16 +17,16 @@ export function materializeFundingWindows(
         policy.*,
         date_trunc(
           policy.cadence,
-          ${now}::timestamptz AT TIME ZONE policy.timezone
+          now() AT TIME ZONE policy.timezone
         ) AS local_start
       FROM billing_funding_policies AS policy
       WHERE
         policy.account_id = ${accountId}::uuid
         AND policy.enabled
-        AND policy.effective_from <= ${now}
+        AND policy.effective_from <= now()
         AND (
           policy.effective_until IS NULL
-          OR policy.effective_until > ${now}
+          OR policy.effective_until > now()
         )
     ),
     windows AS (
@@ -71,7 +70,6 @@ export function materializeFundingWindows(
 export function materializeLimitWindows(
   tx: postgres.TransactionSql,
   accountId: string,
-  now: Date,
 ) {
   return tx`
     WITH policies AS (
@@ -81,7 +79,7 @@ export function materializeLimitWindows(
           WHEN cadence = 'lifetime' THEN effective_from
           ELSE date_trunc(
             policy.cadence,
-            ${now}::timestamptz AT TIME ZONE policy.timezone
+            now() AT TIME ZONE policy.timezone
           ) AT TIME ZONE policy.timezone
         END AS window_start,
         CASE
@@ -92,7 +90,7 @@ export function materializeLimitWindows(
           ELSE (
             date_trunc(
               policy.cadence,
-              ${now}::timestamptz AT TIME ZONE policy.timezone
+              now() AT TIME ZONE policy.timezone
             )
             + CASE cadence
                 WHEN 'day' THEN INTERVAL '1 day'
@@ -106,10 +104,10 @@ export function materializeLimitWindows(
       WHERE
         policy.account_id = ${accountId}::uuid
         AND policy.enabled
-        AND policy.effective_from <= ${now}
+        AND policy.effective_from <= now()
         AND (
           policy.effective_until IS NULL
-          OR policy.effective_until > ${now}
+          OR policy.effective_until > now()
         )
     )
     INSERT INTO billing_limit_windows (

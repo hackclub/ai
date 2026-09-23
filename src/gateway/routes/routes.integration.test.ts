@@ -100,7 +100,8 @@ describe("provider routes with PostgreSQL", () => {
     const base = { sql, billing, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" };
 
     const app = exaRoutes(base);
-    const streaming = await post(app, "/proxy/v1/exa/answer", { query: "hi", stream: true });
+    // Only /answer streams (covered in exa.test.ts); other endpoints refuse it.
+    const streaming = await post(app, "/proxy/v1/exa/search", { query: "hi", stream: true });
     expect(streaming.status).toBe(400);
 
     const requestId = `exa-${runId}`;

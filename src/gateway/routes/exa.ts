@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
 import { executeJsonProvider } from "../../providers/json-provider";
+import { executeSseProvider } from "../../providers/sse-provider";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
@@ -35,7 +36,10 @@ export const exaRequestId = (body: unknown) =>
     ? (body as { requestId: string }).requestId
     : null;
 
-/** `POST /proxy/v1/exa/{search,findSimilar,contents,answer}`, metered by Exa's reported cost. */
+/**
+ * `POST /proxy/v1/exa/{search,findSimilar,contents,answer}`, metered by Exa's
+ * reported cost. `/answer` also accepts `stream: true`.
+ */
 export const exaRoutes = (deps: ExaRouteDependencies) => {
   const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();
   const reservation = Usd.parse(deps.reservationUsd ?? "0.02");
@@ -50,11 +54,15 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
     if (!deps.exaApiKey) throw new HttpError(503, "Exa is not configured");
 
     const body = parseJsonObject(rawBody);
-    if (body.stream === true) {
-      throw new HttpError(400, "Streaming is not supported for Exa endpoints");
+    // Only /answer streams; its cost arrives in the last event.
+    const stream = body.stream === true;
+    if (stream && endpoint !== "answer") {
+      throw new HttpError(400, "Streaming is only supported for Exa's answer endpoint");
     }
     const requestBody = JSON.stringify(body);
     const label = `exa/${endpoint}`;
+    const url = `${baseUrl}/${endpoint}`;
+    const headers = { "content-type": "application/json", "x-api-key": deps.exaApiKey };
 
     const { metered } = await runProviderRoute(deps, request, principal, {
       provider: "exa",
@@ -62,18 +70,23 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
       model: label,
       estimatedCostUsd: reservation,
       execute: () =>
-        executeJsonProvider({
-          fetch: deps.fetch,
-          url: `${baseUrl}/${endpoint}`,
-          init: {
-            method: "POST",
-            headers: { "content-type": "application/json", "x-api-key": deps.exaApiKey ?? "" },
-            body: requestBody,
-            signal: request.signal,
-          },
-          extractCost: exaCost,
-          extractProviderRequestId: exaRequestId,
-        }),
+        stream
+          ? // No abort signal: Exa bills the whole answer even if the client
+            // leaves, so the stream is drained to read its cost.
+            executeSseProvider({
+              fetch: deps.fetch,
+              url,
+              init: { method: "POST", headers, body: requestBody },
+              extractCost: exaCost,
+              extractProviderRequestId: exaRequestId,
+            })
+          : executeJsonProvider({
+              fetch: deps.fetch,
+              url,
+              init: { method: "POST", headers, body: requestBody, signal: request.signal },
+              extractCost: exaCost,
+              extractProviderRequestId: exaRequestId,
+            }),
     });
     return metered.response;
   };

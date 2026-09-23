@@ -8,6 +8,7 @@ import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catal
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { forwardableHeaders } from "../providers/response-headers";
 import { HttpError } from "./http-error";
+import { jsonWithEtag } from "./etag";
 import { RateLimiter } from "./rate-limit";
 import { authorizeProviderRequest, parseJsonObject, runProviderRoute } from "./routes/shared";
 
@@ -117,6 +118,23 @@ const optionalInteger = (value: unknown) =>
     ? value
     : undefined;
 
+/** Upper bound on OpenAI's `n`; the hold scales linearly with it. */
+const MAX_COMPLETIONS = 8;
+
+/** Completions the request asks for; 400 unless `n` is an integer in 1..8. */
+const requestedCompletions = (body: Record<string, unknown>) => {
+  if (body.n === undefined || body.n === null) return 1;
+  if (
+    typeof body.n !== "number" ||
+    !Number.isSafeInteger(body.n) ||
+    body.n < 1 ||
+    body.n > MAX_COMPLETIONS
+  ) {
+    throw new HttpError(400, `n must be an integer from 1 to ${MAX_COMPLETIONS}`);
+  }
+  return body.n;
+};
+
 const parseBody = (raw: string) => {
   const record = parseJsonObject(raw);
   if (typeof record.model !== "string" || record.model.length === 0) {
@@ -142,8 +160,9 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     model: Parameters<typeof modelPricing>[0] | null,
     body: Record<string, unknown>,
   ) => {
+    const completions = kind === "embedding" ? 1 : requestedCompletions(body);
     const pricing = model ? modelPricing(model) : null;
-    if (!pricing) return unknownModelReservation;
+    if (!pricing) return unknownModelReservation.multiply(BigInt(completions));
 
     // System instructions and tool schemas are prompt tokens too; leaving
     // them out under-reserves tool-heavy requests.
@@ -168,6 +187,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       requestedMaxOutputTokens:
         kind === "embedding" ? 0 : requestedMaxOutputTokens,
       modelMaxOutputTokens,
+      completions,
       fixedCostUsd: pricing.requestUsd.toString(),
     }).amountUsd;
   };
@@ -226,12 +246,12 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       if (error instanceof HttpError) return error.toResponse();
       return undefined;
     })
-    .get("/models", async () => {
+    .get("/models", async ({ request }) => {
       const [language, embedding] = await Promise.all([
         deps.catalog.list("language"),
         deps.catalog.list("embedding"),
       ]);
-      return { data: [...language, ...embedding] };
+      return jsonWithEtag(request, { data: [...language, ...embedding] });
     })
     .post("/chat/completions", ({ request }) =>
       handle("chat/completions", request),

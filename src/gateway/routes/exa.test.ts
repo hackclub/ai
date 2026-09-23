@@ -166,13 +166,59 @@ describe("exaRoutes", () => {
     expect(await response.json()).toEqual({ error: "Exa is not configured" });
   });
 
-  test("rejects streaming requests", async () => {
+  test("rejects streaming on endpoints other than answer", async () => {
     const { app, calls, upstream } = build(() => Response.json(successBody));
     const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi", stream: true }));
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Streaming is not supported for Exa endpoints" });
+    expect(await response.json()).toEqual({
+      error: "Streaming is only supported for Exa's answer endpoint",
+    });
     expect(upstream).toEqual([]);
     expect(calls).toEqual([]);
+  });
+
+  const answerEvents = [
+    'data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}\n\n',
+    'data: {"citations":[]}\n\n',
+    'data: {"costDollars":{"total":0.004},"requestId":"exa-req-1"}\n\n',
+  ];
+  const answerStream = () => {
+    const parts = [...answerEvents];
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          await Bun.sleep(1);
+          const part = parts.shift();
+          if (part === undefined) controller.close();
+          else controller.enqueue(new TextEncoder().encode(part));
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+
+  test("streams answer events and bills the cost from the last event", async () => {
+    const { app, calls, done } = build(answerStream);
+    const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toBe(answerEvents.join(""));
+    await done;
+    const finalize = calls.find((call) => call.method === "finalize");
+    if (finalize?.method !== "finalize") throw new Error("Expected finalize");
+    expect(finalize.input.actualCostUsd.toString()).toBe("0.004000000000");
+    expect(finalize.input.providerRequestId).toBe("exa-req-1");
+  });
+
+  test("keeps reading after the client leaves so the answer is still billed", async () => {
+    const { app, calls, done } = build(answerStream);
+    const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("client disconnected");
+    await done;
+    const finalize = calls.find((call) => call.method === "finalize");
+    if (finalize?.method !== "finalize") throw new Error("Expected finalize");
+    expect(finalize.input.actualCostUsd.toString()).toBe("0.004000000000");
   });
 
   test("forwards the configured x-api-key and returns an x-request-id header", async () => {

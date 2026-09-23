@@ -264,4 +264,119 @@ describe("OpenRouterAdapter", () => {
     expect(completion.bodyCapture).toBe("complete");
     expect(completion.responseBody).toBe(wireBody);
   });
+
+  test("takes the generation id from X-Generation-Id when a non-streaming request is cancelled", async () => {
+    const adapter = new OpenRouterAdapter({
+      fetch: (async () =>
+        new Response(chunkedBody(["   ", '{"id":"gen-body"']), {
+          headers: { "content-type": "application/json", "x-generation-id": "gen-header" },
+        })),
+    });
+    const result = await adapter.execute({
+      endpoint: "chat/completions",
+      body: { model: "test/model" },
+      apiKey: "secret",
+    });
+    const reader = result.response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client disconnected");
+
+    const completion = await result.completion;
+    expect(completion.state).toBe("cancelled");
+    expect(completion.providerRequestId).toBe("gen-header");
+  });
+
+  test("bills usage already received when the client cancels before [DONE]", async () => {
+    const adapter = new OpenRouterAdapter({
+      fetch: (async () =>
+        new Response(
+          chunkedBody([
+            'data: {"id":"gen-2","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0.001}}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        )),
+    });
+    const result = await adapter.execute({
+      endpoint: "chat/completions",
+      body: { model: "test/model", stream: true },
+      apiKey: "secret",
+    });
+    const reader = result.response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel("client disconnected");
+
+    const completion = await result.completion;
+    expect(completion.state).toBe("complete");
+    if (completion.state !== "complete") throw new Error("Expected usage");
+    expect(completion.usage.costUsd.toString()).toBe("0.001000000000");
+  });
+
+  describe("retries", () => {
+    const sequence = (responses: Array<() => Response>) => {
+      const calls: number[] = [];
+      const delays: number[] = [];
+      const adapter = new OpenRouterAdapter({
+        fetch: (async () => {
+          calls.push(calls.length);
+          return responses[Math.min(calls.length - 1, responses.length - 1)]!();
+        }),
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+      });
+      const run = () =>
+        adapter.execute({ endpoint: "chat/completions", body: { model: "m" }, apiKey: "k" });
+      return { calls, delays, run };
+    };
+    const ok = () => Response.json({ id: "gen-ok", usage: { cost: 0.001 } });
+
+    test("retries 429, 502 and 503 then returns the success", async () => {
+      const { calls, delays, run } = sequence([
+        () => new Response("busy", { status: 503 }),
+        () => new Response("slow down", { status: 429, headers: { "retry-after": "2" } }),
+        ok,
+      ]);
+      const result = await run();
+      expect(result.response.status).toBe(200);
+      expect(calls).toHaveLength(3);
+      expect(delays[0]).toBeGreaterThan(375);
+      expect(delays[0]).toBeLessThanOrEqual(500);
+      expect(delays[1]).toBe(2_000);
+    });
+
+    test("stops after three attempts and returns the last refusal", async () => {
+      const { calls, run } = sequence([() => new Response("down", { status: 502 })]);
+      const result = await run();
+      expect(result.response.status).toBe(502);
+      expect(await result.response.text()).toBe("down");
+      expect(calls).toHaveLength(3);
+    });
+
+    test("does not retry statuses that may have been billed or cannot clear", async () => {
+      for (const response of [
+        () => new Response("gateway timeout", { status: 504 }),
+        () => new Response("bad", { status: 400 }),
+        () => Response.json({ error: { message: "Insufficient credits" } }, { status: 402 }),
+        () => new Response("later", { status: 429, headers: { "retry-after": "30" } }),
+      ]) {
+        const { calls, run } = sequence([response, ok]);
+        expect((await run()).response.status).not.toBe(200);
+        expect(calls).toHaveLength(1);
+      }
+    });
+
+    test("retries OpenRouter's transient in-flight budget 402", async () => {
+      const { calls, run } = sequence([
+        () =>
+          Response.json(
+            { error: { message: "busy", metadata: { limit_source: "openrouter_in_flight_budget" } } },
+            { status: 402 },
+          ),
+        ok,
+      ]);
+      expect((await run()).response.status).toBe(200);
+      expect(calls).toHaveLength(2);
+    });
+  });
 });

@@ -1,10 +1,16 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../analytics/worker";
 import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { findBillingDrift } from "./audit";
 import { BillingEngine } from "./engine";
-import { InvalidReservationStateError, LimitExceededError } from "./errors";
+import {
+  InsufficientFundsError,
+  InvalidReservationStateError,
+  LimitExceededError,
+  ReservationConflictError,
+} from "./errors";
 import { Usd } from "./money";
 
 const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
@@ -57,6 +63,15 @@ describe("BillingEngine with PostgreSQL", () => {
       )
       VALUES (${accountId}::uuid, 'Daily test limit', 'day', 0.8)
     `;
+  });
+
+  // Every scenario must leave the books balanced: counters equal their
+  // holds, and each reservation's money is fully accounted for.
+  afterEach(async () => {
+    if (!sql) return;
+    for (const id of createdAccountIds) {
+      expect(await findBillingDrift(sql, id)).toEqual([]);
+    }
   });
 
   afterAll(async () => {
@@ -365,6 +380,161 @@ describe("BillingEngine with PostgreSQL", () => {
       expect(limit?.committed_usd).toBe("0.300000000000");
     },
   );
+
+  /** A fresh account with a daily allowance and, optionally, a daily limit. */
+  const newAccount = async (allowance: string, limit?: string) => {
+    if (!sql) throw new Error("Integration database unavailable");
+    const id = crypto.randomUUID();
+    createdAccountIds.push(id);
+    await sql`
+      INSERT INTO billing_accounts (id, owner_type, owner_id)
+      VALUES (${id}::uuid, 'user', ${crypto.randomUUID()}::uuid)
+    `;
+    await sql`
+      INSERT INTO billing_funding_policies (account_id, name, cadence, amount_usd)
+      VALUES (${id}::uuid, 'Allowance', 'day', ${allowance}::numeric)
+    `;
+    if (limit !== undefined) {
+      await sql`
+        INSERT INTO billing_limit_policies (account_id, name, cadence, limit_usd)
+        VALUES (${id}::uuid, 'Limit', 'day', ${limit}::numeric)
+      `;
+    }
+    return id;
+  };
+
+  integrationTest("refuses replays that disagree with the original", async () => {
+    if (!engine) throw new Error("Integration database unavailable");
+
+    // firstRequestId was reserved at $0.75 and finalized at $0.50.
+    await expect(
+      engine.finalize({
+        requestId: firstRequestId,
+        actualCostUsd: Usd.parse("0.51"),
+        usageSource: "provider_reported",
+      }),
+    ).rejects.toBeInstanceOf(ReservationConflictError);
+
+    const replayAccountId = await newAccount("1");
+    const requestId = crypto.randomUUID();
+    await engine.reserve({
+      requestId,
+      accountId: replayAccountId,
+      provider: "openrouter",
+      estimatedCostUsd: Usd.parse("0.01"),
+    });
+    await expect(
+      engine.reserve({
+        requestId,
+        accountId: replayAccountId,
+        provider: "openrouter",
+        estimatedCostUsd: Usd.parse("0.02"),
+      }),
+    ).rejects.toBeInstanceOf(ReservationConflictError);
+    await engine.release(requestId);
+    await expect(engine.release(firstRequestId)).rejects.toBeInstanceOf(
+      InvalidReservationStateError,
+    );
+  });
+
+  integrationTest(
+    "spills from the allowance into credit, returns the unused hold, and books the rest as unfunded",
+    async () => {
+      if (!engine || !sql) throw new Error("Integration database unavailable");
+
+      const spillAccountId = await newAccount("0.1");
+      await sql`
+        INSERT INTO billing_credit_grants (account_id, source, granted_usd)
+        VALUES (${spillAccountId}::uuid, 'promotional', 0.2)
+      `;
+      const balances = async () => {
+        if (!sql) throw new Error("Integration database unavailable");
+        const [row] = await sql<
+          { window: string; credit: string }[]
+        >`
+          SELECT
+            (
+              SELECT reserved_usd::text || '/' || committed_usd::text
+              FROM billing_funding_windows WHERE account_id = ${spillAccountId}::uuid
+            ) AS window,
+            (
+              SELECT reserved_usd::text || '/' || committed_usd::text
+              FROM billing_credit_grants WHERE account_id = ${spillAccountId}::uuid
+            ) AS credit
+        `;
+        return row;
+      };
+
+      // $0.25 needs all of the $0.10 allowance and $0.15 of the credit.
+      const requestId = crypto.randomUUID();
+      await engine.reserve({
+        requestId,
+        accountId: spillAccountId,
+        provider: "openrouter",
+        estimatedCostUsd: Usd.parse("0.25"),
+      });
+      expect(await balances()).toEqual({
+        window: "0.100000000000/0.000000000000",
+        credit: "0.150000000000/0.000000000000",
+      });
+
+      // Only $0.05 of headroom is left, so a $0.06 estimate is refused.
+      await expect(
+        engine.reserve({
+          requestId: crypto.randomUUID(),
+          accountId: spillAccountId,
+          provider: "openrouter",
+          estimatedCostUsd: Usd.parse("0.06"),
+        }),
+      ).rejects.toBeInstanceOf(InsufficientFundsError);
+
+      // The provider charged $0.40: $0.30 is fundable, $0.10 is not.
+      const finalized = await engine.finalize({
+        requestId,
+        actualCostUsd: Usd.parse("0.4"),
+        usageSource: "provider_reported",
+      });
+      expect(finalized.unfundedCostUsd).toBe("0.100000000000");
+      expect(await balances()).toEqual({
+        window: "0.000000000000/0.100000000000",
+        credit: "0.000000000000/0.200000000000",
+      });
+    },
+  );
+
+  integrationTest("a zero-cost finalization returns every hold and writes no ledger entry", async () => {
+    if (!engine || !sql) throw new Error("Integration database unavailable");
+
+    const requestId = crypto.randomUUID();
+    await engine.reserve({
+      requestId,
+      accountId: await newAccount("1", "0.5"),
+      provider: "openrouter",
+      estimatedCostUsd: Usd.parse("0.05"),
+    });
+    const finalized = await engine.finalize({
+      requestId,
+      actualCostUsd: Usd.zero,
+      usageSource: "provider_reported",
+    });
+    expect(finalized.actualCostUsd).toBe("0.000000000000");
+
+    const [row] = await sql<{ holds: number; ledger: number }[]>`
+      SELECT
+        (
+          SELECT count(*)::integer FROM billing_reservation_funding_holds
+          WHERE reservation_id = ${finalized.id}::uuid
+        ) + (
+          SELECT count(*)::integer FROM billing_reservation_limit_holds
+          WHERE reservation_id = ${finalized.id}::uuid
+        ) AS holds,
+        (
+          SELECT count(*)::integer FROM billing_ledger_entries
+          WHERE reservation_id = ${finalized.id}::uuid
+        ) AS ledger
+    `;
+    expect(row).toEqual({ holds: 0, ledger: 0 });
+  });
 
   integrationTest(
     "serializes concurrent reservations so funding cannot be overspent",

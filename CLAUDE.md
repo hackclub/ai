@@ -56,9 +56,10 @@ database over the dev one.
   `routes/*.ts` are the other providers; `routes/shared.ts` owns the helpers
   every provider route shares (auth, rate limit, JSON parsing, billing error
   mapping). Add shared behaviour there, not in a single route.
-- `src/billing/` — `engine.ts` is the only writer of `billing_*` tables.
-  `money.ts` is the money type. `reconciliation.ts` settles uncertain
-  reservations on a cron.
+- `src/billing/` — read `src/billing/README.md` first. `engine.ts` is the
+  only writer of `billing_*` tables; all money arithmetic is in the pure
+  `plan.ts`, the state machine in `lifecycle.ts`. `money.ts` is the money
+  type. `reconciliation.ts` settles uncertain reservations on a cron.
 - `src/providers/` — upstream adapters (OpenRouter, Replicate, JSON providers).
 - `src/analytics/` — outbox → ClickHouse drainer and dashboard queries.
 - `src/auth/` — API keys, sessions, Hack Club OAuth.
