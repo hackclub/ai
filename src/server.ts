@@ -63,7 +63,7 @@ export const createBackend = (env: Env): Backend => {
     tracesSampleRate: env.nodeEnv === "production" ? 0.1 : 1.0,
   });
   const attributionHeaders = {
-    "HTTP-Referer": `${env.baseUrl}/global?utm_source=openrouter`,
+    "HTTP-Referer": env.baseUrl,
     "X-Title": "Hack Club AI",
   };
   const catalog = new ModelCatalog({
