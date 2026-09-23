@@ -1,8 +1,11 @@
 import {
-  type ProviderCompletion,
-  type MeteredProviderResponse,
-  type NormalizedUsage,
-} from "../types";
+  type CapturedBody,
+  isEventStream,
+  meterStreamed,
+  type UsageReader,
+  type UsageVerdict,
+} from "../metered-body";
+import type { MeteredProviderResponse, NormalizedUsage } from "../types";
 import { ServerSentEventParser } from "../sse-parser";
 import { openRouterRequestId, openRouterUsage } from "./usage";
 
@@ -42,17 +45,6 @@ type ObservedUsage = {
   providerError: string | null;
 };
 
-const responseText = (chunks: Uint8Array[]) => {
-  const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-  const body = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(body);
-};
-
 const providerError = (value: unknown): string | null => {
   if (value === null || typeof value !== "object") return null;
   const error = (value as Record<string, unknown>).error;
@@ -62,22 +54,30 @@ const providerError = (value: unknown): string | null => {
   return typeof message === "string" ? message : "OpenRouter provider error";
 };
 
-class OpenRouterResponseObserver {
+const GATEWAY_TIMEOUT_REASON = "OpenRouter gateway timeout; generation may still be running";
+
+/**
+ * Reads OpenRouter usage from a response: event streams are parsed as they
+ * arrive, a JSON body is parsed whole at the end. OpenRouter reports usage
+ * only once generation has finished (the last stream event, or the whole
+ * JSON body), so usage seen before a cancel or a stream error is final and
+ * is billed instead of reconciled later.
+ */
+class OpenRouterResponseReader implements UsageReader {
   private requestId: string | null;
   private usage: NormalizedUsage | null = null;
   private error: string | null = null;
   private readonly parser: ServerSentEventParser | null;
+  private readonly hasBody: boolean;
 
   /**
-   * `headerRequestId` comes from `X-Generation-Id`, so a request cancelled
-   * before any body arrives can still be reconciled; body ids override it.
+   * The id is seeded from `X-Generation-Id`, so a request cancelled before
+   * any body arrives can still be reconciled; body ids override it.
    */
-  constructor(
-    readonly eventStream: boolean,
-    headerRequestId: string | null,
-  ) {
-    this.requestId = headerRequestId;
-    this.parser = eventStream
+  constructor(upstream: Response) {
+    this.requestId = upstream.headers.get("x-generation-id") || null;
+    this.hasBody = upstream.body !== null;
+    this.parser = isEventStream(upstream.headers)
       ? new ServerSentEventParser(({ data }) => {
           if (data === "[DONE]") return;
           try {
@@ -90,11 +90,40 @@ class OpenRouterResponseObserver {
       : null;
   }
 
-  push(chunk: Uint8Array) {
+  observe = (chunk: Uint8Array) => {
     this.parser?.push(chunk);
+  };
+
+  read = (body: CapturedBody): UsageVerdict => {
+    const observed = this.finish(body.text);
+    if (observed.usage) {
+      return { usage: observed.usage, providerRequestId: observed.requestId };
+    }
+    return {
+      usage: null,
+      providerRequestId: observed.requestId,
+      reason: this.reason(body, observed),
+      // A 504 may come back while the generation is still running (and
+      // billed), so the reconciler must look it up rather than close it free.
+      mayStillBeCharged: body.status === 504,
+    };
+  };
+
+  private reason(body: CapturedBody, observed: ObservedUsage): string {
+    const { end } = body;
+    switch (end.kind) {
+      case "error":
+        return end.error instanceof Error ? end.error.message : "Response stream failed";
+      case "cancelled":
+        return typeof end.reason === "string" ? end.reason : "Client cancelled stream";
+      case "done":
+        if (body.status === 504) return GATEWAY_TIMEOUT_REASON;
+        if (!this.hasBody) return "Empty response";
+        return observed.providerError ?? "OpenRouter response ended without authoritative cost";
+    }
   }
 
-  finish(body: string): ObservedUsage {
+  private finish(body: string): ObservedUsage {
     if (this.parser) {
       this.parser.finish();
     } else {
@@ -118,183 +147,6 @@ class OpenRouterResponseObserver {
     this.error = providerError(value) ?? this.error;
   }
 }
-
-/** Without usage, a refused (non-2xx) response was not charged. */
-const uncertainCompletion = (
-  ok: boolean,
-  observation: ObservedUsage,
-  body: string,
-  bodyCapture: "complete" | "partial" | "truncated",
-  reason?: string,
-): ProviderCompletion =>
-  ok
-    ? {
-        state: "uncertain",
-        providerRequestId: observation.requestId,
-        reason:
-          reason ??
-          observation.providerError ??
-          "OpenRouter response ended without authoritative cost",
-        responseBody: body,
-        bodyCapture,
-      }
-    : {
-        state: "provider_error",
-        providerRequestId: observation.requestId,
-        responseBody: body,
-        bodyCapture,
-      };
-
-/**
- * OpenRouter reports usage only once generation has finished (the last
- * stream event, or the whole JSON body), so usage seen before a cancel or a
- * stream error is final and can be billed instead of reconciled later.
- */
-const completeIfUsageSeen = (
-  observation: ObservedUsage,
-  body: string,
-  truncated: boolean,
-): ProviderCompletion | null =>
-  observation.usage
-    ? {
-        state: "complete",
-        providerRequestId: observation.requestId,
-        usage: observation.usage,
-        responseBody: body,
-        bodyCapture: truncated ? "truncated" : "complete",
-      }
-    : null;
-
-const meterResponse = (
-  upstream: Response,
-  requestBody: string,
-  maxCapturedBytes: number,
-): MeteredProviderResponse => {
-  let settle: (completion: ProviderCompletion) => void = () => {};
-  const completion = new Promise<ProviderCompletion>((resolve) => {
-    settle = resolve;
-  });
-  const chunks: Uint8Array[] = [];
-  let capturedBytes = 0;
-  let truncated = false;
-  const observer = new OpenRouterResponseObserver(
-    upstream.headers.get("content-type")?.includes("text/event-stream") ??
-      false,
-    upstream.headers.get("x-generation-id") || null,
-  );
-
-  if (!upstream.body) {
-    const observation = observer.finish("");
-    settle(uncertainCompletion(upstream.ok, observation, "", "complete", "Empty response"));
-    return { response: upstream, requestBody, completion };
-  }
-
-  const reader = upstream.body.getReader();
-  let cancelled = false;
-  let settled = false;
-  const settleOnce = (result: ProviderCompletion) => {
-    if (settled) return;
-    settled = true;
-    settle(result);
-  };
-
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const next = await reader.read();
-        // A pull may already be awaiting the upstream reader when the client
-        // cancels. Its result must neither reach the closed controller nor
-        // override the cancellation outcome.
-        if (cancelled) return;
-        if (!next.done) {
-          const copy = next.value.slice();
-          observer.push(copy);
-          // Non-streaming bodies are parsed whole for usage; they are
-          // bounded by the provider's single JSON document, so only event
-          // streams are capped here.
-          if (
-            !observer.eventStream ||
-            (!truncated && capturedBytes + copy.byteLength <= maxCapturedBytes)
-          ) {
-            chunks.push(copy);
-            capturedBytes += copy.byteLength;
-          } else {
-            truncated = true;
-          }
-          controller.enqueue(next.value);
-          return;
-        }
-
-        const captured = responseText(chunks);
-        const observation = observer.finish(captured);
-        if (observation.usage) {
-          settleOnce({
-            state: "complete",
-            providerRequestId: observation.requestId,
-            usage: observation.usage,
-            responseBody: captured,
-            bodyCapture: truncated ? "truncated" : "complete",
-          });
-        } else {
-          settleOnce(
-            uncertainCompletion(
-              upstream.ok,
-              observation,
-              captured,
-              truncated ? "truncated" : "complete",
-            ),
-          );
-        }
-        controller.close();
-      } catch (error) {
-        if (cancelled) return;
-        const captured = responseText(chunks);
-        const observation = observer.finish(captured);
-        settleOnce(
-          completeIfUsageSeen(observation, captured, truncated) ??
-            uncertainCompletion(
-              upstream.ok,
-              observation,
-              captured,
-              truncated ? "truncated" : "partial",
-              error instanceof Error ? error.message : "Response stream failed",
-            ),
-        );
-        controller.error(error);
-      }
-    },
-
-    async cancel(reason) {
-      cancelled = true;
-      // The upstream may already be gone (aborted fetch, closed socket). A
-      // rejected cancel must not leave `completion` unsettled, or the
-      // reservation would only ever close by expiry.
-      await reader.cancel(reason).catch(() => {});
-      const captured = responseText(chunks);
-      const observation = observer.finish(captured);
-      settleOnce(
-        completeIfUsageSeen(observation, captured, truncated) ??
-          uncertainCompletion(
-            upstream.ok,
-            observation,
-            captured,
-            truncated ? "truncated" : "partial",
-            typeof reason === "string" ? reason : "Client cancelled stream",
-          ),
-      );
-    },
-  });
-
-  return {
-    response: new Response(body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: upstream.headers,
-    }),
-    requestBody,
-    completion,
-  };
-};
 
 /** Longest upstream Retry-After we wait out; beyond it the refusal is returned. */
 const MAX_RETRY_AFTER_MS = 10_000;
@@ -368,7 +220,15 @@ export class OpenRouterAdapter {
       const delay =
         attempt + 1 < this.maxAttempts ? await retryDelayMs(upstream, attempt) : null;
       if (delay === null || request.signal?.aborted) {
-        return meterResponse(upstream, requestBody, this.maxCapturedBytes);
+        return meterStreamed(upstream, {
+          requestBody,
+          reader: new OpenRouterResponseReader(upstream),
+          // A JSON body is one document parsed whole for usage, bounded by
+          // the provider; only event streams are capped for storage.
+          maxCapturedBytes: isEventStream(upstream.headers) ? this.maxCapturedBytes : null,
+          headers: "upstream",
+          onCancel: { kind: "cancel-upstream" },
+        });
       }
       await upstream.body?.cancel().catch(() => {});
       await this.sleep(delay);

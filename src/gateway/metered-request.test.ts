@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Usd } from "../billing/money";
+import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import type { MeteredProviderResponse, ProviderCompletion } from "../providers/types";
 import {
   type MeteredRequestInput,
@@ -210,6 +211,34 @@ describe("runMeteredRequest", () => {
       state: "pending_reconciliation",
       reconciliationReason: reason,
       providerRequestId: "gen-uncertain",
+      event: null,
+    });
+  });
+
+  test("holds an OpenRouter 504 without usage for reconciliation, not finalized at zero", async () => {
+    const { billing, account, record } = await setup();
+    // The 504 may come back while the generation still runs and bills.
+    const adapter = new OpenRouterAdapter({
+      fetch: async () =>
+        new Response('{"error":{"message":"Gateway timeout"}}', {
+          status: 504,
+          headers: { "content-type": "application/json", "x-generation-id": "gen-504" },
+        }),
+    });
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(account.accountId, () =>
+        adapter.execute({ endpoint: "chat/completions", body: { model: "test/model" }, apiKey: "secret" }),
+      ),
+    );
+    expect(request.response.status).toBe(504);
+    await request.response.text();
+
+    expect((await request.settled).kind).toBe("pending_reconciliation");
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      providerRequestId: "gen-504",
+      reconciliationReason: "OpenRouter gateway timeout; generation may still be running",
       event: null,
     });
   });

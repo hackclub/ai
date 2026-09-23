@@ -227,6 +227,14 @@ describe("meterStreamed", () => {
       });
     });
 
+    test("no usage on a non-2xx status the provider may still bill is uncertain", async () => {
+      expect(await run({ reason: "gateway timeout", mayStillBeCharged: true }, { status: 504 })).toMatchObject({
+        state: "uncertain",
+        reason: "gateway timeout",
+        bodyCapture: "complete",
+      });
+    });
+
     test("no usage on a 2xx status is uncertain, with how much of the body was seen", async () => {
       expect(await run({ reason: "missing" })).toMatchObject({ state: "uncertain", reason: "missing", bodyCapture: "complete" });
       expect(await run({ reason: "missing" }, {}, [bytes("body")], { cancel: true })).toMatchObject({

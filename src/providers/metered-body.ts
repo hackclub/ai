@@ -45,6 +45,13 @@ export type UsageVerdict = {
   /** Replaces the stored analytics body (OCR redaction). */
   responseBody?: string;
   model?: string;
+  /**
+   * A non-2xx reply without usage normally means nothing was charged. Set
+   * when the provider may still be billing anyway (an OpenRouter 504: the
+   * generation may still be running), so the reservation is held for
+   * reconciliation instead of finalized at zero.
+   */
+  mayStillBeCharged?: boolean;
 };
 
 export type UsageReader = {
@@ -92,7 +99,7 @@ const toCompletion = (body: CapturedBody, verdict: UsageVerdict): ProviderComple
     };
   }
   const bodyCapture = unbilledCapture(body);
-  if (!isSuccess(body.status)) {
+  if (!isSuccess(body.status) && !verdict.mayStillBeCharged) {
     return { ...common, state: "provider_error", bodyCapture };
   }
   return {
