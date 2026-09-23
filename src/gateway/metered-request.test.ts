@@ -7,11 +7,21 @@ import {
   redactHeaders,
   runMeteredRequest,
 } from "./metered-request";
-import { fakeBilling } from "./routes/test-harness";
+import { testDatabase } from "../test/database";
+import {
+  billingRecords,
+  createTestAccount,
+  onlyBillingRecord,
+  testBilling,
+  withFaults,
+} from "./routes/test-harness";
 
-const complete = (costUsd = "0.0004"): ProviderCompletion => ({
+const { sql } = await testDatabase();
+
+// Provider request ids are unique per provider in the database, as upstream.
+const complete = (costUsd = "0.0004", providerRequestId = "gen-1"): ProviderCompletion => ({
   state: "complete",
-  providerRequestId: "gen-1",
+  providerRequestId,
   usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5, costUsd: Usd.parse(costUsd) },
   responseBody: '{"id":"gen-1"}',
   bodyCapture: "complete",
@@ -30,27 +40,33 @@ const providerResponse = (
   completion: Promise.resolve(completion),
 });
 
-const baseInput = (execute: MeteredRequestInput["execute"]): MeteredRequestInput => ({
-  requestId: "request-1",
-  accountId: "account-1",
+/** A fresh account per test, so each test reads back only its own reservation. */
+const setup = async () => {
+  const account = await createTestAccount(sql, crypto.randomUUID());
+  return { ...testBilling(sql), account, record: () => onlyBillingRecord(sql, account.accountId) };
+};
+
+const baseInput = (accountId: string, execute: MeteredRequestInput["execute"]): MeteredRequestInput => ({
+  requestId: crypto.randomUUID(),
+  accountId,
   provider: "openrouter",
   endpoint: "chat/completions",
   model: "test/model",
   estimatedCostUsd: Usd.parse("0.01"),
   analytics: {
-    userId: "user-1",
-    apiKeyId: "key-1",
+    userId: null,
+    apiKeyId: null,
     requestHeaders: { Authorization: "Bearer secret", "User-Agent": "test" },
     attributes: { client: "cli" },
   },
   execute,
 });
 
-const dispatchFailure = () => {
+const dispatchFailure = (accountId: string) => {
   const failure = new Error("connect ECONNREFUSED");
   return {
     failure,
-    input: baseInput(async () => {
+    input: baseInput(accountId, async () => {
       throw failure;
     }),
   };
@@ -58,30 +74,35 @@ const dispatchFailure = () => {
 
 describe("runMeteredRequest", () => {
   test("reserves before dispatch and finalizes once with provider usage", async () => {
-    const { billing, methods, only } = fakeBilling();
-    let reservedBeforeDispatch = false;
+    const { billing, account, record } = await setup();
+    let stateAtDispatch: string | undefined;
 
     const request = await runMeteredRequest(
       billing,
-      baseInput(async () => {
-        reservedBeforeDispatch = methods().join() === "reserve";
+      baseInput(account.accountId, async () => {
+        stateAtDispatch = (await record()).state;
         return providerResponse(complete());
       }),
     );
 
-    expect(reservedBeforeDispatch).toBeTrue();
+    expect(stateAtDispatch).toBe("reserved");
     expect(request.reservation.state).toBe("reserved");
     expect((await request.settled).kind).toBe("finalized");
-    expect(methods()).toEqual(["reserve", "finalize"]);
 
-    const { input } = only("finalize");
-    expect(input).toMatchObject({
-      requestId: "request-1",
+    const finalized = await record();
+    expect(finalized).toMatchObject({
+      state: "finalized",
       usageSource: "provider_reported",
       providerRequestId: "gen-1",
+      actualCostUsd: "0.000400000000",
     });
-    expect(input.actualCostUsd.toString()).toBe("0.000400000000");
-    expect(input.analytics).toMatchObject({
+    // The event as the analytics worker will read it, after the engine's merge.
+    expect(finalized.event).toMatchObject({
+      account_id: account.accountId,
+      provider: "openrouter",
+      provider_request_id: "gen-1",
+      billed_cost_usd: "0.000400000000",
+      usage_source: "provider_reported",
       outcome: "completed",
       http_status: 200,
       streamed: false,
@@ -94,61 +115,58 @@ describe("runMeteredRequest", () => {
       request_headers: { "user-agent": "test" },
       response_headers: { "content-type": "application/json" },
       attributes: { client: "cli", body_capture: "complete" },
-      user_id: "user-1",
-      api_key_id: "key-1",
     });
   });
 
   test("does not dispatch when the reservation is refused", async () => {
-    const { billing } = fakeBilling();
-    const refused = new Error("insufficient funds");
-    billing.reserve = async () => {
-      throw refused;
-    };
+    const { billing, account } = await setup();
     let executed = false;
+    const input = {
+      ...baseInput(account.accountId, async () => {
+        executed = true;
+        return providerResponse(complete());
+      }),
+      // More than the $1 daily allowance.
+      estimatedCostUsd: Usd.parse("5"),
+    };
 
-    await expect(
-      runMeteredRequest(
-        billing,
-        baseInput(async () => {
-          executed = true;
-          return providerResponse(complete());
-        }),
-      ),
-    ).rejects.toBe(refused);
+    await expect(runMeteredRequest(billing, input)).rejects.toThrow();
     expect(executed).toBeFalse();
+    expect(await billingRecords(sql, account.accountId)).toEqual([]);
   });
 
   test("releases the reservation when dispatch fails", async () => {
-    const { billing, methods } = fakeBilling();
-    const { failure, input } = dispatchFailure();
+    const { billing, account, record } = await setup();
+    const { failure, input } = dispatchFailure(account.accountId);
     await expect(runMeteredRequest(billing, input)).rejects.toBe(failure);
-    expect(methods()).toEqual(["reserve", "release"]);
+    expect((await record()).state).toBe("released");
   });
 
   test("rethrows the dispatch error when release also fails", async () => {
-    const { billing } = fakeBilling();
+    const { billing, account } = await setup();
     const releaseFailure = new Error("pool closed");
-    billing.release = async () => {
-      throw releaseFailure;
-    };
+    const failing = withFaults(billing, {
+      release: async () => {
+        throw releaseFailure;
+      },
+    });
     const releaseErrors: unknown[][] = [];
-    const { failure, input } = dispatchFailure();
+    const { failure, input } = dispatchFailure(account.accountId);
 
     await expect(
-      runMeteredRequest(billing, {
+      runMeteredRequest(failing, {
         ...input,
         onReleaseError: (...args) => releaseErrors.push(args),
       }),
     ).rejects.toBe(failure);
-    expect(releaseErrors).toEqual([[releaseFailure, "request-1"]]);
+    expect(releaseErrors).toEqual([[releaseFailure, input.requestId]]);
   });
 
   test("finalizes provider HTTP errors at zero cost", async () => {
-    const { billing, only } = fakeBilling();
+    const { billing, account, record } = await setup();
     const request = await runMeteredRequest(
       billing,
-      baseInput(async () =>
+      baseInput(account.accountId, async () =>
         providerResponse(
           {
             state: "uncertain",
@@ -163,13 +181,13 @@ describe("runMeteredRequest", () => {
     );
 
     expect((await request.settled).kind).toBe("finalized");
-    const { input } = only("finalize");
-    expect(input.actualCostUsd.toAtoms()).toBe(0n);
-    expect(input.usageSource).toBe("calculated");
-    expect(input.analytics).toMatchObject({
+    const finalized = await record();
+    expect(finalized).toMatchObject({ state: "finalized", actualCostUsd: "0.000000000000", usageSource: "calculated" });
+    expect(finalized.event).toMatchObject({
       outcome: "provider_error",
       error_code: "http_400",
       provider_cost_usd: null,
+      billed_cost_usd: "0.000000000000",
     });
   });
 
@@ -177,12 +195,12 @@ describe("runMeteredRequest", () => {
     ["uncertain", "OpenRouter response ended without authoritative cost"],
     ["cancelled", "client disconnected"],
   ] as const)("marks a %s successful response pending reconciliation", async (state, reason) => {
-    const { billing, methods, only } = fakeBilling();
+    const { billing, account, record } = await setup();
     const request = await runMeteredRequest(
       billing,
-      baseInput(async () =>
+      baseInput(account.accountId, async () =>
         providerResponse(
-          { state, providerRequestId: "gen-2", reason, responseBody: "partial", bodyCapture: "partial" },
+          { state, providerRequestId: `gen-${state}`, reason, responseBody: "partial", bodyCapture: "partial" },
           { headers: { "content-type": "text/event-stream" } },
         ),
       ),
@@ -191,19 +209,19 @@ describe("runMeteredRequest", () => {
     const outcome = await request.settled;
     expect(outcome.kind).toBe("pending_reconciliation");
     expect(outcome.reservation.state).toBe("pending_reconciliation");
-    expect(methods()).toEqual(["reserve", "markPendingReconciliation"]);
-    expect(only("markPendingReconciliation")).toMatchObject({
-      requestId: "request-1",
-      reason,
-      providerRequestId: "gen-2",
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      reconciliationReason: reason,
+      providerRequestId: `gen-${state}`,
+      event: null,
     });
   });
 
   test("holds a successful response for reconciliation when completion rejects", async () => {
-    const { billing, methods, only } = fakeBilling();
+    const { billing, account, record } = await setup();
     const request = await runMeteredRequest(
       billing,
-      baseInput(async () => ({
+      baseInput(account.accountId, async () => ({
         response: new Response("ok", { status: 200 }),
         requestBody: "{}",
         completion: Promise.reject(new Error("adapter bug")),
@@ -211,15 +229,21 @@ describe("runMeteredRequest", () => {
     );
 
     expect((await request.settled).kind).toBe("pending_reconciliation");
-    expect(methods()).toEqual(["reserve", "markPendingReconciliation"]);
-    expect(only("markPendingReconciliation").reason).toBe("completion_rejected");
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      reconciliationReason: "completion_rejected",
+    });
   });
 });
 
 describe("SettlementTracker", () => {
   const trackedRequest = async (completion: Promise<ProviderCompletion>) => {
-    const { billing, settlements: tracker } = fakeBilling();
-    const request = await runMeteredRequest(billing, baseInput(async () => providerResponse(completion)));
+    const { billing, settlements: tracker, account } = await setup();
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(account.accountId, async () => providerResponse(completion)),
+      tracker,
+    );
     expect(tracker.size).toBe(1);
     return { tracker, request };
   };
@@ -228,7 +252,7 @@ describe("SettlementTracker", () => {
     let resolve!: (completion: ProviderCompletion) => void;
     const { tracker, request } = await trackedRequest(new Promise((r) => (resolve = r)));
     const drained = tracker.drain(1_000);
-    resolve(complete());
+    resolve(complete("0.0004", `gen-${crypto.randomUUID()}`));
     expect(await drained).toEqual({ remaining: 0 });
     await request.settled;
   });

@@ -1,26 +1,15 @@
-import { createClient, type ClickHouseClient } from "@clickhouse/client";
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import type { ClickHouseClient } from "@clickhouse/client";
+import { beforeAll, describe, expect, test } from "bun:test";
 
-import { integrationClickHouseUrl, integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { testClickHouse, testDatabase } from "../test/database";
 import { drainRequestEvents, MAX_DELIVERY_ATTEMPTS, stripParkedBodies } from "./request-events";
 
-const databaseUrl = integrationDatabaseUrl("ANALYTICS_TEST_DATABASE_URL");
-const clickhouseUrl = integrationClickHouseUrl();
-const integrationTest = integrationTestFor(databaseUrl, clickhouseUrl);
+const { sql } = await testDatabase();
+const { clickhouse } = await testClickHouse();
 
 describe("request event delivery with PostgreSQL and ClickHouse", () => {
-  let sql: Sql | undefined;
-  let clickhouse: ClickHouseClient | undefined;
-  // Every outbox row these tests insert carries this account id; afterAll deletes them all.
   const accountId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
-  const clickhouseEventIds = [eventId];
-
-  const stores = () => {
-    if (!sql || !clickhouse) throw new Error("Integration datastores unavailable");
-    return { sql, clickhouse };
-  };
 
   const payload = (id: string, extra: Record<string, string | number> = {}) => ({
     event_id: id,
@@ -40,13 +29,6 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
   });
 
   beforeAll(async () => {
-    if (!databaseUrl || !clickhouseUrl) return;
-    sql = postgres(databaseUrl);
-    clickhouse = createClient({
-      url: clickhouseUrl,
-      username: process.env.CLICKHOUSE_USER ?? "hcai",
-      password: process.env.CLICKHOUSE_PASSWORD ?? "hcai",
-    });
     const body = { request_body: '{"prompt":"six seven mango"}', response_body: '{"answer":"six seven mango"}' };
     await sql`
       INSERT INTO request_event_outbox (payload)
@@ -56,31 +38,14 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
     `;
   });
 
-  afterAll(async () => {
-    if (sql) {
-      await sql`DELETE FROM request_event_outbox WHERE payload->>'account_id' = ${accountId}`;
-      await sql.end();
-    }
-    if (clickhouse) {
-      for (const id of clickhouseEventIds) {
-        await clickhouse.command({
-          query: `DELETE FROM hcai.request_events WHERE event_id = {event_id:UUID}`,
-          query_params: { event_id: id },
-        });
-      }
-      await clickhouse.close();
-    }
-  });
-
-  integrationTest("delivers complete searchable bodies, deletes the row, and parks an unmappable one", async () => {
-    const { sql, clickhouse } = stores();
+  test("delivers complete searchable bodies, deletes the row, and parks an unmappable one", async () => {
     // Every row the outbox holds is taken; other tests' rows are delivered too.
     await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
 
     const result = await clickhouse.query({
       query: `
         SELECT request_body, response_body
-        FROM hcai.request_events
+        FROM request_events
         WHERE
           event_id = {event_id:UUID}
           AND hasAllTokens(request_body, 'six seven mango')
@@ -101,10 +66,8 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
     ]);
   });
 
-  integrationTest("redelivers a row whose claim lease expired but leaves a freshly claimed one alone", async () => {
-    const { sql, clickhouse } = stores();
+  test("redelivers a row whose claim lease expired but leaves a freshly claimed one alone", async () => {
     const expiredEventId = crypto.randomUUID();
-    clickhouseEventIds.push(expiredEventId);
     await sql`
       INSERT INTO request_event_outbox (payload, claimed_at)
       VALUES (${sql.json(payload(expiredEventId))}::jsonb, now() - INTERVAL '10 minutes')
@@ -124,8 +87,7 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
     expect(freshRow.map((row) => row.claimed_at.toISOString())).toEqual([fresh!.claimed_at.toISOString()]);
   });
 
-  integrationTest("releases the claim and counts an attempt when the ClickHouse insert fails", async () => {
-    const { sql } = stores();
+  test("releases the claim and counts an attempt when the ClickHouse insert fails", async () => {
     const failingEventId = crypto.randomUUID();
     await sql`INSERT INTO request_event_outbox (payload) VALUES (${sql.json(payload(failingEventId))}::jsonb)`;
 
@@ -142,12 +104,11 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
     expect(row).toEqual({ attempts: 1, claimed_at: null, last_error: "boom" });
   });
 
-  integrationTest("strips request/response bodies from parked rows older than the retention window", async () => {
-    const { sql } = stores();
+  test("strips request/response bodies from parked rows older than the retention window", async () => {
     const oldEventId = crypto.randomUUID();
     const recentEventId = crypto.randomUUID();
     const parked = (id: string) =>
-      sql!.json({ event_id: id, account_id: accountId, request_body: '{"prompt":"parked"}', response_body: '{"answer":"parked"}' });
+      sql.json({ event_id: id, account_id: accountId, request_body: '{"prompt":"parked"}', response_body: '{"answer":"parked"}' });
     await sql`
       INSERT INTO request_event_outbox (payload, attempts, created_at)
       VALUES

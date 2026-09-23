@@ -1,17 +1,13 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { describe, expect, test } from "bun:test";
 
 import { hackClubAuthRoutes, type HackClubIdentity } from "./hackclub";
 import { SESSION_COOKIE, cookieValue, sessionUser } from "./sessions";
-import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { testDatabase } from "../test/database";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
-const runId = crypto.randomUUID().slice(0, 8);
+const { sql } = await testDatabase();
 
 describe("Hack Club OAuth with PostgreSQL", () => {
-  let sql: Sql | undefined;
-  const slackId = `U-oauth-${runId}`;
+  const slackId = "U-oauth";
   const identity: HackClubIdentity = {
     id: "hc-1",
     slack_id: slackId,
@@ -23,9 +19,8 @@ describe("Hack Club OAuth with PostgreSQL", () => {
   };
   const tokenRequests: string[] = [];
 
-  const routes = () => {
-    if (!sql) throw new Error("Missing database");
-    return hackClubAuthRoutes({
+  const routes = () =>
+    hackClubAuthRoutes({
       sql,
       clientId: "client",
       clientSecret: "secret",
@@ -44,25 +39,8 @@ describe("Hack Club OAuth with PostgreSQL", () => {
         throw new Error(`Unexpected fetch ${url}`);
       }) as typeof fetch,
     });
-  };
 
-  beforeAll(() => {
-    if (databaseUrl) sql = postgres(databaseUrl, { max: 2 });
-  });
-
-  afterAll(async () => {
-    if (!sql) return;
-    const [user] = await sql<{ id: string }[]>`SELECT id FROM users WHERE slack_id = ${slackId}`;
-    if (user) {
-      await sql`DELETE FROM billing_funding_policies WHERE account_id IN (SELECT id FROM billing_accounts WHERE owner_id = ${user.id}::uuid)`;
-      await sql`DELETE FROM billing_accounts WHERE owner_type = 'user' AND owner_id = ${user.id}::uuid`;
-      await sql`DELETE FROM users WHERE id = ${user.id}::uuid`;
-    }
-    await sql.end();
-  });
-
-  integrationTest("callback creates the user with funding and a session", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("callback creates the user with funding and a session", async () => {
     const app = routes();
     const callback = (code: string, state: string) =>
       app.handle(

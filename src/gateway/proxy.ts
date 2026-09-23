@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
-import type { BillingEngine } from "../billing/engine";
+import type { BillingLifecycle, SettlementTracker } from "./metered-request";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
@@ -14,7 +14,9 @@ import { authorizeProviderRequest, parseJsonObject, runProviderRoute } from "./r
 
 export type ProxyDependencies = {
   sql: postgres.Sql;
-  billing: BillingEngine;
+  billing: BillingLifecycle;
+  /** Settlements still in flight; the backend drains it on shutdown. */
+  settlements: SettlementTracker;
   catalog: ModelCatalog;
   adapter: OpenRouterAdapter;
   openRouterApiKey: string;

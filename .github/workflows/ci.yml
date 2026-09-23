@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit:
-    name: Typecheck, unit tests, build
+  test:
+    name: Typecheck, tests, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,9 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # bun test needs PostgreSQL and ClickHouse (docs/adr/0001); start them
+      # first so they are healthy by the time the tests run.
+      - run: docker compose up -d --wait
       - run: bun run typecheck
       - run: bun run check
       - run: bun test
@@ -33,28 +36,7 @@ jobs:
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
           OPENROUTER_API_KEY: ci
           TYPESAFE_API_KEY: ci
-
-  integration:
-    name: PostgreSQL + ClickHouse integration tests
-    runs-on: ubuntu-latest
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.2"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - run: bun run test:integration $(find src -name "*.integration.test.ts")
-        env:
-          DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
-          OPENROUTER_API_KEY: ci
-          TYPESAFE_API_KEY: ci
-      - if: always()
+      - if: failure()
         run: docker compose logs --no-color postgres clickhouse | tail -n 200
       - if: always()
         run: docker compose down --volumes

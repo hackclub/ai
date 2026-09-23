@@ -1,22 +1,16 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { beforeAll, describe, expect, test } from "bun:test";
 
-import { migrateJobQueue } from "../../analytics/worker";
-import { BillingEngine } from "../../billing/engine";
 import { type Fetch, OpenRouterAdapter } from "../../providers/openrouter/adapter";
-import { integrationDatabaseUrl, integrationTestFor } from "../../test/integration-db";
+import { testDatabase } from "../../test/database";
 import { exaRoutes } from "./exa";
 import { imagesRoutes } from "./images";
 import { ocrRoutes } from "./ocr";
-import { createTestAccount, post } from "./test-harness";
+import { createTestAccount, post, testBilling } from "./test-harness";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
-const runId = crypto.randomUUID().slice(0, 8);
+const { sql } = await testDatabase();
 
 describe("provider routes with PostgreSQL", () => {
-  let sql: Sql | undefined;
-  let billing: BillingEngine | undefined;
+  const { billing, settlements } = testBilling(sql);
   let userId: string;
   let accountId: string;
   let apiKey: string;
@@ -35,7 +29,6 @@ describe("provider routes with PostgreSQL", () => {
     app.handle(post(path, body, { authorization: `Bearer ${apiKey}` }));
 
   const waitForState = async (providerRequestId: string, state: string) => {
-    if (!sql) throw new Error("Missing database");
     let row: { state: string; actual_cost_usd: string | null } | undefined;
     for (let attempt = 0; attempt < 50 && row?.state !== state; attempt += 1) {
       [row] = await sql<{ state: string; actual_cost_usd: string | null }[]>`
@@ -47,26 +40,13 @@ describe("provider routes with PostgreSQL", () => {
     return row;
   };
 
-  let cleanup = async () => {};
-
   beforeAll(async () => {
-    if (!databaseUrl) return;
-    sql = postgres(databaseUrl, { max: 4 });
-    billing = new BillingEngine(sql);
-    await migrateJobQueue(databaseUrl);
-    ({ userId, accountId, apiKey, cleanup } = await createTestAccount(sql, `routes-${runId}`));
+    ({ userId, accountId, apiKey } = await createTestAccount(sql, "routes"));
   });
 
-  afterAll(async () => {
-    if (!sql) return;
-    await cleanup();
-    await sql.end();
-  });
-
-  integrationTest("exa: forwards and bills reported cost", async () => {
-    if (!sql || !billing) throw new Error("Missing database");
-    const app = exaRoutes({ sql, billing, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" });
-    const requestId = `exa-${runId}`;
+  test("exa: forwards and bills reported cost", async () => {
+    const app = exaRoutes({ sql, billing, settlements, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" });
+    const requestId = "exa-request";
     nextResponse = () => Response.json({ requestId, results: [], costDollars: { total: 0.005 } });
     const response = await send(app, "/proxy/v1/exa/search", { query: "six seven mango" });
     expect(response.status).toBe(200);
@@ -80,11 +60,11 @@ describe("provider routes with PostgreSQL", () => {
     expect(row?.actual_cost_usd).toBe("0.005000000000");
   });
 
-  integrationTest("ocr: redacts analytics and bills per page", async () => {
-    if (!sql || !billing) throw new Error("Missing database");
+  test("ocr: redacts analytics and bills per page", async () => {
     const app = ocrRoutes({
       sql,
       billing,
+      settlements,
       enforceIdv: false,
       fetch: fakeFetch,
       mistralApiKey: "mistral-key",
@@ -116,18 +96,18 @@ describe("provider routes with PostgreSQL", () => {
     expect(JSON.parse(job?.payload.response_body ?? "{}").pages[0].markdown_length).toBe(11);
   });
 
-  integrationTest("images: translates to chat completions and returns OpenAI shape", async () => {
-    if (!sql || !billing) throw new Error("Missing database");
+  test("images: translates to chat completions and returns OpenAI shape", async () => {
     const app = imagesRoutes({
       sql,
       billing,
+      settlements,
       enforceIdv: false,
       adapter: new OpenRouterAdapter({ baseUrl: "https://openrouter.test/api", fetch: fakeFetch }),
       openRouterApiKey: "or-key",
       allowedImageModels: ["img/model"],
       attributionHeaders: { "X-Title": "Test" },
     });
-    const generationId = `gen-img-${runId}`;
+    const generationId = "gen-img";
     nextResponse = () =>
       Response.json({
         id: generationId,

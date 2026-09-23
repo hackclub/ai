@@ -48,33 +48,31 @@ bun run db:check
 
 `db:reset` is destructive and is intended only for local development.
 
-The PostgreSQL integration tests (billing engine, metered requests, and the
-HTTP proxy) are opt-in so the normal unit suite does not depend on Docker.
-Stop `bun run dev` first: its job worker drains the queue the tests inspect.
+### Tests
 
-CI (`.github/workflows/ci.yml`) runs the unit gates on every push and pull
-request, then starts Postgres and ClickHouse with `docker compose` and runs
-the same integration tests with the variables above set.
+`bun test` runs every suite against real PostgreSQL 18 and ClickHouse,
+including the billing engine; nothing is faked except upstream providers
+(docs/adr/0001). Start the datastores first:
 
 ```bash
-bun run test:integration            # everything, including the Docker-gated suites
-bun run test:integration src/billing # a subset
+bun run db:up
+bun test
+bun test src/billing # a subset
 ```
 
-By hand, the script does: start `bun run db:up`; create a second database
-`hcai_test` on the same Postgres container
-(`docker compose exec -T postgres psql -U hcai -d hcai -c "CREATE DATABASE hcai_test"`);
-apply migrations to it (`DATABASE_URL=postgres://hcai:hcai@localhost:55432/hcai_test bun run db:migrate`);
-then run `bun test` with `BILLING_TEST_DATABASE_URL`,
-`ANALYTICS_TEST_DATABASE_URL`, and `ANALYTICS_TEST_CLICKHOUSE_URL` all set to
-that database and ClickHouse.
+Each run clones its own PostgreSQL database from a migrated template and
+creates a ClickHouse database of the same name, then drops both; every test
+file starts with their rows cleared. The dev databases are never touched, so
+`bun run dev` can keep running. The template is rebuilt when a migration
+changes (the first run afterwards takes about 20 seconds). With no reachable
+server the run fails before any test: it never skips.
 
-The tests refuse to run when the test URL is the same database as
-`DATABASE_URL`.
+To use other servers, set `TEST_DATABASE_URL` (any database URL on a
+PostgreSQL 18 server whose role can create databases) and
+`TEST_CLICKHOUSE_URL`, `TEST_CLICKHOUSE_USER`, `TEST_CLICKHOUSE_PASSWORD`.
 
-The outbox delivery test additionally inserts an outbox row, drains it to
-ClickHouse, and checks the event is searchable
-(`bun run test:integration src/analytics/request-events.integration.test.ts`).
+CI (`.github/workflows/ci.yml`) starts both with `docker compose` and runs
+the same `bun test`.
 
 ## Development server
 

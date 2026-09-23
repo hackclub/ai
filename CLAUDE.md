@@ -25,8 +25,7 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Standalone API only | `bun run api` |
 | Typecheck (the baseline gate) | `bun run typecheck` |
 | Svelte check | `bun run check` |
-| Unit tests | `bun test` |
-| Integration tests (Docker) | `bun run test:integration` |
+| Tests (needs `db:up`) | `bun test` |
 | Production build / run | `bun run build` then `bun run start` |
 | Local databases | `bun run db:up` / `db:down` / `db:logs` / `db:check` |
 | Wipe local databases | `bun run db:reset` (destructive) |
@@ -34,15 +33,11 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Seed a dev user, key, and session | `bun run dev:seed` |
 
 Verification baseline for any change: `bun run typecheck` exits 0 and
-`bun test` reports `0 fail`. `bun run test:integration` provisions the
-Docker-gated suites end to end (starts the datastores, creates and migrates
-a separate `hcai_test` database, then runs `bun test` with the opt-in
-variables set). Integration tests are otherwise skipped unless
-`BILLING_TEST_DATABASE_URL` (and for ClickHouse delivery
-`ANALYTICS_TEST_DATABASE_URL` + `ANALYTICS_TEST_CLICKHOUSE_URL`) point at a
-running database. Stop `bun run dev` before running them: its in-process
-outbox drainer deletes rows the tests count. Prefer a dedicated test
-database over the dev one.
+`bun test` reports `0 fail`. `bun test` needs PostgreSQL 18 and ClickHouse
+running (`bun run db:up`, or `TEST_DATABASE_URL` / `TEST_CLICKHOUSE_URL`)
+and fails before any test when either is unreachable; nothing is skipped.
+Each run creates and drops its own databases, so the dev server can keep
+running (`src/test/database.ts`, `docs/adr/0001`).
 
 ## Layout
 
@@ -91,14 +86,22 @@ database over the dev one.
 7. **Schema changes are new numbered files** in `migrations/<store>/`,
    applied by dbmate (`scripts/migrate.ts`): each file needs `-- migrate:up`
    and `-- migrate:down` markers. Never edit an applied migration. A
-   ClickHouse file holds exactly one idempotent statement.
+   ClickHouse file holds exactly one idempotent statement, and neither
+   migrations nor queries qualify tables with a database (`request_events`,
+   not `hcai.request_events`): the database is `CLICKHOUSE_DB`, and tests
+   run against their own.
 8. **Billing invariants** in `docs/architecture/storage-and-billing.md`
    are not negotiable: one reservation per request, settle at most once,
    idempotent operations, PostgreSQL transaction time decides windows.
 
 ## Testing conventions
 
-Tests sit next to sources as `*.test.ts` (unit, always run) and
-`*.integration.test.ts` (gated as above). Use `bun:test`. Structural
-fakes are preferred over mocks; see `src/gateway/metered-request.test.ts`
-for an in-memory `BillingLifecycle`.
+Tests sit next to sources as `*.test.ts`; `*.integration.test.ts` names
+suites that exercise a whole flow, and both always run. Use `bun:test`.
+Tests use the real billing engine and real datastores, never a fake of our
+own modules (`docs/adr/0001`): call `testDatabase()` / `testClickHouse()`
+from `src/test/database.ts` at the top level of the file, and assert on
+what was recorded with `billingRecords()` from
+`src/gateway/routes/test-harness.ts`. Only external providers are faked
+(`fakeFetch`); to inject a failure the database cannot produce, override
+one operation with `withFaults()`.

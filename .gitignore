@@ -50,3 +50,5 @@ package-lock.json
 /.delta
 
 plans/
+
+docs/

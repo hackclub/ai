@@ -108,6 +108,6 @@ nothing else.
   bent. Revisit that first.
 - A new state or transition is a row in `lifecycle.ts`, and the full-table
   test in `lifecycle.test.ts` will fail until you update it on purpose.
-- Run the integration suite (`bun run test:integration`). It calls
+- Run `bun test` (it always includes `engine.integration.test.ts`). It calls
   `findBillingDrift` after every scenario, so a write that desynchronises
   a counter from its holds fails the scenario that caused it.

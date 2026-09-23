@@ -11,15 +11,14 @@ import type {
 } from "../providers/types";
 
 /**
- * The subset of the billing engine a metered request needs. Keeping it
- * structural lets the lifecycle be exercised with an in-memory fake.
+ * The subset of the billing engine a metered request needs. Tests use the
+ * real engine (docs/adr/0001); the structural type only lets a test replace
+ * one operation to inject a fault.
  */
 export type BillingLifecycle = Pick<
   BillingEngine,
   "reserve" | "finalize" | "release" | "markPendingReconciliation"
-> & {
-  settlements?: SettlementTracker;
-};
+>;
 
 /** Settlements not yet recorded in billing; drained on shutdown. */
 export class SettlementTracker {
@@ -266,6 +265,7 @@ const settleCompletion = async (
 export async function runMeteredRequest(
   billing: BillingLifecycle,
   input: MeteredRequestInput,
+  settlements?: SettlementTracker,
 ): Promise<MeteredRequest> {
   const reservation = await billing.reserve({
     requestId: input.requestId,
@@ -317,7 +317,7 @@ export async function runMeteredRequest(
       completion,
     ),
   );
-  const settled = billing.settlements ? billing.settlements.track(raw) : raw;
+  const settled = settlements ? settlements.track(raw) : raw;
 
   return { response: metered.response, reservation, settled };
 }

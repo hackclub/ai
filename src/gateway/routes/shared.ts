@@ -10,12 +10,15 @@ import {
   type MeteredRequest,
   type MeteredRequestInput,
   runMeteredRequest,
+  type SettlementTracker,
 } from "../metered-request";
 import { RateLimiter } from "../rate-limit";
 
 export type MeteredRouteDependencies = {
   sql: postgres.Sql;
   billing: BillingLifecycle;
+  /** Settlements still in flight; the backend drains it on shutdown. */
+  settlements: SettlementTracker;
   enforceIdv: boolean;
   rateLimiter?: RateLimiter;
   fetch?: Fetch;
@@ -122,7 +125,7 @@ export type ProviderRouteInput = Omit<MeteredRequestInput, "requestId" | "accoun
  * also filters headers through `forwardableHeaders`.
  */
 export async function runProviderRoute(
-  deps: Pick<MeteredRouteDependencies, "billing" | "onSettlementError">,
+  deps: Pick<MeteredRouteDependencies, "billing" | "settlements" | "onSettlementError">,
   request: Request,
   principal: AuthenticatedPrincipal,
   input: ProviderRouteInput,
@@ -143,7 +146,7 @@ export async function runProviderRoute(
   });
   let metered: MeteredRequest;
   try {
-    metered = await runMeteredRequest(deps.billing, full);
+    metered = await runMeteredRequest(deps.billing, full, deps.settlements);
   } catch (error) {
     throw billingErrorToHttp(error) ?? error;
   }

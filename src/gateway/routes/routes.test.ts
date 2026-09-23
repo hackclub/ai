@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AuthenticatedPrincipal } from "../../auth/api-keys";
-import { InsufficientFundsError } from "../../billing/errors";
+import { authenticateApiKey } from "../../auth/api-keys";
 import { Usd } from "../../billing/money";
 import type { ProviderCompletion } from "../../providers/types";
 import { imagesFromChatResponse, parseImageGenerationRequest } from "./images";
 import { isValidOcrDocument, ocrPageCount, redactOcrResponse, requestsAnnotations } from "./ocr";
 import { type ProviderRouteInput, requestAuthorization, runProviderRoute } from "./shared";
-import { fakeBilling } from "./test-harness";
+import { testDatabase } from "../../test/database";
+import { billingRecords, createTestAccount, onlyBillingRecord, testBilling, withFaults } from "./test-harness";
+
+const { sql } = await testDatabase();
 
 test.each([
   [{ type: "image_url", image_url: "https://x/y.png" }, true],
@@ -80,7 +82,6 @@ test("requestAuthorization prefers the bearer header and only reads x-api-key wh
 });
 
 describe("runProviderRoute", () => {
-  const principal: AuthenticatedPrincipal = { userId: "user-1", apiKeyId: "key-1", billingAccountId: "account-1" };
   const completion: ProviderCompletion = {
     state: "complete",
     providerRequestId: null,
@@ -98,44 +99,61 @@ describe("runProviderRoute", () => {
   });
   const request = new Request("http://gateway.test/x", { headers: { "cf-connecting-ip": "203.0.113.9" } });
 
+  /** A fresh account per test, authenticated through its real API key. */
+  const setup = async () => {
+    const account = await createTestAccount(sql, crypto.randomUUID());
+    const principal = await authenticateApiKey(sql, `Bearer ${account.apiKey}`, { enforceIdv: false });
+    return {
+      ...testBilling(sql),
+      account,
+      principal,
+      records: () => billingRecords(sql, account.accountId),
+      record: () => onlyBillingRecord(sql, account.accountId),
+    };
+  };
+
   test("reserves under one request id and records the client ip", async () => {
-    const { billing, reserves, finalizes, settled } = fakeBilling();
-    const { metered, requestId } = await runProviderRoute({ billing }, request, principal, routeInput());
+    const { billing, settlements, principal, account, record, settled } = await setup();
+    const { metered, requestId } = await runProviderRoute({ billing, settlements }, request, principal, routeInput());
     expect(metered.response.headers.get("x-request-id")).toBe(requestId);
     await settled();
-    expect(reserves()[0]).toMatchObject({ requestId, accountId: "account-1" });
-    expect(finalizes()[0]?.analytics?.attributes).toMatchObject({ ip: "203.0.113.9" });
+    const finalized = await record();
+    expect(finalized).toMatchObject({ requestId, state: "finalized", actualCostUsd: "0.010000000000" });
+    expect(finalized.event).toMatchObject({
+      account_id: account.accountId,
+      user_id: principal.userId,
+      api_key_id: principal.apiKeyId,
+      attributes: { ip: "203.0.113.9" },
+    });
   });
 
   test("maps InsufficientFundsError to a non-retryable 429 without dispatching", async () => {
-    const { billing } = fakeBilling({
-      async reserve() {
-        throw new InsufficientFundsError();
-      },
-    });
+    const { billing, settlements, principal, records } = await setup();
     const execute = async () => {
       throw new Error("execute must not run when the reservation fails");
     };
-    const thrown = await runProviderRoute({ billing }, request, principal, routeInput({ execute })).catch(
-      (error: unknown) => error,
-    );
+    // More than the account's $1 daily allowance, so the engine refuses it.
+    const input = routeInput({ execute, estimatedCostUsd: Usd.parse("5") });
+    const thrown = await runProviderRoute({ billing, settlements }, request, principal, input).catch((error: unknown) => error);
     expect(thrown).toMatchObject({
       status: 429,
       message: "Spending limit reached. Need a higher limit? hey@mahadk.com",
       headers: { "x-should-retry": "false" },
     });
+    expect(await records()).toEqual([]);
   });
 
   test("reports a settlement failure through onSettlementError without failing the route", async () => {
+    const { billing, settlements, principal, record, settled } = await setup();
     const settlementError = new Error("finalize exploded");
-    const { billing, settled } = fakeBilling({
+    const failing = withFaults(billing, {
       async finalize() {
         throw settlementError;
       },
     });
     const captured: Array<{ error: unknown; requestId: string }> = [];
     const { metered, requestId } = await runProviderRoute(
-      { billing, onSettlementError: (error, id) => captured.push({ error, requestId: id }) },
+      { billing: failing, settlements, onSettlementError: (error, id) => captured.push({ error, requestId: id }) },
       request,
       principal,
       routeInput(),
@@ -144,10 +162,12 @@ describe("runProviderRoute", () => {
     await settled();
     await Promise.resolve();
     expect(captured).toEqual([{ error: settlementError, requestId }]);
+    // The reservation stays held for the expiry sweeper and reconciliation.
+    expect((await record()).state).toBe("reserved");
   });
 
   test("analytics read input.model at settlement, so Jev can upgrade it after the response", async () => {
-    const { billing, finalizes, settled } = fakeBilling();
+    const { billing, settlements, principal, record, settled } = await setup();
     const input: ProviderRouteInput = routeInput({
       execute: async () => ({
         response: new Response("ok"),
@@ -158,8 +178,8 @@ describe("runProviderRoute", () => {
         }),
       }),
     });
-    await runProviderRoute({ billing }, request, principal, input);
+    await runProviderRoute({ billing, settlements }, request, principal, input);
     await settled();
-    expect(finalizes()[0]?.analytics?.model).toBe("changed");
+    expect((await record()).event).toMatchObject({ model: "changed" });
   });
 });

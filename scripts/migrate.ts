@@ -31,6 +31,7 @@ const clickhouse = {
   url: env.CLICKHOUSE_URL ?? "http://localhost:8123",
   username: env.CLICKHOUSE_USER ?? "hcai",
   password: env.CLICKHOUSE_PASSWORD ?? "hcai",
+  database: env.CLICKHOUSE_DB ?? "hcai",
 };
 
 /**
@@ -43,12 +44,12 @@ const postgresUrl = (() => {
   return url.toString();
 })();
 
-/** `http://host:8123` → `clickhouse+http://user:pass@host:8123/hcai`. */
+/** `http://host:8123` → `clickhouse+http://user:pass@host:8123/<CLICKHOUSE_DB>`. */
 const clickhouseUrl = (() => {
   const url = new URL(clickhouse.url);
   const scheme = url.protocol === "https:" ? "clickhouse+https" : "clickhouse+http";
   const auth = `${encodeURIComponent(clickhouse.username)}:${encodeURIComponent(clickhouse.password)}`;
-  return `${scheme}://${auth}@${url.host}/hcai`;
+  return `${scheme}://${auth}@${url.host}/${encodeURIComponent(clickhouse.database)}`;
 })();
 
 /**
@@ -76,12 +77,13 @@ const convertClickHouseTracking = async () => {
   try {
     const result = await client.query({
       query: `SELECT count() AS legacy FROM system.columns
-              WHERE database = 'hcai' AND table = 'schema_migrations' AND name = 'applied_at'`,
+              WHERE database = {database:String} AND table = 'schema_migrations' AND name = 'applied_at'`,
+      query_params: { database: clickhouse.database },
       format: "JSONEachRow",
     });
     const [row] = await result.json<{ legacy: string }>();
     if (Number(row?.legacy) > 0) {
-      await client.command({ query: "DROP TABLE hcai.schema_migrations" });
+      await client.command({ query: `DROP TABLE ${clickhouse.database}.schema_migrations` });
     }
   } finally {
     await client.close();

@@ -107,7 +107,7 @@ export class AnalyticsQueries {
             event_id,
             argMax(input_tokens, event_version) AS input_tokens,
             argMax(output_tokens, event_version) AS output_tokens
-          FROM hcai.request_events
+          FROM request_events
           WHERE account_id = {account_id:UUID}
           GROUP BY event_id
         )
@@ -134,7 +134,7 @@ export class AnalyticsQueries {
           count() AS total_requests,
           sum(input_tokens) AS total_prompt,
           sum(output_tokens) AS total_completion
-        FROM hcai.request_events FINAL
+        FROM request_events FINAL
       `,
       format: "JSONEachRow",
     });
@@ -150,7 +150,7 @@ export class AnalyticsQueries {
           count() AS total_requests,
           sum(input_tokens) AS total_prompt,
           sum(output_tokens) AS total_completion
-        FROM hcai.request_events FINAL
+        FROM request_events FINAL
         GROUP BY model
         HAVING total_prompt + total_completion > 0 OR sum(billed_cost_usd) > 0
         ORDER BY total_prompt + total_completion DESC
@@ -183,7 +183,7 @@ export class AnalyticsQueries {
           duration_ms,
           api_key_id,
           attributes['ip'] AS ip
-        FROM hcai.request_events FINAL
+        FROM request_events FINAL
         WHERE
           account_id = {account_id:UUID}
           ${

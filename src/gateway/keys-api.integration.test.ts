@@ -1,49 +1,29 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import { createSession, SESSION_COOKIE } from "../auth/sessions";
 import { createUser } from "../auth/users";
-import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { testDatabase } from "../test/database";
 import { keysApiRoutes, revokeApiKeyByToken } from "./keys-api";
 import { webhookRoutes } from "./webhooks";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
-const runId = crypto.randomUUID().slice(0, 8);
+const { sql } = await testDatabase();
 
 describe("keys API and revoke webhooks with PostgreSQL", () => {
-  let sql: Sql | undefined;
-  let userId: string;
-  let accountId: string;
   let cookie: string;
 
   beforeAll(async () => {
-    if (!databaseUrl) return;
-    sql = postgres(databaseUrl, { max: 2 });
-    const user = await createUser(sql, { slackId: `U-keys-${runId}` });
-    userId = user.userId;
-    accountId = user.billingAccountId;
-    cookie = `${SESSION_COOKIE}=${(await createSession(sql, userId)).token}`;
+    const user = await createUser(sql, { slackId: "U-keys" });
+    cookie = `${SESSION_COOKIE}=${(await createSession(sql, user.userId)).token}`;
   });
 
-  afterAll(async () => {
-    if (!sql) return;
-    await sql`DELETE FROM billing_funding_policies WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
-    await sql`DELETE FROM users WHERE id = ${userId}::uuid`;
-    await sql.end();
-  });
-
-  integrationTest("requires a session", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("requires a session", async () => {
     const response = await keysApiRoutes({ sql, baseUrl: "http://gateway.test", secureCookies: false }).handle(
       new Request("http://gateway.test/api/keys"),
     );
     expect(response.status).toBe(401);
   });
 
-  integrationTest("creates, lists, revokes, and validates names", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("creates, lists, revokes, and validates names", async () => {
     const app = keysApiRoutes({ sql, baseUrl: "http://gateway.test", secureCookies: false });
     const call = (path: string, init: RequestInit = {}) =>
       app.handle(

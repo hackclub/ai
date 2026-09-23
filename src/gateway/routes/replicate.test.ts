@@ -19,7 +19,16 @@ import {
   versionFromModelName,
   type ReplicateRouteDependencies,
 } from "./replicate";
-import { fakeBilling, fakeSql, post } from "./test-harness";
+import { testDatabase } from "../../test/database";
+import {
+  billingRecords,
+  createTestAccount,
+  onlyBillingRecord,
+  post,
+  testBilling,
+} from "./test-harness";
+
+const { sql } = await testDatabase();
 
 const knownVersion = Object.keys(allowedReplicateModelVersions)[0] ?? "";
 const knownModel = allowedReplicateModelVersions[knownVersion] ?? "";
@@ -248,40 +257,55 @@ describe("meterPrediction", () => {
   });
 });
 
-/** Answers the daily upload count and, optionally, fails the ownership insert. */
-const replicateSql = ({ uploadsToday = 0, failOwnershipInsert = false } = {}) =>
-  fakeSql((query) => {
-    if (query.includes("count(*)")) return [{ n: String(uploadsToday) }];
-    if (failOwnershipInsert && query.includes("replicate_resources") && query.includes("INSERT")) {
-      throw new Error("insert failed");
-    }
-    return undefined;
-  });
+/**
+ * A fresh account per test on the real engine and database, so ownership,
+ * quota and billing are all real rows the test reads back.
+ */
+const setup = async () => {
+  const account = await createTestAccount(sql, crypto.randomUUID());
+  const { billing, settlements, settled } = testBilling(sql);
+  const auth = { authorization: `Bearer ${account.apiKey}` };
 
-const buildApp = (deps: Partial<ReplicateRouteDependencies> & { fetch: Fetch }) =>
-  replicateRoutes({
-    sql: replicateSql(),
-    billing: fakeBilling().billing,
-    replicateApiKey: "test-key",
-    enforceIdv: false,
-    pricing: { get: async () => pricing },
-    ...deps,
-  });
+  const buildApp = (deps: Partial<ReplicateRouteDependencies> & { fetch: Fetch }) =>
+    replicateRoutes({
+      sql,
+      billing,
+      settlements,
+      replicateApiKey: "test-key",
+      enforceIdv: false,
+      pricing: { get: async () => pricing },
+      ...deps,
+    });
+  type App = ReturnType<typeof buildApp>;
 
-type App = ReturnType<typeof replicateRoutes>;
+  const postPrediction = (app: App, body: unknown) =>
+    app.handle(post("/proxy/v1/replicate/predictions", body, auth));
 
-const postPrediction = (app: App, body: unknown) => app.handle(post("/proxy/v1/replicate/predictions", body));
+  const uploadFile = (app: App, content: BlobPart = new Uint8Array(8)) => {
+    const form = new FormData();
+    form.append("content", new Blob([content]), "upload.bin");
+    return app.handle(
+      new Request("http://gateway.test/proxy/v1/replicate/files", { method: "POST", headers: auth, body: form }),
+    );
+  };
 
-const uploadFile = (app: App, content: BlobPart = new Uint8Array(8)) => {
-  const form = new FormData();
-  form.append("content", new Blob([content]), "upload.bin");
-  return app.handle(
-    new Request("http://gateway.test/proxy/v1/replicate/files", {
-      method: "POST",
-      headers: { authorization: "Bearer sk-hc-v1-test" },
-      body: form,
-    }),
-  );
+  const ownedResources = async () =>
+    [
+      ...(await sql<{ kind: string; id: string }[]>`
+        SELECT kind, id FROM replicate_resources WHERE user_id = ${account.userId}::uuid ORDER BY created_at, id
+      `),
+    ];
+
+  return {
+    account,
+    settled,
+    buildApp,
+    postPrediction,
+    uploadFile,
+    ownedResources,
+    records: () => billingRecords(sql, account.accountId),
+    record: () => onlyBillingRecord(sql, account.accountId),
+  };
 };
 
 const refuseFetch = (calls: string[] = []): Fetch => async (input) => {
@@ -289,15 +313,19 @@ const refuseFetch = (calls: string[] = []): Fetch => async (input) => {
   throw new Error("upstream must not be called");
 };
 
+/** Longer than `replicate_resources.id` allows, so the real ownership insert fails. */
+const unrecordableId = (prefix: string) => prefix.repeat(129);
+
 describe("POST /predictions", () => {
   test("returns the prediction even when recording ownership fails, and reports it", async () => {
+    const { buildApp, postPrediction, settled, record, ownedResources } = await setup();
+    const id = unrecordableId("p");
     const errors: unknown[] = [];
     const app = buildApp({
-      sql: replicateSql({ failOwnershipInsert: true }),
       fetch: async (input) => {
         const url = String(input);
         if (!url.includes(`/v1/models/${knownModel}/predictions`)) throw new Error(`Unexpected fetch: ${url}`);
-        return Response.json({ id: "p9", status: "succeeded", metrics: { predict_time: 1 }, urls: {} }, { status: 201 });
+        return Response.json({ id, status: "succeeded", metrics: { predict_time: 1 }, urls: {} }, { status: 201 });
       },
       onSettlementError: (error) => errors.push(error),
     });
@@ -305,31 +333,45 @@ describe("POST /predictions", () => {
     const response = await postPrediction(app, { version: knownModel, input: {} });
 
     expect(response.status).toBe(201);
-    expect(((await response.json()) as { id: string }).id).toBe("p9");
+    expect(((await response.json()) as { id: string }).id).toBe(id);
     expect(errors).toHaveLength(1);
-    expect((errors[0] as Error).message).toContain("p9");
+    expect((errors[0] as Error).message).toContain(id);
+    expect(await ownedResources()).toEqual([]);
+    // The prediction ran, so it is still billed from its metrics.
+    await settled();
+    expect(await record()).toMatchObject({
+      state: "finalized",
+      provider: "replicate",
+      providerRequestId: id,
+      actualCostUsd: "0.001000000000",
+      usageSource: "provider_reported",
+    });
   });
 
-  // `billing: {} as never` proves neither refusal reaches billing.
   test("refuses a blocked prompt before billing or upstream", async () => {
+    const { buildApp, postPrediction, records } = await setup();
     const fetchCalls: string[] = [];
-    const app = buildApp({ billing: {} as never, fetch: refuseFetch(fetchCalls) });
-    const response = await postPrediction(app, { version: knownModel, input: { prompt: blockedPrompts[0] } });
+    const response = await postPrediction(buildApp({ fetch: refuseFetch(fetchCalls) }), {
+      version: knownModel,
+      input: { prompt: blockedPrompts[0] },
+    });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
     expect(fetchCalls).toEqual([]);
+    expect(await records()).toEqual([]);
   });
 
   test("rejects webhook fields before billing or upstream", async () => {
+    const { buildApp, postPrediction, records } = await setup();
     const fetchCalls: string[] = [];
-    const app = buildApp({ billing: {} as never, fetch: refuseFetch(fetchCalls) });
-    const response = await postPrediction(app, {
+    const response = await postPrediction(buildApp({ fetch: refuseFetch(fetchCalls) }), {
       version: knownModel,
       input: {},
       webhook: "https://attacker.example/hook?secret=1",
     });
     expect(response.status).toBe(400);
     expect(fetchCalls).toEqual([]);
+    expect(await records()).toEqual([]);
   });
 });
 
@@ -337,58 +379,83 @@ describe("POST /files", () => {
   const created = (id: string): Fetch => async () => Response.json({ id }, { status: 201 });
 
   test("enforces the upload size limit before contacting Replicate", async () => {
+    const { buildApp, uploadFile, settled, records } = await setup();
     const fetchCalls: string[] = [];
     const over = await uploadFile(buildApp({ maxUploadBytes: 16, fetch: refuseFetch(fetchCalls) }), new Uint8Array(17));
     expect(over.status).toBe(413);
     expect(((await over.json()) as { error: string }).error).toContain("upload limit");
     expect(fetchCalls).toEqual([]);
+    expect(await records()).toEqual([]);
 
     const atLimit = await uploadFile(buildApp({ maxUploadBytes: 16, fetch: created("f1") }), new Uint8Array(16));
     expect(atLimit.status).toBe(201);
+    await atLimit.text();
+    await settled();
+    expect((await records()).map((record) => record.state)).toEqual(["finalized"]);
   });
 
-  test("caps uploads per user", async () => {
+  test("caps uploads per user over the last 24 hours", async () => {
+    const { account, buildApp, uploadFile } = await setup();
+    const other = await createTestAccount(sql, crypto.randomUUID());
+    const insertFiles = (userId: string, count: number, age: string) => sql`
+      INSERT INTO replicate_resources (kind, id, user_id, created_at)
+      SELECT 'file', ${userId} || '-' || ${age} || '-' || n, ${userId}::uuid, now() - ${age}::interval
+      FROM generate_series(1, ${count}) AS n
+    `;
+    // 199 recent uploads plus older ones and another user's: still under the cap.
+    await insertFiles(account.userId, 199, "1 hour");
+    await insertFiles(account.userId, 5, "25 hours");
+    await insertFiles(other.userId, 5, "1 hour");
+    expect((await uploadFile(buildApp({ fetch: created(`f-${crypto.randomUUID()}`) }))).status).toBe(201);
+
+    // That upload was the 200th in 24 hours.
     const fetchCalls: string[] = [];
-    const app = buildApp({ sql: replicateSql({ uploadsToday: 200 }), fetch: refuseFetch(fetchCalls) });
-    expect((await uploadFile(app)).status).toBe(429);
+    expect((await uploadFile(buildApp({ fetch: refuseFetch(fetchCalls) }))).status).toBe(429);
     expect(fetchCalls).toEqual([]);
   });
 
   test("keeps the file id when the ownership insert fails", async () => {
+    const { buildApp, uploadFile, ownedResources } = await setup();
+    const id = unrecordableId("f");
     const errors: unknown[] = [];
-    const app = buildApp({
-      sql: replicateSql({ failOwnershipInsert: true }),
-      fetch: created("f2"),
-      onSettlementError: (error) => errors.push(error),
-    });
+    const app = buildApp({ fetch: created(id), onSettlementError: (error) => errors.push(error) });
     const response = await uploadFile(app);
     expect(response.status).toBe(201);
-    expect(((await response.json()) as { id: string }).id).toBe("f2");
+    expect(((await response.json()) as { id: string }).id).toBe(id);
     expect(errors).toHaveLength(1);
-    expect((errors[0] as Error).message).toContain("f2");
+    expect((errors[0] as Error).message).toContain(id);
+    expect(await ownedResources()).toEqual([]);
   });
 
-  test("records an upload as a zero-cost metered request without its bytes", async () => {
-    const { billing, reserves, finalizes, settled } = fakeBilling();
-    const response = await uploadFile(buildApp({ billing, fetch: created("f3") }), Buffer.from("secret file bytes"));
+  test("records an upload as a zero-cost metered request without its bytes, owned by its uploader", async () => {
+    const { buildApp, uploadFile, settled, record, ownedResources } = await setup();
+    const response = await uploadFile(buildApp({ fetch: created("f3") }), Buffer.from("secret file bytes"));
     expect(response.status).toBe(201);
     expect(response.headers.get("x-request-id")).toBeTruthy();
     await response.text();
     await settled();
-    expect(reserves().map((input) => input.estimatedCostUsd.toAtoms())).toEqual([0n]);
-    expect(finalizes().map((input) => input.actualCostUsd.toAtoms())).toEqual([0n]);
-    expect(String(finalizes()[0]?.analytics?.request_body)).not.toContain("secret file bytes");
+    const upload = await record();
+    expect(upload).toMatchObject({
+      state: "finalized",
+      provider: "replicate",
+      providerRequestId: null,
+      estimatedCostUsd: "0.000000000000",
+      actualCostUsd: "0.000000000000",
+    });
+    expect(String(upload.event?.request_body)).not.toContain("secret file bytes");
+    expect(await ownedResources()).toEqual([{ kind: "file", id: "f3" }]);
   });
 
   test("records an upstream failure at zero cost", async () => {
-    const { billing, finalizes, settled } = fakeBilling();
-    const app = buildApp({ billing, fetch: async () => new Response("upstream failure", { status: 500 }) });
+    const { buildApp, uploadFile, settled, record, ownedResources } = await setup();
+    const app = buildApp({ fetch: async () => new Response("upstream failure", { status: 500 }) });
     const response = await uploadFile(app);
     expect(response.status).toBe(500);
     await response.text();
     await settled();
-    expect(finalizes()).toHaveLength(1);
-    expect(finalizes()[0]?.actualCostUsd.toAtoms()).toBe(0n);
-    expect(finalizes()[0]?.analytics?.outcome).toBe("provider_error");
+    const failure = await record();
+    expect(failure).toMatchObject({ state: "finalized", actualCostUsd: "0.000000000000" });
+    expect(failure.event?.outcome).toBe("provider_error");
+    expect(await ownedResources()).toEqual([]);
   });
 });

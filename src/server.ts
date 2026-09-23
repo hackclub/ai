@@ -49,9 +49,10 @@ export const createBackend = (env: Env): Backend => {
     url: env.clickhouseUrl,
     username: env.clickhouseUser,
     password: env.clickhousePassword,
+    database: env.clickhouseDatabase,
   });
   const settlements = new SettlementTracker();
-  const billing = Object.assign(new BillingEngine(sql), { settlements });
+  const billing = new BillingEngine(sql);
   Sentry.init({
     dsn: env.sentryDsn ?? undefined,
     enabled: env.sentryDsn !== null,
@@ -78,7 +79,7 @@ export const createBackend = (env: Env): Backend => {
     log.error({ err: error, requestId }, "billing settlement failed");
     Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
   };
-  const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
+  const metered = { sql, billing, settlements, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
   const replicatePricing = createReplicatePricingSource({});
   const replicateCatalog = createReplicateCatalog({
@@ -148,6 +149,7 @@ export const createBackend = (env: Env): Backend => {
     proxy: {
       sql,
       billing,
+      settlements,
       catalog,
       adapter,
       openRouterApiKey: env.openRouterApiKey,

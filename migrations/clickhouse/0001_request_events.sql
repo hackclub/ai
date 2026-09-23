@@ -1,5 +1,5 @@
 -- migrate:up
-CREATE TABLE IF NOT EXISTS hcai.request_events
+CREATE TABLE IF NOT EXISTS request_events
 (
     event_id UUID,
     event_version UInt64 DEFAULT 1,
@@ -47,7 +47,7 @@ ORDER BY (account_id, toDate(occurred_at), occurred_at, event_id);
 -- then verify exact adjacency against the original body:
 --
 -- SELECT request_id, occurred_at, request_body, response_body
--- FROM hcai.request_events
+-- FROM request_events
 -- WHERE
 --   (
 --     hasAllTokens(request_body, 'six seven mango')

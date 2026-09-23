@@ -1,8 +1,6 @@
-import { afterAll, afterEach, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
-import { migrateJobQueue } from "../analytics/worker";
-import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { testDatabase } from "../test/database";
 import { findBillingDrift } from "./audit";
 import { BillingEngine } from "./engine";
 import {
@@ -13,13 +11,10 @@ import {
 } from "./errors";
 import { Usd } from "./money";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
-const runId = crypto.randomUUID().slice(0, 8);
+const { sql } = await testDatabase();
 
 describe("BillingEngine with PostgreSQL", () => {
-  let sql: Sql | undefined;
-  let engine: BillingEngine | undefined;
+  const engine = new BillingEngine(sql);
   let accountId: string;
   const firstRequestId = crypto.randomUUID();
   const secondRequestId = crypto.randomUUID();
@@ -27,7 +22,6 @@ describe("BillingEngine with PostgreSQL", () => {
 
   /** A fresh account with a daily allowance and, optionally, a daily limit. */
   const newAccount = async (allowance: string, limit?: string) => {
-    if (!sql) throw new Error("Integration database unavailable");
     const id = crypto.randomUUID();
     createdAccountIds.push(id);
     await sql`
@@ -48,7 +42,6 @@ describe("BillingEngine with PostgreSQL", () => {
   };
 
   const reserve = (requestId: string, estimate: string, account = accountId) => {
-    if (!engine) throw new Error("Integration database unavailable");
     return engine.reserve({
       requestId,
       accountId: account,
@@ -58,58 +51,22 @@ describe("BillingEngine with PostgreSQL", () => {
   };
 
   beforeAll(async () => {
-    if (!databaseUrl) return;
-    sql = postgres(databaseUrl, { max: 4 });
-    engine = new BillingEngine(sql);
-    await migrateJobQueue(databaseUrl);
     accountId = await newAccount("1", "0.8");
   });
 
   // Every scenario must leave the books balanced: counters equal their
   // holds, and each reservation's money is fully accounted for.
   afterEach(async () => {
-    if (!sql) return;
     for (const id of createdAccountIds) {
       expect(await findBillingDrift(sql, id)).toEqual([]);
     }
-  });
-
-  afterAll(async () => {
-    if (!sql) return;
-    for (const id of createdAccountIds) {
-      await sql`DELETE FROM request_event_outbox WHERE payload->>'account_id' = ${id}`;
-      await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${id}::uuid`;
-      for (const table of [
-        "billing_reservation_funding_holds",
-        "billing_reservation_credit_holds",
-        "billing_reservation_limit_holds",
-      ]) {
-        await sql`
-          DELETE FROM ${sql(table)}
-          WHERE reservation_id IN (SELECT id FROM billing_reservations WHERE account_id = ${id}::uuid)
-        `;
-      }
-      for (const table of [
-        "billing_reservations",
-        "billing_funding_windows",
-        "billing_limit_windows",
-        "billing_credit_grants",
-        "billing_funding_policies",
-        "billing_limit_policies",
-        "billing_admin_events",
-      ]) {
-        await sql`DELETE FROM ${sql(table)} WHERE account_id = ${id}::uuid`;
-      }
-      await sql`DELETE FROM billing_accounts WHERE id = ${id}::uuid`;
-    }
-    await sql.end();
   });
 
   // The tests below run in order against one account with a $1 daily
   // allowance and a $0.80 daily limit. Later tests build on earlier state,
   // so a failure points at the first invariant that broke.
 
-  integrationTest("reserve is idempotent for the same request id", async () => {
+  test("reserve is idempotent for the same request id", async () => {
     const [first, repeated] = await Promise.all([
       reserve(firstRequestId, "0.75"),
       reserve(firstRequestId, "0.75"),
@@ -117,18 +74,17 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(repeated.id).toBe(first.id);
   });
 
-  integrationTest("refuses a reservation the limit policy cannot hold", async () => {
+  test("refuses a reservation the limit policy cannot hold", async () => {
     // $0.75 is held; another $0.10 would exceed the $0.80 limit.
     await expect(reserve(crypto.randomUUID(), "0.1")).rejects.toBeInstanceOf(LimitExceededError);
   });
 
-  integrationTest("finalizes with the actual cost and no unfunded remainder", async () => {
-    if (!engine) throw new Error("Integration database unavailable");
+  test("finalizes with the actual cost and no unfunded remainder", async () => {
     const finalized = await engine.finalize({
       requestId: firstRequestId,
       actualCostUsd: Usd.parse("0.5"),
       usageSource: "provider_reported",
-      providerRequestId: `gen-integration-first-${runId}`,
+      providerRequestId: `gen-integration-first`,
       analytics: {
         request_body: '{"prompt":"six seven mango"}',
         response_body: '{"answer":"found"}',
@@ -139,36 +95,33 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(finalized.unfundedCostUsd).toBe("0.000000000000");
   });
 
-  integrationTest("release is idempotent", async () => {
-    if (!engine) throw new Error("Integration database unavailable");
+  test("release is idempotent", async () => {
     const second = await reserve(secondRequestId, "0.2");
     expect((await engine.release(secondRequestId)).id).toBe(second.id);
     expect((await engine.release(secondRequestId)).state).toBe("released");
   });
 
-  integrationTest("a zero estimate can still finalize with a real cost", async () => {
-    if (!engine) throw new Error("Integration database unavailable");
+  test("a zero estimate can still finalize with a real cost", async () => {
     const requestId = crypto.randomUUID();
     await reserve(requestId, "0");
     const finalized = await engine.finalize({
       requestId,
       actualCostUsd: Usd.parse("0.01"),
       usageSource: "reconciled",
-      providerRequestId: `gen-integration-zero-estimate-${runId}`,
+      providerRequestId: `gen-integration-zero-estimate`,
     });
     expect(finalized.actualCostUsd).toBe("0.010000000000");
     expect(finalized.unfundedCostUsd).toBe("0.000000000000");
   });
 
-  integrationTest("records limit overage instead of clamping the charge", async () => {
-    if (!engine || !sql) throw new Error("Integration database unavailable");
+  test("records limit overage instead of clamping the charge", async () => {
     const requestId = crypto.randomUUID();
     await reserve(requestId, "0.1");
     const overage = await engine.finalize({
       requestId,
       actualCostUsd: Usd.parse("0.39"),
       usageSource: "reconciled",
-      providerRequestId: `gen-integration-overage-${runId}`,
+      providerRequestId: `gen-integration-overage`,
     });
     // Funding still covers it ($1 allowance), so nothing is unfunded...
     expect(overage.unfundedCostUsd).toBe("0.000000000000");
@@ -186,8 +139,7 @@ describe("BillingEngine with PostgreSQL", () => {
     });
   });
 
-  integrationTest("every finalization leaves a ledger entry and an outbox event", async () => {
-    if (!sql) throw new Error("Integration database unavailable");
+  test("every finalization leaves a ledger entry and an outbox event", async () => {
     const [audit] = await sql`
       SELECT
         (SELECT count(*)::integer FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid) AS ledger_count,
@@ -196,8 +148,7 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(audit).toEqual({ ledger_count: 3, job_count: 3 });
   });
 
-  integrationTest("repeating a finalization with the same cost is a no-op", async () => {
-    if (!engine) throw new Error("Integration database unavailable");
+  test("repeating a finalization with the same cost is a no-op", async () => {
     const again = await engine.finalize({
       requestId: firstRequestId,
       actualCostUsd: Usd.parse("0.5"),
@@ -207,15 +158,14 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(again.requestId).toBe(firstRequestId);
   });
 
-  integrationTest("refuses to hand a released reservation back to a retrying caller", async () => {
+  test("refuses to hand a released reservation back to a retrying caller", async () => {
     // secondRequestId was released above; a retry must not dispatch against it.
     await expect(reserve(secondRequestId, "0.2")).rejects.toBeInstanceOf(
       InvalidReservationStateError,
     );
   });
 
-  integrationTest("refuses replays that disagree with the original", async () => {
-    if (!engine) throw new Error("Integration database unavailable");
+  test("refuses replays that disagree with the original", async () => {
     // firstRequestId was reserved at $0.75 and finalized at $0.50.
     await expect(
       engine.finalize({
@@ -237,10 +187,9 @@ describe("BillingEngine with PostgreSQL", () => {
     await engine.release(requestId);
   });
 
-  integrationTest(
+  test(
     "finalizes a reservation the expiry sweeper released, funding it from current windows",
     async () => {
-      if (!engine || !sql) throw new Error("Integration database unavailable");
       const lateAccountId = await newAccount("1", "0.8");
 
       // A long request: reserved, swept by expiry, then settled after all.
@@ -255,7 +204,7 @@ describe("BillingEngine with PostgreSQL", () => {
         requestId,
         actualCostUsd: Usd.parse("0.3"),
         usageSource: "reconciled",
-        providerRequestId: `gen-integration-late-${runId}`,
+        providerRequestId: `gen-integration-late`,
       });
       expect(finalized.state).toBe("finalized");
       expect(finalized.actualCostUsd).toBe("0.300000000000");
@@ -278,17 +227,15 @@ describe("BillingEngine with PostgreSQL", () => {
     },
   );
 
-  integrationTest(
+  test(
     "spills from the allowance into credit, returns the unused hold, and books the rest as unfunded",
     async () => {
-      if (!engine || !sql) throw new Error("Integration database unavailable");
       const spillAccountId = await newAccount("0.1");
       await sql`
         INSERT INTO billing_credit_grants (account_id, source, granted_usd)
         VALUES (${spillAccountId}::uuid, 'promotional', 0.2)
       `;
       const balances = async () => {
-        if (!sql) throw new Error("Integration database unavailable");
         const [row] = await sql`
           SELECT
             (SELECT reserved_usd::text || '/' || committed_usd::text
@@ -326,8 +273,7 @@ describe("BillingEngine with PostgreSQL", () => {
     },
   );
 
-  integrationTest("a zero-cost finalization returns every hold and writes no ledger entry", async () => {
-    if (!engine || !sql) throw new Error("Integration database unavailable");
+  test("a zero-cost finalization returns every hold and writes no ledger entry", async () => {
     const requestId = crypto.randomUUID();
     await reserve(requestId, "0.05", await newAccount("1", "0.5"));
     const finalized = await engine.finalize({
@@ -347,8 +293,7 @@ describe("BillingEngine with PostgreSQL", () => {
     expect(row).toEqual({ holds: 0, ledger: 0 });
   });
 
-  integrationTest("serializes concurrent reservations so funding cannot be overspent", async () => {
-    if (!sql) throw new Error("Integration database unavailable");
+  test("serializes concurrent reservations so funding cannot be overspent", async () => {
     const concurrencyAccountId = await newAccount("1");
     const attempts = await Promise.allSettled([
       reserve(crypto.randomUUID(), "0.75", concurrencyAccountId),

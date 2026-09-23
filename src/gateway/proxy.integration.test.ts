@@ -1,18 +1,14 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { beforeAll, describe, expect, test } from "bun:test";
 
-import { migrateJobQueue } from "../analytics/worker";
 import { createUser, issueApiKey } from "../auth/users";
 import { createApp } from "../app";
-import { BillingEngine } from "../billing/engine";
+import { testBilling } from "./routes/test-harness";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
-import { integrationDatabaseUrl, integrationTestFor } from "../test/integration-db";
+import { testDatabase } from "../test/database";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
+const { sql } = await testDatabase();
 
-const runId = crypto.randomUUID().slice(0, 8);
 const encoder = new TextEncoder();
 const streamOf = (parts: string[]) =>
   new ReadableStream<Uint8Array>({
@@ -39,8 +35,6 @@ const modelListing = Response.json({
 });
 
 describe("proxy routes with PostgreSQL", () => {
-  let sql: Sql | undefined;
-  let accountId: string;
   let apiKey: string;
   let userId: string;
   const upstreamCalls: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
@@ -58,12 +52,11 @@ describe("proxy routes with PostgreSQL", () => {
     return nextUpstream();
   }) as typeof fetch;
 
-  const app = () => {
-    if (!sql) throw new Error("Missing database");
-    return createApp({
+  const app = () =>
+    createApp({
       proxy: {
         sql,
-        billing: new BillingEngine(sql),
+        ...testBilling(sql),
         catalog: new ModelCatalog({
           baseUrl: "https://upstream.test/api",
           apiKey: "upstream-key",
@@ -81,7 +74,6 @@ describe("proxy routes with PostgreSQL", () => {
         attributionHeaders: { "X-Title": "Test" },
       },
     });
-  };
 
   const call = (path: string, init: RequestInit = {}) =>
     app().handle(new Request(`http://gateway.test${path}`, init));
@@ -94,45 +86,16 @@ describe("proxy routes with PostgreSQL", () => {
     });
 
   beforeAll(async () => {
-    if (!databaseUrl) return;
-    sql = postgres(databaseUrl, { max: 4 });
-    await migrateJobQueue(databaseUrl);
     const user = await createUser(sql, {
-      slackId: `U-proxy-${runId}`,
+      slackId: "U-proxy",
       name: "Proxy Test",
       dailyAllowanceUsd: "0.01",
     });
     userId = user.userId;
-    accountId = user.billingAccountId;
     apiKey = (await issueApiKey(sql, userId, "test")).key;
   });
 
-  afterAll(async () => {
-    if (!sql) return;
-    await sql`
-      DELETE FROM request_event_outbox
-      WHERE payload->>'account_id' = ${accountId}
-    `;
-    const reservations = sql`
-      SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid
-    `;
-    await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid`;
-    for (const table of [
-      "billing_reservation_funding_holds",
-      "billing_reservation_credit_holds",
-      "billing_reservation_limit_holds",
-    ]) {
-      await sql`DELETE FROM ${sql(table)} WHERE reservation_id IN (${reservations})`;
-    }
-    await sql`DELETE FROM billing_reservations WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_windows WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_policies WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
-    await sql`DELETE FROM users WHERE id = ${userId}::uuid`;
-    await sql.end();
-  });
-
-  integrationTest("lists models without authentication", async () => {
+  test("lists models without authentication", async () => {
     const response = await call("/proxy/v1/models");
     expect(response.status).toBe(200);
     const listing = (await response.json()) as { data: Array<{ id: string }> };
@@ -142,7 +105,7 @@ describe("proxy routes with PostgreSQL", () => {
     ]);
   });
 
-  integrationTest("rejects missing and unknown keys", async () => {
+  test("rejects missing and unknown keys", async () => {
     const missing = await chat({ model: "test/chat" }, "");
     expect(missing.status).toBe(401);
     expect(await missing.json()).toEqual({ error: "Authentication required" });
@@ -152,7 +115,7 @@ describe("proxy routes with PostgreSQL", () => {
     expect(await unknown.json()).toEqual({ error: "Authentication failed" });
   });
 
-  integrationTest("rejects malformed bodies but forwards unlisted models", async () => {
+  test("rejects malformed bodies but forwards unlisted models", async () => {
     const notJson = await call("/proxy/v1/chat/completions", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}` },
@@ -170,11 +133,10 @@ describe("proxy routes with PostgreSQL", () => {
     expect(upstreamCalls.at(-1)?.body.model).toBe("test/missing");
   });
 
-  integrationTest(
+  test(
     "streams a completion through unchanged and finalizes billing",
     async () => {
-      if (!sql) throw new Error("Missing database");
-      const generationId = `gen-proxy-${runId}`;
+      const generationId = "gen-proxy";
       const wire =
         `data: {"id":"${generationId}","choices":[{"delta":{"content":"hi"}}]}\n\n` +
         `data: {"id":"${generationId}","usage":{"prompt_tokens":2,"completion_tokens":1,"cost":0.000003}}\n\n` +
@@ -224,7 +186,7 @@ describe("proxy routes with PostgreSQL", () => {
     },
   );
 
-  integrationTest("refuses requests the allowance cannot cover", async () => {
+  test("refuses requests the allowance cannot cover", async () => {
     const callsBefore = upstreamCalls.length;
     const response = await chat({
       model: "test/pricey",

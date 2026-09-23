@@ -39,7 +39,7 @@ const clickHouseTimestamp = (value: JsonValue | undefined) => {
 
 /**
  * Maps the finalization payload written by BillingEngine.finalize onto the
- * hcai.request_events row. Unknown or malformed fields degrade to neutral
+ * request_events row. Unknown or malformed fields degrade to neutral
  * values rather than failing delivery, so one odd event cannot block the
  * queue.
  */
@@ -175,7 +175,7 @@ export const drainRequestEvents = async ({
   if (events.length > 0) {
     try {
       await clickhouse.insert({
-        table: "hcai.request_events",
+        table: "request_events",
         values: events,
         format: "JSONEachRow",
       });

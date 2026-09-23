@@ -11,6 +11,8 @@ export type Env = {
   clickhouseUrl: string;
   clickhouseUser: string;
   clickhousePassword: string;
+  /** The ClickHouse database holding `request_events`. Queries name tables unqualified. */
+  clickhouseDatabase: string;
   openRouterApiKey: string;
   openRouterBaseUrl: string;
   /** Models shown on the landing page and in quickstart snippets. */
@@ -98,6 +100,7 @@ export const loadEnv = (
     clickhouseUrl: requiredInProduction("CLICKHOUSE_URL", "http://localhost:8123"),
     clickhouseUser: requiredInProduction("CLICKHOUSE_USER", "hcai"),
     clickhousePassword: requiredInProduction("CLICKHOUSE_PASSWORD", "hcai"),
+    clickhouseDatabase: source.CLICKHOUSE_DB ?? "hcai",
     openRouterApiKey: required(source, "OPENROUTER_API_KEY"),
     openRouterBaseUrl: source.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api",
     featuredModels: list(source.FEATURED_MODELS),

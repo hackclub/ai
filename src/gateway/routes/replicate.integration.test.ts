@@ -1,25 +1,19 @@
-import { afterAll, beforeAll, describe, expect } from "bun:test";
-import postgres, { type Sql } from "postgres";
+import { beforeAll, describe, expect, test } from "bun:test";
 
-import { migrateJobQueue } from "../../analytics/worker";
-import { BillingEngine } from "../../billing/engine";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { Usd } from "../../billing/money";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
-import { integrationDatabaseUrl, integrationTestFor } from "../../test/integration-db";
+import { testDatabase } from "../../test/database";
 import { replicateRoutes } from "./replicate";
-import { createTestAccount } from "./test-harness";
+import { createTestAccount, testBilling } from "./test-harness";
 
-const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
-const integrationTest = integrationTestFor(databaseUrl);
-const runId = crypto.randomUUID().slice(0, 8);
+const { sql } = await testDatabase();
 
 const knownVersion = Object.keys(allowedReplicateModelVersions)[0] ?? "";
 const knownModel = allowedReplicateModelVersions[knownVersion] ?? "";
 const [owner, name] = knownModel.split("/") as [string, string];
 
 describe("Replicate routes with PostgreSQL", () => {
-  let sql: Sql | undefined;
   let accountId: string;
   let apiKey: string;
   const upstream: Array<{
@@ -84,11 +78,10 @@ describe("Replicate routes with PostgreSQL", () => {
     );
   }) as typeof fetch;
 
-  const app = () => {
-    if (!sql) throw new Error("Missing database");
-    return replicateRoutes({
+  const app = () =>
+    replicateRoutes({
       sql,
-      billing: new BillingEngine(sql),
+      ...testBilling(sql),
       replicateApiKey: "replicate-secret",
       enforceIdv: false,
       fetch: fakeFetch,
@@ -96,7 +89,6 @@ describe("Replicate routes with PostgreSQL", () => {
       settlementTimeoutMs: 5_000,
       publicBaseUrl: "https://gateway.test",
     });
-  };
 
   const call = (path: string, init: RequestInit = {}) =>
     app().handle(
@@ -110,23 +102,11 @@ describe("Replicate routes with PostgreSQL", () => {
       }),
     );
 
-  let cleanup = async () => {};
-
   beforeAll(async () => {
-    if (!databaseUrl) return;
-    sql = postgres(databaseUrl, { max: 4 });
-    await migrateJobQueue(databaseUrl);
-    ({ accountId, apiKey, cleanup } = await createTestAccount(sql, `replicate-${runId}`));
-  });
-
-  afterAll(async () => {
-    if (!sql) return;
-    await cleanup();
-    await sql.end();
+    ({ accountId, apiKey } = await createTestAccount(sql, "replicate"));
   });
 
   const latestReservation = async (wantState = "finalized") => {
-    if (!sql) throw new Error("Missing database");
     let row: { state: string; actual_cost_usd: string } | undefined;
     for (let attempt = 0; attempt < 200 && row?.state !== wantState; attempt += 1) {
       [row] = await sql<{ state: string; actual_cost_usd: string }[]>`
@@ -139,7 +119,7 @@ describe("Replicate routes with PostgreSQL", () => {
     return row;
   };
 
-  integrationTest("rejects unlisted models before any upstream call", async () => {
+  test("rejects unlisted models before any upstream call", async () => {
     const before = upstream.length;
     const response = await call("/models/evil/model/predictions", {
       method: "POST",
@@ -149,7 +129,7 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(upstream.length).toBe(before);
   });
 
-  integrationTest("builds model paths from the allowlisted id, not the raw params", async () => {
+  test("builds model paths from the allowlisted id, not the raw params", async () => {
     // Elysia decodes %2F, so a `..` segment in the model param used to reach
     // /v1/predictions (every user's predictions) with the shared token.
     const response = await call(`/models/${owner}/${name}:%2F..%2F..%2F..%2Fpredictions`, {
@@ -165,7 +145,7 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(version.status).toBe(400);
   });
 
-  integrationTest("dispatches predictions without the client's abort signal", async () => {
+  test("dispatches predictions without the client's abort signal", async () => {
     const controller = new AbortController();
     const response = await call(`/models/${owner}/${name}/predictions`, {
       method: "POST",
@@ -178,7 +158,7 @@ describe("Replicate routes with PostgreSQL", () => {
     await latestReservation();
   });
 
-  integrationTest("rejects conflicting versions in path and body", async () => {
+  test("rejects conflicting versions in path and body", async () => {
     const response = await call(`/models/${owner}/${name}:${knownVersion}/predictions`, {
       method: "POST",
       body: JSON.stringify({ input: {}, version: "someother" }),
@@ -189,7 +169,7 @@ describe("Replicate routes with PostgreSQL", () => {
     });
   });
 
-  integrationTest("creates a versioned prediction and bills the reported hardware time", async () => {
+  test("creates a versioned prediction and bills the reported hardware time", async () => {
     nextStatus = 201;
     const response = await call(`/models/${owner}/${name}:${knownVersion}/predictions`, {
       method: "POST",
@@ -218,7 +198,7 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(upstream.some((c) => c.url.endsWith(`/v1/predictions/${created.id}`))).toBeTrue();
   });
 
-  integrationTest("decides access from 'version' alone on the bare predictions route", async () => {
+  test("decides access from 'version' alone on the bare predictions route", async () => {
     const before = upstream.length;
     // An allowlisted model in the body cannot smuggle in another model's version.
     const smuggled = await call("/predictions", {
@@ -254,8 +234,7 @@ describe("Replicate routes with PostgreSQL", () => {
     await latestReservation();
   });
 
-  integrationTest("scopes prediction reads and cancels to their creator", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("scopes prediction reads and cancels to their creator", async () => {
     const created = await call("/predictions", {
       method: "POST",
       body: JSON.stringify({ version: knownVersion, input: {} }),
@@ -270,7 +249,7 @@ describe("Replicate routes with PostgreSQL", () => {
     const cancelled = await call(`/predictions/${id}/cancel`, { method: "POST" });
     expect(cancelled.status).toBe(200);
 
-    const stranger = await createTestAccount(sql, `stranger-${runId}`);
+    const stranger = await createTestAccount(sql, "stranger");
     const strangerKey = stranger.apiKey;
     const before = upstream.length;
     const theirs = await call(`/predictions/${id}`, {
@@ -284,11 +263,10 @@ describe("Replicate routes with PostgreSQL", () => {
     });
     expect(theirCancel.status).toBe(404);
     expect(upstream.length).toBe(before);
-    await stranger.cleanup();
     await latestReservation();
   });
 
-  integrationTest("does not expose account-wide listings", async () => {
+  test("does not expose account-wide listings", async () => {
     const before = upstream.length;
     for (const path of ["/predictions", "/files", "/deployments"]) {
       const response = await call(path, { method: "GET" });
@@ -297,8 +275,7 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(upstream.length).toBe(before);
   });
 
-  integrationTest("forwards SDK-style file uploads with their metadata and scopes the file", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("forwards SDK-style file uploads with their metadata and scopes the file", async () => {
     const form = new FormData();
     form.append("content", new Blob(["hello"], { type: "text/plain" }), "hello.txt");
     form.append("metadata", new Blob([JSON.stringify({ a: 1 })], { type: "application/json" }));
@@ -321,8 +298,7 @@ describe("Replicate routes with PostgreSQL", () => {
     expect((await call("/files/nope", { method: "GET" })).status).toBe(404);
   });
 
-  integrationTest("finalizes a provider error at zero cost", async () => {
-    if (!sql) throw new Error("Missing database");
+  test("finalizes a provider error at zero cost", async () => {
     nextStatus = 422;
     const response = await call("/predictions", {
       method: "POST",
@@ -335,7 +311,7 @@ describe("Replicate routes with PostgreSQL", () => {
     nextStatus = 201;
   });
 
-  integrationTest("validates prediction ids before touching the database", async () => {
+  test("validates prediction ids before touching the database", async () => {
     const bad = await call("/predictions/NOT-VALID", { method: "GET" });
     expect(bad.status).toBe(400);
   });

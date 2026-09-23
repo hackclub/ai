@@ -1,98 +1,81 @@
 import type postgres from "postgres";
 
 import { createUser, issueApiKey } from "../../auth/users";
-import type { FinalizeInput, Reservation, ReserveInput } from "../../billing/engine";
+import { BillingEngine, type JsonValue } from "../../billing/engine";
+import type { ReservationState } from "../../billing/lifecycle";
 import type { Fetch } from "../../providers/openrouter/adapter";
 import { type BillingLifecycle, SettlementTracker } from "../metered-request";
 
-export type BillingCall =
-  | { method: "reserve"; input: ReserveInput }
-  | { method: "finalize"; input: FinalizeInput }
-  | { method: "release"; requestId: string }
-  | {
-      method: "markPendingReconciliation";
-      requestId: string;
-      reason: string;
-      providerRequestId: string | undefined;
-    };
-
-const reservationFor = (requestId: string, state: Reservation["state"]): Reservation => ({
-  id: `res-${requestId}`,
-  requestId,
-  accountId: "account-1",
-  provider: "test",
-  providerRequestId: null,
-  state,
-  estimatedCostUsd: "0.000000000000",
-  actualCostUsd: null,
-  unfundedCostUsd: "0.000000000000",
-  expiresAt: new Date(0),
-});
-
 /**
- * In-memory billing that records every call. `settled()` waits for the
+ * The real billing engine for gateway tests (docs/adr/0001), with the
+ * settlement tracker routes report to. `settled()` waits for the
  * settlements started so far, since routes do not hand them back.
  */
-export const fakeBilling = (overrides: Partial<BillingLifecycle> = {}) => {
-  const calls: BillingCall[] = [];
+export const testBilling = (sql: postgres.Sql) => {
   const settlements = new SettlementTracker();
-  const billing: BillingLifecycle = {
-    settlements,
-    async reserve(input) {
-      calls.push({ method: "reserve", input });
-      return reservationFor(input.requestId, "reserved");
-    },
-    async finalize(input) {
-      calls.push({ method: "finalize", input });
-      return reservationFor(input.requestId, "finalized");
-    },
-    async release(requestId) {
-      calls.push({ method: "release", requestId });
-      return reservationFor(requestId, "released");
-    },
-    async markPendingReconciliation(requestId, reason, providerRequestId) {
-      calls.push({ method: "markPendingReconciliation", requestId, reason, providerRequestId });
-      return reservationFor(requestId, "pending_reconciliation");
-    },
-    ...overrides,
-  };
-  const inputs = <M extends "reserve" | "finalize">(method: M) =>
-    calls.flatMap((call) => (call.method === method ? [call.input] : [])) as Array<
-      M extends "reserve" ? ReserveInput : FinalizeInput
-    >;
-  const only = <M extends BillingCall["method"]>(method: M) => {
-    const matching = calls.filter((call): call is Extract<BillingCall, { method: M }> => call.method === method);
-    if (matching.length !== 1) throw new Error(`Expected exactly one ${method}, got ${matching.length}`);
-    return matching[0]!;
-  };
-  return {
-    billing,
-    calls,
-    settlements,
-    only,
-    methods: () => calls.map((call) => call.method),
-    reserves: () => inputs("reserve"),
-    finalizes: () => inputs("finalize"),
-    settled: () => settlements.drain(1_000),
-  };
+  const billing: BillingLifecycle = new BillingEngine(sql);
+  return { billing, settlements, settled: () => settlements.drain(5_000) };
 };
 
-export const principalRow = {
-  api_key_id: "key-1",
-  user_id: "user-1",
-  billing_account_id: "account-1",
-  billing_account_status: "active",
-  is_banned: false,
-  is_idv_verified: true,
-  skip_idv: false,
+export type BillingRecord = {
+  requestId: string;
+  provider: string;
+  state: ReservationState;
+  providerRequestId: string | null;
+  reconciliationReason: string | null;
+  estimatedCostUsd: string;
+  actualCostUsd: string | null;
+  usageSource: string | null;
+  /** The analytics event finalization wrote to the outbox, if any. */
+  event: Record<string, JsonValue> | null;
 };
 
-/** Answers the api-key lookup; `answer` may handle other queries first. */
-export const fakeSql = (answer: (query: string) => unknown[] | undefined = () => undefined) =>
-  (async (strings: TemplateStringsArray) => {
-    const query = strings.join("?");
-    return answer(query) ?? (query.includes("FROM api_keys") ? [principalRow] : []);
-  }) as unknown as postgres.Sql;
+/**
+ * What billing recorded for an account, oldest first: each reservation's
+ * final state and its outbox event. Tests assert on this, not on calls.
+ */
+export const billingRecords = async (sql: postgres.Sql, accountId: string): Promise<BillingRecord[]> => {
+  const rows = await sql<
+    Array<Omit<BillingRecord, "event"> & { event: Record<string, JsonValue> | null }>
+  >`
+    SELECT
+      r.request_id AS "requestId",
+      r.provider,
+      r.state,
+      r.provider_request_id AS "providerRequestId",
+      r.reconciliation_reason AS "reconciliationReason",
+      r.estimated_cost_usd::text AS "estimatedCostUsd",
+      r.actual_cost_usd::text AS "actualCostUsd",
+      r.usage_source AS "usageSource",
+      o.payload AS event
+    FROM billing_reservations r
+    LEFT JOIN request_event_outbox o ON o.payload->>'reservation_id' = r.id::text
+    WHERE r.account_id = ${accountId}::uuid
+    ORDER BY r.created_at, r.id
+  `;
+  return [...rows];
+};
+
+/**
+ * The real engine with some operations replaced, for fault injection only:
+ * a failure the database cannot be made to produce on demand. Everything not
+ * overridden still runs against PostgreSQL.
+ */
+export const withFaults = (billing: BillingLifecycle, faults: Partial<BillingLifecycle>): BillingLifecycle => ({
+  reserve: (input) => billing.reserve(input),
+  finalize: (input) => billing.finalize(input),
+  release: (requestId) => billing.release(requestId),
+  markPendingReconciliation: (requestId, reason, providerRequestId) =>
+    billing.markPendingReconciliation(requestId, reason, providerRequestId),
+  ...faults,
+});
+
+/** The account's only reservation; throws when there is not exactly one. */
+export const onlyBillingRecord = async (sql: postgres.Sql, accountId: string) => {
+  const records = await billingRecords(sql, accountId);
+  if (records.length !== 1) throw new Error(`Expected exactly one reservation, got ${records.length}`);
+  return records[0]!;
+};
 
 /** A fetch that records each upstream call and answers with `respond`. */
 export const fakeFetch = (respond: (url: string) => Response | Promise<Response>) => {
@@ -116,27 +99,12 @@ export const post = (path: string, body: unknown, headers: Record<string, string
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
-/** A user, billing account and API key in a real database, with a teardown that removes everything they touched. */
+/**
+ * A user, billing account (with a $1 daily allowance) and API key. Nothing
+ * to clean up: every test file starts with an empty database.
+ */
 export const createTestAccount = async (sql: postgres.Sql, label: string) => {
   const user = await createUser(sql, { slackId: `U-${label}`, dailyAllowanceUsd: "1" });
-  const accountId = user.billingAccountId;
   const apiKey = (await issueApiKey(sql, user.userId, label)).key;
-  const cleanup = async () => {
-    await sql`DELETE FROM request_event_outbox WHERE payload->>'account_id' = ${accountId}`;
-    const reservations = sql`SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid`;
-    for (const table of [
-      "billing_reservation_funding_holds",
-      "billing_reservation_credit_holds",
-      "billing_reservation_limit_holds",
-    ]) {
-      await sql`DELETE FROM ${sql(table)} WHERE reservation_id IN (${reservations})`;
-    }
-    for (const table of ["billing_reservations", "billing_funding_windows", "billing_funding_policies"]) {
-      await sql`DELETE FROM ${sql(table)} WHERE account_id = ${accountId}::uuid`;
-    }
-    await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
-    await sql`DELETE FROM users WHERE id = ${user.userId}::uuid`;
-  };
-  return { userId: user.userId, accountId, apiKey, cleanup };
+  return { userId: user.userId, accountId: user.billingAccountId, apiKey };
 };
