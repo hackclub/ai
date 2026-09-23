@@ -1,7 +1,9 @@
 import postgres from "postgres";
 
-import { createSession, SESSION_COOKIE } from "../src/auth/sessions";
-import { createUser, issueApiKey } from "../src/auth/users";
+import { issueApiKey } from "../src/auth/api-keys";
+import { createSessions } from "../src/auth/sessions";
+import { createUser } from "../src/auth/users";
+import { featuredModel } from "../src/dashboard/read-model";
 import { loadEnv } from "../src/env";
 
 const env = loadEnv();
@@ -30,7 +32,8 @@ if (!user) {
 }
 
 const key = await issueApiKey(sql, user.id, `dev ${new Date().toISOString().slice(0, 16)}`);
-const session = await createSession(sql, user.id);
+// Seeding is refused in production, so this matches what the dev server derives.
+const setCookie = await createSessions({ sql, secureCookies: false }).start(user.id);
 await sql.end();
 
 console.log(`
@@ -41,11 +44,11 @@ Try it:
   curl ${env.baseUrl}/proxy/v1/chat/completions \\
     -H "Authorization: Bearer ${key.key}" \\
     -H "Content-Type: application/json" \\
-    -d '{"model": "${env.featuredModels[0] ?? "openai/gpt-4o-mini"}", "messages": [{"role": "user", "content": "Hi"}]}'
+    -d '{"model": "${featuredModel(env.featuredModels)}", "messages": [{"role": "user", "content": "Hi"}]}'
 
 Dashboard without sign-in: set this cookie for ${env.baseUrl} in your browser
 (DevTools > Application > Cookies, or paste in the console):
   # Dev is never secure, so the cookie keeps the bare (non "__Host-") name.
-  document.cookie = "${SESSION_COOKIE}=${session.token}; path=/; max-age=2592000"
+  document.cookie = "${setCookie.split(";")[0]}; path=/; max-age=2592000"
 then open ${env.baseUrl}/dashboard
 `);

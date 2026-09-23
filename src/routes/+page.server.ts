@@ -4,5 +4,5 @@ import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = ({ locals }) => {
   if (locals.user) redirect(302, "/dashboard");
-  return { models: locals.backend.env.featuredModels };
+  return { models: locals.dashboard.site.featuredModels };
 };

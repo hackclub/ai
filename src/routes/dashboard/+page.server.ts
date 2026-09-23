@@ -8,10 +8,10 @@ const LAST_QUOTE_COOKIE = "last_quote";
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
   const user = requireUser(locals);
-  const env = locals.backend.env;
+  const { site } = locals.dashboard;
   const [stats, curlExample] = await Promise.all([
-    locals.backend.queries.userStats(user.billingAccountId),
-    quickstartCurl(env.baseUrl, env.featuredModels[0] ?? "openai/gpt-4o-mini"),
+    locals.dashboard.usage(user),
+    quickstartCurl(site.baseUrl, site.featuredModel),
   ]);
   const lastIndex = Number.parseInt(cookies.get(LAST_QUOTE_COOKIE) ?? "", 10);
   const quote = randomQuote(Number.isNaN(lastIndex) ? undefined : lastIndex);

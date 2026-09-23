@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ClickHouseClient } from "@clickhouse/client";
-import type postgres from "postgres";
 
-import { AnalyticsQueries, dailySpending } from "./queries";
+import { AnalyticsQueries } from "./queries";
 
 type Query = { query: string; query_params?: Record<string, unknown> };
 
@@ -93,22 +92,5 @@ describe("recentRequests", () => {
     expect(last().query).toContain("{before_id:UUID}");
     expect(last().query_params?.before_id).toBe(beforeId);
     expect(last().query).not.toContain(beforeId);
-  });
-});
-
-describe("dailySpending", () => {
-  /** Answers the window query, then the policy query. */
-  const sqlReturning = (window: unknown[], policy: unknown[]) => {
-    const results = [window, policy];
-    return (async () => results.shift() ?? []) as unknown as postgres.Sql;
-  };
-
-  test.each([
-    ["uses the window's granted amount when set", [{ spent: "1.5", granted: "3" }], [{ amount: "3" }], "1.5", "3"],
-    ["falls back to the policy amount when no window exists yet", [], [{ amount: "3" }], "0", "3"],
-    ["falls back to the policy amount when the window granted zero", [{ spent: "0", granted: "0" }], [{ amount: "5" }], "0", "5"],
-    ["returns zeroes with no window and no policy", [], [], "0", "0"],
-  ])("%s", async (_name, window, policy, spentUsd, limitUsd) => {
-    expect(await dailySpending(sqlReturning(window, policy), "account-1")).toEqual({ spentUsd, limitUsd });
   });
 });

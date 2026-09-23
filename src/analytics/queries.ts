@@ -1,5 +1,4 @@
 import type { ClickHouseClient } from "@clickhouse/client";
-import type postgres from "postgres";
 
 import { memoAsync } from "../cache/memo-async";
 
@@ -240,39 +239,4 @@ export class AnalyticsQueries {
           : null,
     };
   }
-}
-
-export type DailySpending = {
-  spentUsd: string;
-  limitUsd: string;
-};
-
-export async function dailySpending(
-  sql: postgres.Sql,
-  accountId: string,
-): Promise<DailySpending> {
-  const [row] = await sql<{ spent: string; granted: string }[]>`
-    SELECT
-      COALESCE(SUM(funding_window.committed_usd + funding_window.reserved_usd), 0)::text AS spent,
-      COALESCE(SUM(funding_window.granted_usd), 0)::text AS granted
-    FROM billing_funding_windows AS funding_window
-    JOIN billing_funding_policies AS policy ON policy.id = funding_window.policy_id
-    WHERE
-      funding_window.account_id = ${accountId}::uuid
-      AND policy.cadence = 'day'
-      AND funding_window.superseded_at IS NULL
-      AND funding_window.window_start <= now()
-      AND funding_window.window_end > now()
-  `;
-  const [policy] = await sql<{ amount: string }[]>`
-    SELECT COALESCE(SUM(amount_usd), 0)::text AS amount
-    FROM billing_funding_policies
-    WHERE account_id = ${accountId}::uuid AND cadence = 'day' AND enabled
-  `;
-  return {
-    spentUsd: row?.spent ?? "0",
-    // Before the first request of the day no window exists yet; fall back to
-    // the policy amount so the header shows the real allowance.
-    limitUsd: row && Number(row.granted) > 0 ? row.granted : (policy?.amount ?? "0"),
-  };
 }

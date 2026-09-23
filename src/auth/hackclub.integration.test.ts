@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { hackClubAuthRoutes, type HackClubIdentity } from "./hackclub";
-import { SESSION_COOKIE, cookieValue, sessionUser } from "./sessions";
+import { createSessions } from "./sessions";
 import { testDatabase } from "../test/database";
 
 const { sql } = await testDatabase();
+const sessions = createSessions({ sql, secureCookies: false });
+/** The Cookie request header a browser sends back for a Set-Cookie value. */
+const cookieHeaderFrom = (setCookie: string) => setCookie.split(";")[0] ?? "";
 
 describe("Hack Club OAuth with PostgreSQL", () => {
   const slackId = "U-oauth";
@@ -26,6 +29,7 @@ describe("Hack Club OAuth with PostgreSQL", () => {
       clientSecret: "secret",
       baseUrl: "http://gateway.test",
       secureCookies: false,
+      sessions,
       fetch: (async (input, init) => {
         const url = String(input);
         if (url.endsWith("/oauth/token")) {
@@ -54,10 +58,10 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     expect(tokenRequests[0]).toContain("code=the-code");
 
     const cookies = response.headers.getSetCookie();
-    const sessionCookie = cookies.find((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`));
+    const sessionCookie = cookies.find((cookie) => cookie.startsWith("session_token="));
     expect(sessionCookie).toContain("HttpOnly");
-    const token = cookieValue(sessionCookie ?? null, SESSION_COOKIE);
-    const user = await sessionUser(sql, token);
+    const cookieHeader = cookieHeaderFrom(sessionCookie ?? "");
+    const user = await sessions.user(cookieHeader);
     expect(user?.slackId).toBe(slackId);
     expect(user?.name).toBe("Test User");
     expect(user?.avatar).toBe(`https://cachet.hackclub.com/users/${slackId}/r`);
@@ -80,10 +84,11 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     const logout = await app.handle(
       new Request("http://gateway.test/auth/logout", {
         method: "POST",
-        headers: { cookie: `${SESSION_COOKIE}=${token}` },
+        headers: { cookie: cookieHeader },
       }),
     );
     expect(logout.status).toBe(302);
-    expect(await sessionUser(sql, token)).toBeNull();
+    expect(logout.headers.getSetCookie()).toEqual(["session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]);
+    expect(await sessions.user(cookieHeader)).toBeNull();
   });
 });

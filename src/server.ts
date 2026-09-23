@@ -1,4 +1,4 @@
-import { type ClickHouseClient, createClient } from "@clickhouse/client";
+import { createClient } from "@clickhouse/client";
 import * as Sentry from "@sentry/bun";
 import type { AnyElysia } from "elysia";
 import postgres from "postgres";
@@ -7,7 +7,9 @@ import { AnalyticsQueries } from "./analytics/queries";
 import { startAnalyticsWorker } from "./analytics/worker";
 import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
+import { createSessions, type Sessions } from "./auth/sessions";
 import { BillingEngine } from "./billing/engine";
+import { DashboardReadModel } from "./dashboard/read-model";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
 import { keysApiRoutes } from "./gateway/keys-api";
@@ -24,21 +26,17 @@ import { log } from "./log";
 import { pendingPostgresMigrations } from "./migrations";
 import { ModelCatalog } from "./models/catalog";
 import { OpenRouterAdapter } from "./providers/openrouter/adapter";
-import { createReplicateCatalog, type ReplicateCatalog } from "./providers/replicate/catalog";
+import { createReplicateCatalog } from "./providers/replicate/catalog";
 import { createReplicatePricingSource } from "./providers/replicate/pricing";
 
 const SETTLEMENT_DRAIN_TIMEOUT_MS = 30_000;
 
 export type Backend = {
   app: ReturnType<typeof createApp>;
-  sql: postgres.Sql;
-  clickhouse: ClickHouseClient;
-  billing: BillingEngine;
-  settlements: SettlementTracker;
-  catalog: ModelCatalog;
-  replicateCatalog: ReplicateCatalog;
-  queries: AnalyticsQueries;
-  env: Env;
+  /** Resolves the dashboard's session cookie; hooks.server.ts calls it per page request. */
+  sessions: Sessions;
+  /** Everything a SvelteKit loader reads. */
+  dashboard: DashboardReadModel;
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
 };
@@ -53,6 +51,9 @@ export const createBackend = (env: Env): Backend => {
   });
   const settlements = new SettlementTracker();
   const billing = new BillingEngine(sql);
+  // Unchanged derivation (plans/README: the maintainer keeps Secure tied to NODE_ENV).
+  const secureCookies = env.nodeEnv === "production";
+  const sessions = createSessions({ sql, secureCookies });
   Sentry.init({
     dsn: env.sentryDsn ?? undefined,
     enabled: env.sentryDsn !== null,
@@ -86,6 +87,7 @@ export const createBackend = (env: Env): Backend => {
     apiKey: env.replicateApiKey,
     pricing: replicatePricing,
   });
+  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env });
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -112,7 +114,7 @@ export const createBackend = (env: Env): Backend => {
       allowedImageModels: env.allowedImageModels,
       attributionHeaders,
     }),
-    keysApiRoutes({ sql, baseUrl: env.baseUrl, secureCookies: env.nodeEnv === "production" }),
+    keysApiRoutes({ sql, baseUrl: env.baseUrl, sessions }),
     webhookRoutes({ sql }),
     replicateRoutes({
       ...metered,
@@ -126,7 +128,8 @@ export const createBackend = (env: Env): Backend => {
       clientId: env.hackClubClientId,
       clientSecret: env.hackClubClientSecret,
       baseUrl: env.baseUrl,
-      secureCookies: env.nodeEnv === "production",
+      secureCookies,
+      sessions,
     }),
   ];
 
@@ -185,14 +188,8 @@ export const createBackend = (env: Env): Backend => {
   };
   return {
     app,
-    sql,
-    clickhouse,
-    billing,
-    settlements,
-    catalog,
-    replicateCatalog,
-    queries,
-    env,
+    sessions,
+    dashboard,
     start: async () => {
       try {
         await startServices();

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { createUser, issueApiKey } from "../auth/users";
+import { issueApiKey } from "../auth/api-keys";
+import { createUser } from "../auth/users";
 import { BillingEngine } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { reconcilePendingReservations } from "../billing/reconciliation";
