@@ -2,6 +2,7 @@ import type { RequestObservation, RequestOutcome } from "../analytics/request-ev
 import type { BillingEngine, Reservation } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { log } from "../log";
+import { isEventStream } from "../providers/metered-body";
 import type {
   MeteredProviderResponse,
   ProviderCompletion,
@@ -152,10 +153,6 @@ export const redactHeaders = (
 const elapsedMs = (startedAt: number) =>
   Math.max(0, Math.round(performance.now() - startedAt));
 
-const isEventStream = (response: Response) =>
-  response.headers.get("content-type")?.includes("text/event-stream") ??
-  false;
-
 type AnalyticsContext = {
   input: MeteredRequestInput;
   response: Response;
@@ -178,7 +175,7 @@ const observation = (
     outcome,
     errorCode: outcome === "provider_error" ? `http_${response.status}` : "",
     httpStatus: response.status,
-    streamed: isEventStream(response),
+    streamed: isEventStream(response.headers),
     durationMs: context.durationMs,
     timeToFirstByteMs: context.timeToFirstByteMs,
     inputTokens: usage?.inputTokens ?? 0,

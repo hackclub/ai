@@ -5,6 +5,7 @@ import type { BillingLifecycle, SettlementTracker } from "./metered-request";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
+import { isEventStream } from "../providers/metered-body";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { forwardableHeaders } from "../providers/response-headers";
 import { HttpError } from "./http-error";
@@ -55,9 +56,6 @@ const BILLABLE_INPUT_FIELDS = [
   "functions",
 ] as const;
 
-const isEventStream = (response: Response) =>
-  response.headers.get("content-type")?.includes("text/event-stream") ?? false;
-
 /**
  * Cloudflare closes idle responses after about 100 seconds. A non-streaming
  * completion can take longer to produce its single JSON chunk, so emit a
@@ -66,7 +64,7 @@ const isEventStream = (response: Response) =>
  * and billing see the unpadded response.
  */
 export const withKeepAlive = (response: Response, intervalMs: number) => {
-  if (!response.body || isEventStream(response) || intervalMs <= 0) {
+  if (!response.body || isEventStream(response.headers) || intervalMs <= 0) {
     return response;
   }
   const reader = response.body.getReader();
