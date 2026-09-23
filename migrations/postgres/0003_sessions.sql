@@ -1,5 +1,4 @@
--- Browser sessions for the dashboard, created by the Hack Club OAuth
--- callback. Tokens are stored as SHA-256 digests like API keys.
+-- migrate:up
 
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -14,3 +13,6 @@ CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 
 ALTER TABLE users
     ADD COLUMN agent_banner_dismissed_at TIMESTAMPTZ;
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

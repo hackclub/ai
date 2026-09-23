@@ -1,5 +1,4 @@
-CREATE DATABASE IF NOT EXISTS hcai;
-
+-- migrate:up
 CREATE TABLE IF NOT EXISTS hcai.request_events
 (
     event_id UUID,
@@ -60,3 +59,6 @@ ORDER BY (account_id, toDate(occurred_at), occurred_at, event_id);
 --     AND positionCaseInsensitiveUTF8(response_body, 'six seven mango') > 0
 --   )
 -- ORDER BY occurred_at DESC;
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

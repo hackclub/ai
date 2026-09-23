@@ -1,3 +1,4 @@
+-- migrate:up
 -- A drainer claims rows with a lease instead of holding a transaction open
 -- across the ClickHouse insert. A row whose lease expired is retried; a row
 -- delivered twice is collapsed by ClickHouse's ReplacingMergeTree.
@@ -14,3 +15,6 @@ CREATE INDEX request_event_outbox_pending_idx
 CREATE INDEX request_event_outbox_parked_idx
     ON request_event_outbox (created_at)
     WHERE attempts >= 25;
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

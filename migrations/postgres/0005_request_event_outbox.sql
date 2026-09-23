@@ -1,3 +1,4 @@
+-- migrate:up
 -- Finalized request events wait here for the analytics worker, which copies
 -- them to ClickHouse in batches and deletes them. The row is written in the
 -- finalization transaction, so an event exists if and only if the charge
@@ -13,3 +14,6 @@ CREATE TABLE request_event_outbox (
     last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

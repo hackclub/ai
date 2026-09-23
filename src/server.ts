@@ -42,12 +42,14 @@ export type Backend = {
   replicateCatalog: ReplicateCatalog | null;
   queries: AnalyticsQueries;
   env: Env;
-  /** Starts the job worker; idempotent. */
+  /**
+   * Starts the job worker; idempotent. A failure is recorded for /up, logged
+   * and sent to Sentry, then rethrown for the entrypoint to decide on.
+   */
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
-  /** Set by the lifecycle when background services fail to start; read by /up. */
+  /** The error that stopped `start`, if any; read by /up. */
   startupError: () => Error | null;
-  setStartupError: (error: Error | null) => void;
 };
 
 /**
@@ -87,7 +89,7 @@ export const createBackend = (env: Env): Backend => {
   // One counter shared by every proxy route group, keyed by user.
   const rateLimiter = new RateLimiter({ limit: 7_500, windowMs: 30 * 60 * 1_000 });
   const onSettlementError = (error: unknown, requestId: string) => {
-    log.error("billing settlement failed", { requestId, error });
+    log.error({ err: error, requestId }, "billing settlement failed");
     Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
   };
   const metered = { sql, billing, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
@@ -153,7 +155,7 @@ export const createBackend = (env: Env): Backend => {
 
   const app = createApp({
     onError: (error) => {
-      log.error("unhandled request error", { error });
+      log.error({ err: error }, "unhandled request error");
       Sentry.captureException(error);
     },
     health: createHealthCheck({
@@ -184,6 +186,30 @@ export const createBackend = (env: Env): Backend => {
   });
 
   let worker: Awaited<ReturnType<typeof startAnalyticsWorker>> | null = null;
+  const startServices = async () => {
+    const pending = await pendingPostgresMigrations(sql);
+    if (pending.length > 0) {
+      log.error(
+        { count: pending.length, migrations: pending, hint: "Run: bun run db:migrate" },
+        "pending PostgreSQL migrations",
+      );
+    }
+    // Also creates the job-queue schema, which finalization depends on.
+    worker ??= await startAnalyticsWorker({
+      connectionString: env.databaseUrl,
+      clickhouse,
+      reconciliation: {
+        sql,
+        billing,
+        openRouter,
+        replicate:
+          env.replicateApiKey && replicatePricing
+            ? { apiKey: env.replicateApiKey, pricing: replicatePricing }
+            : undefined,
+      },
+      log: (message) => log.info({ message }, "billing.reconcile"),
+    });
+  };
   return {
     app,
     sql,
@@ -195,43 +221,26 @@ export const createBackend = (env: Env): Backend => {
     queries,
     env,
     start: async () => {
-      const pending = await pendingPostgresMigrations(sql);
-      if (pending.length > 0) {
-        log.error("pending PostgreSQL migrations", {
-          count: pending.length,
-          migrations: pending,
-          hint: "Run: bun run db:migrate",
-        });
+      try {
+        await startServices();
+        startupError = null;
+      } catch (error) {
+        startupError = error instanceof Error ? error : new Error(String(error));
+        log.error({ err: startupError }, "backend start failed");
+        Sentry.captureException(startupError, { tags: { stage: "startup" } });
+        throw startupError;
       }
-      // Also creates the job-queue schema, which finalization depends on.
-      worker ??= await startAnalyticsWorker({
-        connectionString: env.databaseUrl,
-        clickhouse,
-        reconciliation: {
-          sql,
-          billing,
-          openRouter,
-          replicate:
-            env.replicateApiKey && replicatePricing
-              ? { apiKey: env.replicateApiKey, pricing: replicatePricing }
-              : undefined,
-        },
-        log: (message) => log.info("billing.reconcile", { message }),
-      });
     },
     shutdown: async () => {
       await worker?.stop();
       const { remaining } = await settlements.drain(SETTLEMENT_DRAIN_TIMEOUT_MS);
       if (remaining > 0) {
-        log.error("shutdown abandoned in-flight settlements", { remaining });
+        log.error({ remaining }, "shutdown abandoned in-flight settlements");
       }
       await Sentry.flush(2_000).catch(() => {});
       await sql.end();
       await clickhouse.close();
     },
     startupError: () => startupError,
-    setStartupError: (error) => {
-      startupError = error;
-    },
   };
 };

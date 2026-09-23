@@ -295,7 +295,7 @@ export async function runMeteredRequest(
   // it. A rejection is treated as an unknown outcome so the reservation is
   // still settled (held for reconciliation) rather than left to expire.
   const completion = metered.completion.catch((error: unknown): ProviderCompletion => {
-    log.error("provider completion rejected", { error, requestId: input.requestId });
+    log.error({ err: error, requestId: input.requestId }, "provider completion rejected");
     return {
       state: "uncertain",
       providerRequestId: null,

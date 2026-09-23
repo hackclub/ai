@@ -1,23 +1,37 @@
-type Level = "info" | "warn" | "error";
-type Fields = Record<string, unknown>;
+import pino from "pino";
 
-const serializeError = (error: unknown) =>
-  error instanceof Error
-    ? { name: error.name, message: error.message, stack: error.stack }
-    : { message: String(error) };
+/**
+ * Credential-bearing fields that must never reach a log line (hard rule 6),
+ * whichever object they sit in. `*` matches one level of nesting.
+ */
+const REDACT = [
+  "authorization",
+  "cookie",
+  "apiKey",
+  "password",
+  "token",
+  "*.authorization",
+  "*.cookie",
+  "*.apiKey",
+  "*.password",
+  "*.token",
+  '*["x-api-key"]',
+  "*.headers.authorization",
+  "*.headers.cookie",
+  '*.headers["x-api-key"]',
+];
 
-const emit = (level: Level, msg: string, fields: Fields = {}) => {
-  const record: Fields = { time: new Date().toISOString(), level, msg };
-  for (const [key, value] of Object.entries(fields)) {
-    record[key] = key === "error" ? serializeError(value) : value;
-  }
-  const line = JSON.stringify(record);
-  if (level === "error") console.error(line);
-  else console.log(line);
+/**
+ * JSON lines on stdout. Pass fields first and the message second, and an
+ * error as `err`: `log.error({ err, requestId }, "settlement failed")`.
+ * Level from LOG_LEVEL (default info). Pipe through `bunx pino-pretty` to
+ * read locally. No transports: they run in worker threads.
+ */
+export const loggerOptions: pino.LoggerOptions = {
+  level: process.env.LOG_LEVEL || "info",
+  timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: { level: (label) => ({ level: label }) },
+  redact: { paths: REDACT, censor: "[redacted]" },
 };
 
-export const log = {
-  info: (msg: string, fields?: Fields) => emit("info", msg, fields),
-  warn: (msg: string, fields?: Fields) => emit("warn", msg, fields),
-  error: (msg: string, fields?: Fields) => emit("error", msg, fields),
-};
+export const log = pino(loggerOptions);

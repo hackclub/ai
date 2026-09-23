@@ -1,96 +1,120 @@
 /**
- * Applies unapplied SQL files from migrations/postgres and
- * migrations/clickhouse in filename order and records each one.
+ * Applies pending migrations in migrations/postgres and migrations/clickhouse
+ * with dbmate (https://github.com/amacneil/dbmate).
  *
  *   bun run db:migrate            # apply pending
- *   bun run db:migrate --status   # list applied/pending, apply nothing
+ *   bun run db:migrate --status   # list applied/pending; exits 2 if any pending
+ *   bun run db:migrate --only=postgres   # one store (also --only=clickhouse)
  *
- * Bootstrap: a database initialised by Docker's entrypoint has the tables but
- * no schema_migrations row. Such a store is detected by its sentinel table
- * and every existing file is recorded as applied without running it.
+ * This wrapper only does what dbmate cannot: build both URLs from the app's
+ * variables, hold a PostgreSQL advisory lock so two deploys never migrate at
+ * once, and convert the tracking tables of the runner dbmate replaced.
  *
- * Reads connection settings directly from process.env (not `loadEnv()`), so
- * this can run as a deploy step without provider API keys present.
- *
- * ClickHouse has no transactional DDL, so every ClickHouse migration must be
- * written idempotently (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, ...); a
- * failure partway through a file leaves earlier statements applied.
+ * Reads process.env directly (not `loadEnv()`), so it runs as a deploy step
+ * without provider API keys. Every file needs `-- migrate:up` and
+ * `-- migrate:down` markers, and each ClickHouse file must hold exactly one
+ * statement: ClickHouse rejects multi-statement queries.
  */
 import { createClient } from "@clickhouse/client";
+import { $ } from "bun";
 import postgres from "postgres";
 
-import {
-  appliedVersions,
-  ensureClickHouseBootstrap,
-  ensurePostgresBootstrap,
-  listMigrationFiles,
-  migrateClickHouse,
-  migratePostgres,
-} from "../src/migrations";
-
 const statusOnly = process.argv.includes("--status");
+const only = process.argv.find((arg) => arg.startsWith("--only="))?.slice("--only=".length);
+if (only && only !== "postgres" && only !== "clickhouse") {
+  throw new Error(`--only must be postgres or clickhouse, not ${only}`);
+}
+const stores = (["postgres", "clickhouse"] as const).filter((store) => !only || store === only);
 const env = process.env;
-const databaseUrl = env.DATABASE_URL;
-if (!databaseUrl) throw new Error("Missing required environment variable DATABASE_URL");
-const clickhouseUrl = env.CLICKHOUSE_URL ?? "http://localhost:8123";
-const clickhouseUser = env.CLICKHOUSE_USER ?? "hcai";
-const clickhousePassword = env.CLICKHOUSE_PASSWORD ?? "hcai";
-
-const log = (message: string) => console.log(message);
-
-const printStatus = async () => {
-  const sql = postgres(databaseUrl, { max: 2 });
-  const client = createClient({ url: clickhouseUrl, username: clickhouseUser, password: clickhousePassword });
-
-  let pendingCount = 0;
-  try {
-    // Never executes migration SQL: only records already-applied files
-    // (Docker's initdb bootstrap) so a freshly compose-initialised database
-    // reports "applied" instead of "pending" without a prior apply run.
-    await ensurePostgresBootstrap(sql, "migrations/postgres", log);
-    await ensureClickHouseBootstrap(client, "migrations/clickhouse", log);
-
-    const pgFiles = await listMigrationFiles("migrations/postgres");
-    const pgApplied = new Set(await appliedVersions(sql));
-    for (const file of pgFiles) {
-      if (pgApplied.has(file)) {
-        log(`migrations/postgres/${file}: applied`);
-      } else {
-        log(`migrations/postgres/${file}: pending`);
-        pendingCount += 1;
-      }
-    }
-
-    const chFiles = await listMigrationFiles("migrations/clickhouse");
-    const chResult = await client.query({
-      query: "SELECT version FROM hcai.schema_migrations",
-      format: "JSONEachRow",
-    });
-    const chRows = await chResult.json<{ version: string }>();
-    const chApplied = new Set(chRows.map((row) => row.version));
-    for (const file of chFiles) {
-      if (chApplied.has(file)) {
-        log(`migrations/clickhouse/${file}: applied`);
-      } else {
-        log(`migrations/clickhouse/${file}: pending`);
-        pendingCount += 1;
-      }
-    }
-  } finally {
-    await sql.end();
-    await client.close();
-  }
-
-  if (pendingCount > 0) process.exit(2);
+if (!env.DATABASE_URL) throw new Error("Missing required environment variable DATABASE_URL");
+const clickhouse = {
+  url: env.CLICKHOUSE_URL ?? "http://localhost:8123",
+  username: env.CLICKHOUSE_USER ?? "hcai",
+  password: env.CLICKHOUSE_PASSWORD ?? "hcai",
 };
 
+/**
+ * dbmate's driver requires TLS unless told otherwise; the app's `postgres`
+ * driver does not. Default to the app's behaviour when the URL is silent.
+ */
+const postgresUrl = (() => {
+  const url = new URL(env.DATABASE_URL);
+  if (!url.searchParams.has("sslmode")) url.searchParams.set("sslmode", "disable");
+  return url.toString();
+})();
+
+/** `http://host:8123` → `clickhouse+http://user:pass@host:8123/hcai`. */
+const clickhouseUrl = (() => {
+  const url = new URL(clickhouse.url);
+  const scheme = url.protocol === "https:" ? "clickhouse+https" : "clickhouse+http";
+  const auth = `${encodeURIComponent(clickhouse.username)}:${encodeURIComponent(clickhouse.password)}`;
+  return `${scheme}://${auth}@${url.host}/hcai`;
+})();
+
+/**
+ * One-off conversion from the hand-rolled runner. Postgres kept full file
+ * names as versions ("0001_billing.sql"); dbmate keys on the number. The old
+ * ClickHouse table had a different shape; its only migration is idempotent,
+ * so dropping the table lets dbmate re-apply and record it. Safe to repeat.
+ */
+const convertLegacyTracking = async (sql: postgres.Sql) => {
+  if (stores.includes("postgres")) await convertPostgresTracking(sql);
+  if (stores.includes("clickhouse")) await convertClickHouseTracking();
+};
+
+const convertPostgresTracking = async (sql: postgres.Sql) => {
+  await sql`
+    UPDATE schema_migrations SET version = split_part(version, '_', 1)
+    WHERE version LIKE '%.sql'
+  `.catch((error: { code?: string }) => {
+    if (error.code !== "42P01") throw error; // undefined_table: fresh database
+  });
+};
+
+const convertClickHouseTracking = async () => {
+  const client = createClient(clickhouse);
+  try {
+    const result = await client.query({
+      query: `SELECT count() AS legacy FROM system.columns
+              WHERE database = 'hcai' AND table = 'schema_migrations' AND name = 'applied_at'`,
+      format: "JSONEachRow",
+    });
+    const [row] = await result.json<{ legacy: string }>();
+    if (Number(row?.legacy) > 0) {
+      await client.command({ query: "DROP TABLE hcai.schema_migrations" });
+    }
+  } finally {
+    await client.close();
+  }
+};
+
+// Secrets reach dbmate through its environment, never its argv.
+const dbmate = (store: "postgres" | "clickhouse", ...command: string[]) =>
+  $`${import.meta.dir}/../node_modules/.bin/dbmate --env MIGRATE_URL --migrations-dir ${`migrations/${store}`} --no-dump-schema ${command}`
+    .env({ ...env, MIGRATE_URL: store === "postgres" ? postgresUrl : clickhouseUrl })
+    .nothrow();
+
 if (statusOnly) {
-  await printStatus();
-} else {
-  const pg = await migratePostgres(databaseUrl, { log });
-  const ch = await migrateClickHouse(clickhouseUrl, clickhouseUser, clickhousePassword, { log });
-  log(
-    `postgres: applied ${pg.applied}, skipped ${pg.skipped}; ` +
-      `clickhouse: applied ${ch.applied}, skipped ${ch.skipped}`,
-  );
+  let pending = false;
+  for (const store of stores) {
+    console.log(`== ${store}`);
+    const result = await dbmate(store, "status", "--exit-code");
+    pending ||= result.exitCode !== 0;
+  }
+  process.exit(pending ? 2 : 0);
+}
+
+const sql = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
+try {
+  await sql`SELECT pg_advisory_lock(hashtext('schema_migrations'))`;
+  await convertLegacyTracking(sql);
+  for (const store of stores) {
+    const result = await dbmate(store, "up");
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+      break;
+    }
+  }
+} finally {
+  await sql.end();
 }

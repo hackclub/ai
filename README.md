@@ -24,14 +24,17 @@ compose defaults above are for local development only, and compose binds
 both datastores to `127.0.0.1`.
 
 Schema changes are SQL files in `migrations/postgres` and
-`migrations/clickhouse`, applied in filename order by `bun run db:migrate`
-and recorded in `schema_migrations`. The Docker containers also apply them
-when a volume is first created; the runner detects that and records them as
-applied. `bun run db:migrate --status` lists pending files (exit 2 if any).
-ClickHouse has no transactional DDL, so every ClickHouse migration must be
-idempotent (`IF NOT EXISTS`). Run `db:migrate` as a deploy step before
-starting the server; the server logs a warning at startup if files are
-pending but never applies them itself.
+`migrations/clickhouse`, applied by [dbmate](https://github.com/amacneil/dbmate)
+through `bun run db:migrate` (which `bun run db:up` also runs). Each file
+starts with `-- migrate:up` and ends with an empty `-- migrate:down`
+(migrations are forward-only). Each Postgres file runs in one transaction.
+ClickHouse accepts one statement per query, so each ClickHouse file holds
+exactly one statement, and since ClickHouse DDL is not transactional that
+statement must be idempotent (`IF NOT EXISTS`). `bun run db:migrate --status`
+lists pending files (exit 2 if any), and `--only=postgres` or
+`--only=clickhouse` limits a run to one store. Run `db:migrate` as a deploy
+step before starting the server; the server logs a warning at startup if
+files are pending but never applies them itself.
 
 Useful commands:
 

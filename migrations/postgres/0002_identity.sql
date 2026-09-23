@@ -1,3 +1,4 @@
+-- migrate:up
 -- Users and API keys. Every user owns exactly one billing account
 -- (billing_accounts.owner_type = 'user', owner_id = users.id); the
 -- application creates the account and its default daily allowance when the
@@ -35,3 +36,6 @@ CREATE TABLE api_keys (
 CREATE INDEX api_keys_user_active_idx
     ON api_keys (user_id)
     WHERE revoked_at IS NULL;
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

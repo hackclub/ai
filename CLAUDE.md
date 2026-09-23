@@ -88,8 +88,10 @@ database over the dev one.
    through the allow-list in `redactHeaders` (`metered-request.ts`); add a
    header there only if a dashboard needs it, never a credential-bearing
    one.
-7. **Schema changes are new numbered files** in `migrations/<store>/`.
-   Never edit an applied migration. ClickHouse DDL must be idempotent.
+7. **Schema changes are new numbered files** in `migrations/<store>/`,
+   applied by dbmate (`scripts/migrate.ts`): each file needs `-- migrate:up`
+   and `-- migrate:down` markers. Never edit an applied migration. A
+   ClickHouse file holds exactly one idempotent statement.
 8. **Billing invariants** in `docs/architecture/storage-and-billing.md`
    are not negotiable: one reservation per request, settle at most once,
    idempotent operations, PostgreSQL transaction time decides windows.

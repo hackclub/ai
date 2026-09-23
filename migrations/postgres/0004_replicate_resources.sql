@@ -1,3 +1,4 @@
+-- migrate:up
 -- Replicate predictions and files are created under one shared Replicate
 -- account, so Replicate itself cannot tell users apart. This table records
 -- which user created each resource so the proxy can scope reads, cancels and
@@ -14,3 +15,6 @@ CREATE TABLE replicate_resources (
 );
 
 CREATE INDEX replicate_resources_user_idx ON replicate_resources (user_id, created_at DESC);
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

@@ -3,7 +3,7 @@ import type { Handle } from "@sveltejs/kit/hooks";
 import { SESSION_COOKIE, cookieName, cookieValue, sessionUser } from "./auth/sessions";
 import { loadEnv } from "./env";
 import { isApiPath, isCrossOriginFormSubmission } from "./hooks.paths";
-import { installShutdownHandlers, startBackend } from "./lifecycle";
+import { log } from "./log";
 import { type Backend, createBackend } from "./server";
 
 /**
@@ -13,15 +13,31 @@ import { type Backend, createBackend } from "./server";
 const registry = globalThis as typeof globalThis & {
   __hcaiBackend?: Backend;
   __hcaiBackendStarted?: Promise<void>;
+  __hcaiShutdownInstalled?: boolean;
 };
 
 const backend = (registry.__hcaiBackend ??= createBackend(loadEnv()));
-// A start failure is not fatal here: pages still work, /up answers 503, and
-// the error is logged and reported. See src/lifecycle.ts.
-registry.__hcaiBackendStarted ??= startBackend(backend).started;
-// adapter-bun owns the listener; the settlement drain in Backend.shutdown
-// covers in-flight requests.
-installShutdownHandlers(backend);
+// A start failure is not fatal here: pages still work and /up answers 503.
+// start() has already logged and reported it.
+registry.__hcaiBackendStarted ??= backend.start().catch(() => {});
+
+// adapter-bun handles SIGTERM/SIGINT itself: it stops listening, waits for
+// in-flight requests (up to SHUTDOWN_TIMEOUT), then emits this event. Closing
+// the pools any earlier would fail the requests it is still draining. The
+// dev server never emits it; its process simply exits.
+if (!registry.__hcaiShutdownInstalled) {
+  registry.__hcaiShutdownInstalled = true;
+  process.once("sveltekit:shutdown" as NodeJS.Signals, (signal) => {
+    log.info({ signal }, "shutting down");
+    backend.shutdown().then(
+      () => process.exit(0),
+      (err: unknown) => {
+        log.error({ err }, "shutdown failed");
+        process.exit(1);
+      },
+    );
+  });
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url;

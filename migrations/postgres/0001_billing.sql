@@ -1,3 +1,4 @@
+-- migrate:up
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE billing_accounts (
@@ -286,3 +287,6 @@ CREATE TABLE billing_admin_events (
 
 CREATE INDEX billing_admin_events_account_time_idx
     ON billing_admin_events (account_id, created_at DESC);
+
+-- migrate:down
+-- Forward-only: fix mistakes with a new migration.

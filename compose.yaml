@@ -11,7 +11,6 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./migrations/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test:
         [
@@ -36,7 +35,6 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
-      - ./migrations/clickhouse:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test:
         [

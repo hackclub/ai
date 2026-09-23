@@ -142,7 +142,7 @@ export const startAnalyticsWorker = async (
     clickhouse: options.clickhouse,
     intervalMs: options.drainIntervalMs,
     onError: (error) =>
-      log.error("request event delivery failed", { error }),
+      log.error({ err: error }, "request event delivery failed"),
   });
   return {
     runner,
