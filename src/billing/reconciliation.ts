@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 
+import { reconciledObservation } from "../analytics/request-event";
 import {
   fetchReplicatePrediction,
   isTerminal,
@@ -10,7 +11,7 @@ import {
   predictionCost,
   type ReplicatePricingSource,
 } from "../providers/replicate/pricing";
-import type { BillingEngine, JsonValue } from "./engine";
+import type { BillingEngine } from "./engine";
 import { Usd } from "./money";
 
 type Sql = postgres.Sql;
@@ -120,6 +121,7 @@ type PendingRow = {
   provider: string;
   provider_request_id: string | null;
   reconciliation_reason: string | null;
+  endpoint: string | null;
   expired: boolean;
   age_ms: number | string;
 };
@@ -131,31 +133,6 @@ type ProviderCharge =
   | { state: "charged"; costUsd: Usd; model: string; inputTokens: number; outputTokens: number }
   | { state: "not_found" }
   | { state: "not_ready"; detail: string };
-
-const reconciledAnalytics = (
-  row: PendingRow,
-  charge: Extract<ProviderCharge, { state: "charged" }>,
-): Record<string, JsonValue> => ({
-  endpoint: "",
-  model: charge.model,
-  outcome: "reconciled",
-  error_code: "",
-  http_status: 0,
-  streamed: false,
-  duration_ms: 0,
-  time_to_first_byte_ms: null,
-  input_tokens: charge.inputTokens,
-  output_tokens: charge.outputTokens,
-  provider_cost_usd: charge.costUsd.toString(),
-  request_headers: {},
-  response_headers: {},
-  attributes: {
-    body_capture: "none",
-    reconciliation_reason: row.reconciliation_reason ?? "",
-  },
-  request_body: "",
-  response_body: "",
-});
 
 const openRouterCharge = async (
   providerRequestId: string,
@@ -240,6 +217,7 @@ export async function reconcilePendingReservations(
       provider,
       provider_request_id,
       reconciliation_reason,
+      endpoint,
       created_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
       floor(extract(epoch FROM (now() - created_at)) * 1000)::bigint AS age_ms
     FROM billing_reservations
@@ -304,7 +282,10 @@ export async function reconcilePendingReservations(
         actualCostUsd: charge.costUsd,
         usageSource: "reconciled",
         providerRequestId: row.provider_request_id ?? undefined,
-        analytics: reconciledAnalytics(row, charge),
+        request: reconciledObservation(charge, {
+          endpoint: row.endpoint,
+          reconciliationReason: row.reconciliation_reason,
+        }),
       });
       result.finalized += 1;
     } catch (error) {

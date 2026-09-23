@@ -38,6 +38,10 @@ export type ReservationRow = {
   actual_cost_usd: string | null;
   unfunded_cost_usd: string;
   expires_at: Date;
+  /** Recorded at reserve for the analytics event; null before migration 0008. */
+  user_id: string | null;
+  api_key_id: string | null;
+  endpoint: string | null;
 };
 
 /** The column list every reservation read and write returns. */
@@ -51,7 +55,10 @@ export const reservationColumns = (tx: Tx) => tx`
   estimated_cost_usd::text,
   actual_cost_usd::text,
   unfunded_cost_usd::text,
-  expires_at
+  expires_at,
+  user_id,
+  api_key_id,
+  endpoint
 `;
 
 type LimitWindowRow = { id: string; policy_name: string; available_usd: string };

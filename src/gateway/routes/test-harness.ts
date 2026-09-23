@@ -1,7 +1,8 @@
 import type postgres from "postgres";
 
+import type { OutboxPayload, RequestObservation } from "../../analytics/request-event";
 import { createUser, issueApiKey } from "../../auth/users";
-import { BillingEngine, type JsonValue } from "../../billing/engine";
+import { BillingEngine } from "../../billing/engine";
 import type { ReservationState } from "../../billing/lifecycle";
 import type { Fetch } from "../../providers/openrouter/adapter";
 import { type BillingLifecycle, SettlementTracker } from "../metered-request";
@@ -27,7 +28,7 @@ export type BillingRecord = {
   actualCostUsd: string | null;
   usageSource: string | null;
   /** The analytics event finalization wrote to the outbox, if any. */
-  event: Record<string, JsonValue> | null;
+  event: OutboxPayload | null;
 };
 
 /**
@@ -36,7 +37,7 @@ export type BillingRecord = {
  */
 export const billingRecords = async (sql: postgres.Sql, accountId: string): Promise<BillingRecord[]> => {
   const rows = await sql<
-    Array<Omit<BillingRecord, "event"> & { event: Record<string, JsonValue> | null }>
+    Array<Omit<BillingRecord, "event"> & { event: OutboxPayload | null }>
   >`
     SELECT
       r.request_id AS "requestId",
@@ -105,6 +106,27 @@ export const post = (path: string, body: unknown, headers: Record<string, string
  */
 export const createTestAccount = async (sql: postgres.Sql, label: string) => {
   const user = await createUser(sql, { slackId: `U-${label}`, dailyAllowanceUsd: "1" });
-  const apiKey = (await issueApiKey(sql, user.userId, label)).key;
-  return { userId: user.userId, accountId: user.billingAccountId, apiKey };
+  const issued = await issueApiKey(sql, user.userId, label);
+  return { userId: user.userId, accountId: user.billingAccountId, apiKey: issued.key, apiKeyId: issued.id };
 };
+
+/** A minimal observation for tests that finalize directly. */
+export const testObservation = (overrides: Partial<RequestObservation> = {}): RequestObservation => ({
+  endpoint: "test",
+  model: "test/model",
+  outcome: "completed",
+  errorCode: "",
+  httpStatus: 200,
+  streamed: false,
+  durationMs: 0,
+  timeToFirstByteMs: null,
+  inputTokens: 0,
+  outputTokens: 0,
+  providerCostUsd: null,
+  requestHeaders: {},
+  responseHeaders: {},
+  attributes: {},
+  requestBody: "",
+  responseBody: "",
+  ...overrides,
+});

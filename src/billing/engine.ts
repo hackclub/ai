@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 
+import { type OutboxPayload, outboxPayload, type RequestObservation } from "../analytics/request-event";
 import { ReservationConflictError, ReservationNotFoundError } from "./errors";
 import { releaseAllHolds, writeHoldChange } from "./holds";
 import { type ReservationState, transition } from "./lifecycle";
@@ -70,6 +71,10 @@ export type ReserveInput = {
   accountId: string;
   provider: string;
   estimatedCostUsd: Usd;
+  /** Who made the request and to which endpoint, for the analytics event every settlement writes. */
+  userId: string | null;
+  apiKeyId: string | null;
+  endpoint: string;
   /** How long the hold may stay `reserved` before the sweeper releases it. Measured on the PostgreSQL clock. */
   ttlMs?: number;
 };
@@ -79,7 +84,8 @@ export type FinalizeInput = {
   actualCostUsd: Usd;
   usageSource: UsageSource;
   providerRequestId?: string;
-  analytics?: Record<string, JsonValue>;
+  /** What the caller observed; the engine adds identity and money from the reservation. */
+  request: RequestObservation;
 };
 
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1_000;
@@ -192,6 +198,9 @@ export class BillingEngine {
             account_id,
             provider,
             estimated_cost_usd,
+            user_id,
+            api_key_id,
+            endpoint,
             expires_at
           )
           VALUES (
@@ -200,6 +209,9 @@ export class BillingEngine {
             ${input.accountId}::uuid,
             ${input.provider},
             ${input.estimatedCostUsd.toString()}::numeric,
+            ${input.userId}::uuid,
+            ${input.apiKeyId}::uuid,
+            ${input.endpoint},
             now() + ${ttlMs}::double precision * INTERVAL '1 millisecond'
           )
           RETURNING ${reservationColumns(tx)}
@@ -344,20 +356,24 @@ export class BillingEngine {
       // analytics worker drains the outbox to ClickHouse in batches; see
       // src/analytics/request-events.ts.
       writes.push(
-        insertUsageEvent(tx, {
-          ...(input.analytics ?? {}),
-          event_id: crypto.randomUUID(),
-          request_id: reservation.request_id,
-          reservation_id: reservation.id,
-          account_id: reservation.account_id,
-          provider: reservation.provider,
-          provider_request_id: providerRequestId,
-          estimated_cost_usd: Usd.parse(reservation.estimated_cost_usd).toString(),
-          billed_cost_usd: actual.toString(),
-          unfunded_cost_usd: unfunded.toString(),
-          usage_source: input.usageSource,
-          occurred_at: now.toISOString(),
-        }),
+        insertUsageEvent(
+          tx,
+          outboxPayload(input.request, {
+            eventId: crypto.randomUUID(),
+            occurredAt: now,
+            requestId: reservation.request_id,
+            reservationId: reservation.id,
+            accountId: reservation.account_id,
+            userId: reservation.user_id,
+            apiKeyId: reservation.api_key_id,
+            provider: reservation.provider,
+            providerRequestId,
+            estimatedCostUsd: Usd.parse(reservation.estimated_cost_usd),
+            billedCostUsd: actual,
+            unfundedCostUsd: unfunded,
+            usageSource: input.usageSource,
+          }),
+        ),
       );
 
       const results = await Promise.all(writes);
@@ -433,7 +449,7 @@ function assertSameReservation(existing: ReservationRow, input: ReserveInput) {
   }
 }
 
-const insertUsageEvent = (tx: Tx, event: Record<string, JsonValue>) => tx`
+const insertUsageEvent = (tx: Tx, event: OutboxPayload) => tx`
   INSERT INTO request_event_outbox (payload)
   VALUES (${tx.json(event)}::jsonb)
 `;

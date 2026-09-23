@@ -9,6 +9,7 @@ import {
   LimitExceededError,
   ReservationConflictError,
 } from "./errors";
+import { testObservation } from "../gateway/routes/test-harness";
 import { Usd } from "./money";
 
 const { sql } = await testDatabase();
@@ -47,6 +48,9 @@ describe("BillingEngine with PostgreSQL", () => {
       accountId: account,
       provider: "openrouter",
       estimatedCostUsd: Usd.parse(estimate),
+      userId: null,
+      apiKeyId: null,
+      endpoint: "chat/completions",
     });
   };
 
@@ -85,10 +89,10 @@ describe("BillingEngine with PostgreSQL", () => {
       actualCostUsd: Usd.parse("0.5"),
       usageSource: "provider_reported",
       providerRequestId: `gen-integration-first`,
-      analytics: {
-        request_body: '{"prompt":"six seven mango"}',
-        response_body: '{"answer":"found"}',
-      },
+      request: testObservation({
+        requestBody: '{"prompt":"six seven mango"}',
+        responseBody: '{"answer":"found"}',
+      }),
     });
     expect(finalized.state).toBe("finalized");
     expect(finalized.actualCostUsd).toBe("0.500000000000");
@@ -108,6 +112,7 @@ describe("BillingEngine with PostgreSQL", () => {
       requestId,
       actualCostUsd: Usd.parse("0.01"),
       usageSource: "reconciled",
+      request: testObservation(),
       providerRequestId: `gen-integration-zero-estimate`,
     });
     expect(finalized.actualCostUsd).toBe("0.010000000000");
@@ -121,6 +126,7 @@ describe("BillingEngine with PostgreSQL", () => {
       requestId,
       actualCostUsd: Usd.parse("0.39"),
       usageSource: "reconciled",
+      request: testObservation(),
       providerRequestId: `gen-integration-overage`,
     });
     // Funding still covers it ($1 allowance), so nothing is unfunded...
@@ -153,6 +159,7 @@ describe("BillingEngine with PostgreSQL", () => {
       requestId: firstRequestId,
       actualCostUsd: Usd.parse("0.5"),
       usageSource: "provider_reported",
+      request: testObservation(),
     });
     expect(again.state).toBe("finalized");
     expect(again.requestId).toBe(firstRequestId);
@@ -172,6 +179,7 @@ describe("BillingEngine with PostgreSQL", () => {
         requestId: firstRequestId,
         actualCostUsd: Usd.parse("0.51"),
         usageSource: "provider_reported",
+        request: testObservation(),
       }),
     ).rejects.toBeInstanceOf(ReservationConflictError);
     await expect(engine.release(firstRequestId)).rejects.toBeInstanceOf(
@@ -204,6 +212,7 @@ describe("BillingEngine with PostgreSQL", () => {
         requestId,
         actualCostUsd: Usd.parse("0.3"),
         usageSource: "reconciled",
+        request: testObservation(),
         providerRequestId: `gen-integration-late`,
       });
       expect(finalized.state).toBe("finalized");
@@ -264,6 +273,7 @@ describe("BillingEngine with PostgreSQL", () => {
         requestId,
         actualCostUsd: Usd.parse("0.4"),
         usageSource: "provider_reported",
+        request: testObservation(),
       });
       expect(finalized.unfundedCostUsd).toBe("0.100000000000");
       expect(await balances()).toEqual({
@@ -280,6 +290,7 @@ describe("BillingEngine with PostgreSQL", () => {
       requestId,
       actualCostUsd: Usd.zero,
       usageSource: "provider_reported",
+      request: testObservation(),
     });
     expect(finalized.actualCostUsd).toBe("0.000000000000");
 

@@ -1,8 +1,5 @@
-import type {
-  BillingEngine,
-  JsonValue,
-  Reservation,
-} from "../billing/engine";
+import type { RequestObservation, RequestOutcome } from "../analytics/request-event";
+import type { BillingEngine, Reservation } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { log } from "../log";
 import type {
@@ -45,8 +42,6 @@ export class SettlementTracker {
 }
 
 export type MeteredRequestAnalytics = {
-  userId?: string | null;
-  apiKeyId?: string | null;
   requestHeaders?: HeadersInit;
   attributes?: Record<string, string>;
 };
@@ -54,6 +49,9 @@ export type MeteredRequestAnalytics = {
 export type MeteredRequestInput = {
   requestId: string;
   accountId: string;
+  /** Who made the request; stored on the reservation for the analytics event. */
+  userId: string | null;
+  apiKeyId: string | null;
   provider: string;
   endpoint: string;
   model: string;
@@ -168,37 +166,35 @@ type AnalyticsContext = {
   durationMs: number;
 };
 
-const analyticsEvent = (
+const observation = (
   context: AnalyticsContext,
   completion: ProviderCompletion,
-  outcome: string,
+  outcome: RequestOutcome,
   errorCode: string,
-): Record<string, JsonValue> => {
+): RequestObservation => {
   const { input, response } = context;
   const usage = completion.state === "complete" ? completion.usage : null;
 
   return {
-    user_id: input.analytics?.userId ?? null,
-    api_key_id: input.analytics?.apiKeyId ?? null,
     endpoint: input.endpoint,
     model: completion.model ?? input.model,
     outcome,
-    error_code: errorCode,
-    http_status: response.status,
+    errorCode,
+    httpStatus: response.status,
     streamed: isEventStream(response),
-    duration_ms: context.durationMs,
-    time_to_first_byte_ms: context.timeToFirstByteMs,
-    input_tokens: usage?.inputTokens ?? 0,
-    output_tokens: usage?.outputTokens ?? 0,
-    provider_cost_usd: usage ? usage.costUsd.toString() : null,
-    request_headers: redactHeaders(input.analytics?.requestHeaders),
-    response_headers: redactHeaders(response.headers),
+    durationMs: context.durationMs,
+    timeToFirstByteMs: context.timeToFirstByteMs,
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+    providerCostUsd: usage?.costUsd ?? null,
+    requestHeaders: redactHeaders(input.analytics?.requestHeaders),
+    responseHeaders: redactHeaders(response.headers),
     attributes: {
       ...(input.analytics?.attributes ?? {}),
       body_capture: completion.bodyCapture,
     },
-    request_body: context.requestBody,
-    response_body: completion.responseBody,
+    requestBody: context.requestBody,
+    responseBody: completion.responseBody,
   };
 };
 
@@ -216,7 +212,7 @@ const settleCompletion = async (
       actualCostUsd: completion.usage.costUsd,
       usageSource: "provider_reported",
       providerRequestId,
-      analytics: analyticsEvent(context, completion, "completed", ""),
+      request: observation(context, completion, "completed", ""),
     });
     return { kind: "finalized", reservation, completion };
   }
@@ -230,7 +226,7 @@ const settleCompletion = async (
       actualCostUsd: Usd.zero,
       usageSource: "calculated",
       providerRequestId,
-      analytics: analyticsEvent(
+      request: observation(
         context,
         completion,
         "provider_error",
@@ -270,6 +266,9 @@ export async function runMeteredRequest(
   const reservation = await billing.reserve({
     requestId: input.requestId,
     accountId: input.accountId,
+    userId: input.userId,
+    apiKeyId: input.apiKeyId,
+    endpoint: input.endpoint,
     provider: input.provider,
     estimatedCostUsd: input.estimatedCostUsd,
     ttlMs: input.reservationTtlMs,

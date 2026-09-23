@@ -45,6 +45,8 @@ describe("runMeteredRequest with PostgreSQL and OpenRouterAdapter", () => {
     const request = runMeteredRequest(engine, {
       requestId,
       accountId,
+      userId: null,
+      apiKeyId: null,
       provider: "openrouter",
       endpoint: "chat/completions",
       model: "test/model",

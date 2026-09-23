@@ -24,7 +24,7 @@ describe("jev route", () => {
   };
 
   test("a successful response records the versioned model it reports", async () => {
-    const { response, record } = await call("ok", () =>
+    const { account, response, record } = await call("ok", () =>
       Response.json({ model: "jev-1.13.0", output: "hello", usage: { input_tokens: 1_000_000, output_tokens: 5 } }),
     );
     expect(response.status).toBe(200);
@@ -32,6 +32,8 @@ describe("jev route", () => {
     expect(record.actualCostUsd).toBe("0.042000000000");
     expect(record.event?.model).toBe("jev/jev-1.13.0");
     expect(record.event?.outcome).toBe("completed");
+    expect(record.event?.user_id).toBe(account.userId);
+    expect(record.event?.api_key_id).toBe(account.apiKeyId);
   });
 
   test("a provider error keeps the requested model label", async () => {

@@ -49,13 +49,13 @@ const setup = async () => {
 const baseInput = (accountId: string, execute: MeteredRequestInput["execute"]): MeteredRequestInput => ({
   requestId: crypto.randomUUID(),
   accountId,
+  userId: null,
+  apiKeyId: null,
   provider: "openrouter",
   endpoint: "chat/completions",
   model: "test/model",
   estimatedCostUsd: Usd.parse("0.01"),
   analytics: {
-    userId: null,
-    apiKeyId: null,
     requestHeaders: { Authorization: "Bearer secret", "User-Agent": "test" },
     attributes: { client: "cli" },
   },

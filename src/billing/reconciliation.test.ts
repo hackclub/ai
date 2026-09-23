@@ -72,7 +72,15 @@ const reserve = async (
   { provider = "openrouter", age }: { provider?: string; age?: string } = {},
 ) => {
   const requestId = crypto.randomUUID();
-  await engine.reserve({ requestId, accountId, provider, estimatedCostUsd: Usd.parse("0.01") });
+  await engine.reserve({
+    requestId,
+    accountId,
+    provider,
+    estimatedCostUsd: Usd.parse("0.01"),
+    userId: null,
+    apiKeyId: null,
+    endpoint: "chat/completions",
+  });
   if (age) {
     await sql`
       UPDATE billing_reservations

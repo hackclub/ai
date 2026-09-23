@@ -103,15 +103,18 @@ export const billingErrorToHttp = (error: unknown) => {
 };
 
 /** The parts of a metered request each route supplies; the envelope fills in the rest. */
-export type ProviderRouteInput = Omit<MeteredRequestInput, "requestId" | "accountId" | "analytics"> & {
+export type ProviderRouteInput = Omit<
+  MeteredRequestInput,
+  "requestId" | "accountId" | "userId" | "apiKeyId" | "analytics"
+> & {
   /** Extra analytics attributes merged after `ip`. */
   attributes?: Record<string, string>;
 };
 
 /**
  * The lifecycle every metered provider route shares: one request id, the
- * analytics block, the billing-error → 429 mapping, and the settlement-error
- * callback.
+ * caller's identity, the analytics block, the billing-error → 429 mapping,
+ * and the settlement-error callback.
  *
  * By default the returned `metered.response` is rewrapped with a fresh
  * `Headers` object carrying `x-request-id`, so callers that return it
@@ -135,9 +138,9 @@ export async function runProviderRoute(
     ...route,
     requestId,
     accountId: principal.billingAccountId,
+    userId: principal.userId,
+    apiKeyId: principal.apiKeyId,
     analytics: {
-      userId: principal.userId,
-      apiKeyId: principal.apiKeyId,
       requestHeaders: request.headers,
       attributes: { ip: clientIp(request.headers), ...(attributes ?? {}) },
     },
