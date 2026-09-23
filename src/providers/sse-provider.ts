@@ -1,9 +1,9 @@
 import type { Usd } from "../billing/money";
 import { type JsonProviderOptions, meterJsonResponse } from "./json-provider";
+import { type BodyEnd, isEventStream, meterStreamed } from "./metered-body";
 import type { Fetch } from "./openrouter/adapter";
-import { forwardableHeaders } from "./response-headers";
 import { ServerSentEventParser } from "./sse-parser";
-import type { MeteredProviderResponse, ProviderCompletion } from "./types";
+import type { MeteredProviderResponse } from "./types";
 
 export type SseProviderOptions = {
   url: string;
@@ -21,6 +21,26 @@ export type SseProviderOptions = {
 const DEFAULT_DRAIN_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_CAPTURED_BYTES = 1024 * 1024;
 
+const ENDED_WITHOUT_COST = "Provider stream ended without reporting a cost";
+
+const missingCostReason = (end: BodyEnd): string => {
+  switch (end.kind) {
+    case "done":
+      return ENDED_WITHOUT_COST;
+    case "error":
+      return end.error instanceof Error ? end.error.message : "Provider stream failed";
+    case "cancelled":
+      switch (end.drain) {
+        case "timed_out":
+          return "Client disconnected and the provider sent no cost before the drain timeout";
+        case "failed":
+          return "Client disconnected before the provider reported a cost";
+        default:
+          return ENDED_WITHOUT_COST;
+      }
+  }
+};
+
 /**
  * Executes a streaming provider call whose cost arrives in an event (Exa's
  * `/answer` sends `costDollars` in its last event). The provider charges for
@@ -33,9 +53,7 @@ export async function executeSseProvider(
   options: SseProviderOptions,
 ): Promise<MeteredProviderResponse> {
   const upstream = await (options.fetch ?? fetch)(options.url, options.init);
-  const eventStream =
-    upstream.headers.get("content-type")?.includes("text/event-stream") ?? false;
-  if (!eventStream || !upstream.body) {
+  if (!isEventStream(upstream.headers) || !upstream.body) {
     return meterJsonResponse(upstream, {
       init: options.init as JsonProviderOptions["init"],
       extractCost: options.extractCost,
@@ -43,11 +61,6 @@ export async function executeSseProvider(
     });
   }
 
-  const maxCapturedBytes = options.maxCapturedBytes ?? DEFAULT_MAX_CAPTURED_BYTES;
-  const decoder = new TextDecoder();
-  let captured = "";
-  let capturedBytes = 0;
-  let truncated = false;
   let cost: Usd | null = null;
   let providerRequestId: string | null = null;
   const parser = new ServerSentEventParser(({ data }) => {
@@ -60,98 +73,22 @@ export async function executeSseProvider(
     }
   });
 
-  let settle: (completion: ProviderCompletion) => void = () => {};
-  const completion = new Promise<ProviderCompletion>((resolve) => {
-    settle = resolve;
-  });
-  const outcome = (fallbackReason: string): ProviderCompletion => {
-    const bodyCapture = truncated ? "truncated" : "complete";
-    if (cost) {
-      return {
-        state: "complete",
-        providerRequestId,
-        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: cost },
-        responseBody: captured,
-        bodyCapture,
-      };
-    }
-    return {
-      state: "uncertain",
-      providerRequestId,
-      reason: fallbackReason,
-      responseBody: captured,
-      bodyCapture: truncated ? "truncated" : "partial",
-    };
-  };
-
-  const reader = upstream.body.getReader();
-  let clientGone = false;
-  let drainTimedOut = false;
-  let drainTimer: ReturnType<typeof setTimeout> | undefined;
-  const pump = async (controller: ReadableStreamDefaultController<Uint8Array>) => {
-    try {
-      for (;;) {
-        const next = await reader.read();
-        if (next.done) break;
-        parser.push(next.value);
-        if (!truncated && capturedBytes + next.value.byteLength <= maxCapturedBytes) {
-          captured += decoder.decode(next.value, { stream: true });
-          capturedBytes += next.value.byteLength;
-        } else {
-          truncated = true;
-        }
-        if (!clientGone) controller.enqueue(next.value);
-      }
-      parser.finish();
-      settle(
-        outcome(
-          drainTimedOut
-            ? "Client disconnected and the provider sent no cost before the drain timeout"
-            : "Provider stream ended without reporting a cost",
-        ),
-      );
-      if (!clientGone) controller.close();
-    } catch (error) {
-      parser.finish();
-      settle(
-        outcome(
-          clientGone
-            ? "Client disconnected before the provider reported a cost"
-            : error instanceof Error
-              ? error.message
-              : "Provider stream failed",
-        ),
-      );
-      if (!clientGone) controller.error(error);
-    } finally {
-      clearTimeout(drainTimer);
-    }
-  };
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      // Pumped rather than pulled, so reading continues after a cancel.
-      // Answer streams are small, so ignoring backpressure is harmless.
-      void pump(controller);
-    },
-    cancel() {
-      clientGone = true;
-      drainTimer = setTimeout(
-        () => {
-          drainTimedOut = true;
-          void reader.cancel("drain timeout").catch(() => {});
-        },
-        options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS,
-      );
-    },
-  });
-
-  return {
-    response: new Response(body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: forwardableHeaders(upstream.headers),
-    }),
+  return meterStreamed(upstream, {
     requestBody: options.init.body,
-    completion,
-  };
+    reader: {
+      observe: (chunk) => parser.push(chunk),
+      read: ({ end }) => {
+        parser.finish();
+        return cost
+          ? {
+              usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: cost },
+              providerRequestId,
+            }
+          : { usage: null, providerRequestId, reason: missingCostReason(end) };
+      },
+    },
+    maxCapturedBytes: options.maxCapturedBytes ?? DEFAULT_MAX_CAPTURED_BYTES,
+    headers: "forwardable",
+    onCancel: { kind: "drain", timeoutMs: options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS },
+  });
 }

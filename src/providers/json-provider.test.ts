@@ -43,8 +43,12 @@ describe("executeJsonProvider", () => {
     expect((await result.completion).responseBody).toBe('{"redacted":true}');
   });
 
+  test("reports a non-2xx reply as a provider error", async () => {
+    const completion = await (await run(new Response('{"error":"bad"}', { status: 400 }))).completion;
+    expect(completion).toMatchObject({ state: "provider_error", responseBody: '{"error":"bad"}' });
+  });
+
   test.each([
-    [new Response('{"error":"bad"}', { status: 400 }), "HTTP 400"],
     [new Response("not json"), "non-JSON"],
     [new Response('{"data":1}'), "did not report a cost"],
   ])("marks %o uncertain", async (response, reason) => {

@@ -7,34 +7,35 @@ export type NormalizedUsage = {
   costUsd: Usd;
 };
 
+type CompletionCommon = {
+  providerRequestId: string | null;
+  responseBody: string;
+  /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
+  model?: string;
+};
+
+/**
+ * How an upstream response ended, as billing needs to know it. The
+ * completion alone decides the billing action: settlement never re-reads the
+ * HTTP status to override it.
+ */
 export type ProviderCompletion =
-  | {
+  | (CompletionCommon & {
       state: "complete";
-      providerRequestId: string | null;
-      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
-      model?: string;
       usage: NormalizedUsage;
-      responseBody: string;
       bodyCapture: "complete" | "truncated";
-    }
-  | {
-      state: "uncertain";
-      providerRequestId: string | null;
-      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
-      model?: string;
-      reason: string;
-      responseBody: string;
+    })
+  /** The provider refused the request (non-2xx) and reported no usage: nothing was charged. */
+  | (CompletionCommon & {
+      state: "provider_error";
       bodyCapture: "complete" | "partial" | "truncated";
-    }
-  | {
-      state: "cancelled";
-      providerRequestId: string | null;
-      /** The model the provider reports it ran, when it differs from the requested label; analytics prefer it. */
-      model?: string;
+    })
+  /** A successful response without authoritative usage (cancel, truncation, missing usage). */
+  | (CompletionCommon & {
+      state: "uncertain";
       reason: string;
-      responseBody: string;
-      bodyCapture: "partial" | "truncated";
-    };
+      bodyCapture: "complete" | "partial" | "truncated";
+    });
 
 export type MeteredProviderResponse = {
   response: Response;

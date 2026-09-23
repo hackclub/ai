@@ -92,7 +92,7 @@ describe("OpenRouterAdapter", () => {
 
     const completion = await result.completion;
     expect(cancelled).toBeTrue();
-    if (completion.state !== "cancelled") throw new Error("Expected cancel");
+    if (completion.state !== "uncertain") throw new Error("Expected uncertain");
     expect(completion.reason).toBe("client disconnected");
     expect(completion.providerRequestId).toBe("gen-cancelled");
     expect(completion.responseBody).toContain("gen-cancelled");
@@ -117,7 +117,7 @@ describe("OpenRouterAdapter", () => {
     await readOneThenCancel(result.response);
 
     const completion = await result.completion;
-    expect(completion.state).toBe("cancelled");
+    expect(completion.state).toBe("uncertain");
     expect(completion.providerRequestId).toBe("gen-gone");
   });
 
@@ -143,8 +143,37 @@ describe("OpenRouterAdapter", () => {
     await readOneThenCancel(result.response);
 
     const completion = await result.completion;
-    expect(completion.state).toBe("cancelled");
+    expect(completion.state).toBe("uncertain");
     expect(completion.providerRequestId).toBe("gen-header");
+  });
+
+  test("holds a 504 without usage as uncertain, keeping the generation id", async () => {
+    const result = await execute(
+      () =>
+        new Response('{"error":{"message":"Gateway timeout"}}', {
+          status: 504,
+          headers: { ...JSON_TYPE, "x-generation-id": "gen-504" },
+        }),
+    );
+    expect(await result.response.text()).toBe('{"error":{"message":"Gateway timeout"}}');
+    expect(await result.completion).toMatchObject({
+      state: "uncertain",
+      providerRequestId: "gen-504",
+      reason: "OpenRouter gateway timeout; generation may still be running",
+    });
+  });
+
+  test("reports any other non-2xx without usage as a zero-cost provider error", async () => {
+    const result = await execute(
+      () => Response.json({ error: { message: "Internal error" } }, { status: 500, headers: { "x-generation-id": "gen-500" } }),
+    );
+    await result.response.text();
+    expect(await result.completion).toMatchObject({ state: "provider_error", providerRequestId: "gen-500" });
+  });
+
+  test("reports a response with no body as empty", async () => {
+    const result = await execute(() => new Response(null, { status: 200, headers: JSON_TYPE }));
+    expect(await result.completion).toMatchObject({ state: "uncertain", reason: "Empty response", bodyCapture: "complete" });
   });
 
   test("stops capturing SSE bytes after the first chunk that overflows the cap", async () => {

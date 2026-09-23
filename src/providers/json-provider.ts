@@ -1,7 +1,7 @@
 import type { Fetch } from "./openrouter/adapter";
 import type { Usd } from "../billing/money";
-import { forwardableHeaders } from "./response-headers";
-import type { MeteredProviderResponse, ProviderCompletion } from "./types";
+import { type CapturedBody, meterBuffered, type UsageVerdict } from "./metered-body";
+import type { MeteredProviderResponse } from "./types";
 
 export type JsonProviderOptions = {
   url: string;
@@ -18,6 +18,11 @@ export type JsonProviderOptions = {
   redactResponseBody?: (body: unknown, raw: string) => string;
 };
 
+type JsonReadOptions = Pick<
+  JsonProviderOptions,
+  "extractCost" | "extractProviderRequestId" | "extractTokens" | "redactResponseBody"
+>;
+
 /**
  * Executes a request-response (non-streaming) JSON provider call and derives
  * the billing outcome from the buffered body. The response returned to the
@@ -31,83 +36,56 @@ export async function executeJsonProvider(
   return meterJsonResponse(upstream, options);
 }
 
-/** Buffers a JSON provider response and derives its billing outcome. */
-export async function meterJsonResponse(
-  upstream: Response,
-  options: Pick<
-    JsonProviderOptions,
-    "init" | "extractCost" | "extractProviderRequestId" | "extractTokens" | "redactResponseBody"
-  >,
-): Promise<MeteredProviderResponse> {
-  const raw = await upstream.text();
-
+/** Reads the reported cost from a whole JSON document. */
+const readJson = (body: CapturedBody, options: JsonReadOptions): UsageVerdict => {
   let parsed: unknown = null;
   let parseFailed = false;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(body.text);
   } catch {
     parseFailed = true;
   }
 
   const providerRequestId =
     parseFailed ? null : (options.extractProviderRequestId?.(parsed) ?? null);
-  const analyticsBody =
+  const responseBody =
     parseFailed || !options.redactResponseBody
-      ? raw
-      : options.redactResponseBody(parsed, raw);
+      ? undefined
+      : options.redactResponseBody(parsed, body.text);
+  const withoutUsage = (reason: string): UsageVerdict => ({
+    usage: null,
+    providerRequestId,
+    reason,
+    responseBody,
+  });
 
-  let completion: ProviderCompletion;
-  const success = upstream.status >= 200 && upstream.status < 300;
-  const cost = success && !parseFailed ? options.extractCost(parsed) : null;
-  if (!success) {
-    completion = {
-      state: "uncertain",
-      providerRequestId,
-      reason: `Provider responded with HTTP ${upstream.status}`,
-      responseBody: analyticsBody,
-      bodyCapture: "complete",
-    };
-  } else if (parseFailed) {
-    completion = {
-      state: "uncertain",
-      providerRequestId,
-      reason: "Provider returned a non-JSON response",
-      responseBody: analyticsBody,
-      bodyCapture: "complete",
-    };
-  } else if (!cost) {
-    completion = {
-      state: "uncertain",
-      providerRequestId,
-      reason: "Provider response did not report a cost",
-      responseBody: analyticsBody,
-      bodyCapture: "complete",
-    };
-  } else {
-    const tokens = options.extractTokens?.(parsed) ?? { inputTokens: 0, outputTokens: 0 };
-    completion = {
-      state: "complete",
-      providerRequestId,
-      usage: {
-        inputTokens: tokens.inputTokens,
-        outputTokens: tokens.outputTokens,
-        totalTokens: tokens.inputTokens + tokens.outputTokens,
-        costUsd: cost,
-      },
-      responseBody: analyticsBody,
-      bodyCapture: "complete",
-    };
+  if (body.status < 200 || body.status >= 300) {
+    return withoutUsage(`Provider responded with HTTP ${body.status}`);
   }
-
-  const headers = forwardableHeaders(upstream.headers);
-
+  if (parseFailed) return withoutUsage("Provider returned a non-JSON response");
+  const cost = options.extractCost(parsed);
+  if (!cost) return withoutUsage("Provider response did not report a cost");
+  const tokens = options.extractTokens?.(parsed) ?? { inputTokens: 0, outputTokens: 0 };
   return {
-    response: new Response(raw, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers,
-    }),
-    requestBody: options.init.body,
-    completion: Promise.resolve(completion),
+    usage: {
+      inputTokens: tokens.inputTokens,
+      outputTokens: tokens.outputTokens,
+      totalTokens: tokens.inputTokens + tokens.outputTokens,
+      costUsd: cost,
+    },
+    providerRequestId,
+    responseBody,
   };
+};
+
+/** Buffers a JSON provider response and derives its billing outcome. */
+export async function meterJsonResponse(
+  upstream: Response,
+  options: Pick<JsonProviderOptions, "init"> & JsonReadOptions,
+): Promise<MeteredProviderResponse> {
+  return meterBuffered(upstream, {
+    requestBody: options.init.body,
+    reader: { read: (body) => readJson(body, options) },
+    headers: "forwardable",
+  });
 }

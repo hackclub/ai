@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Usd } from "../billing/money";
+import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import type { MeteredProviderResponse, ProviderCompletion } from "../providers/types";
 import {
   type MeteredRequestInput,
@@ -169,9 +170,8 @@ describe("runMeteredRequest", () => {
       baseInput(account.accountId, async () =>
         providerResponse(
           {
-            state: "uncertain",
+            state: "provider_error",
             providerRequestId: null,
-            reason: "Invalid model",
             responseBody: '{"error":{"message":"Invalid model"}}',
             bodyCapture: "complete",
           },
@@ -191,16 +191,14 @@ describe("runMeteredRequest", () => {
     });
   });
 
-  test.each([
-    ["uncertain", "OpenRouter response ended without authoritative cost"],
-    ["cancelled", "client disconnected"],
-  ] as const)("marks a %s successful response pending reconciliation", async (state, reason) => {
+  test("marks an uncertain successful response pending reconciliation", async () => {
     const { billing, account, record } = await setup();
+    const reason = "OpenRouter response ended without authoritative cost";
     const request = await runMeteredRequest(
       billing,
       baseInput(account.accountId, async () =>
         providerResponse(
-          { state, providerRequestId: `gen-${state}`, reason, responseBody: "partial", bodyCapture: "partial" },
+          { state: "uncertain", providerRequestId: "gen-uncertain", reason, responseBody: "partial", bodyCapture: "partial" },
           { headers: { "content-type": "text/event-stream" } },
         ),
       ),
@@ -212,7 +210,35 @@ describe("runMeteredRequest", () => {
     expect(await record()).toMatchObject({
       state: "pending_reconciliation",
       reconciliationReason: reason,
-      providerRequestId: `gen-${state}`,
+      providerRequestId: "gen-uncertain",
+      event: null,
+    });
+  });
+
+  test("holds an OpenRouter 504 without usage for reconciliation, not finalized at zero", async () => {
+    const { billing, account, record } = await setup();
+    // The 504 may come back while the generation still runs and bills.
+    const adapter = new OpenRouterAdapter({
+      fetch: async () =>
+        new Response('{"error":{"message":"Gateway timeout"}}', {
+          status: 504,
+          headers: { "content-type": "application/json", "x-generation-id": "gen-504" },
+        }),
+    });
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(account.accountId, () =>
+        adapter.execute({ endpoint: "chat/completions", body: { model: "test/model" }, apiKey: "secret" }),
+      ),
+    );
+    expect(request.response.status).toBe(504);
+    await request.response.text();
+
+    expect((await request.settled).kind).toBe("pending_reconciliation");
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      providerRequestId: "gen-504",
+      reconciliationReason: "OpenRouter gateway timeout; generation may still be running",
       event: null,
     });
   });
@@ -223,6 +249,26 @@ describe("runMeteredRequest", () => {
       billing,
       baseInput(account.accountId, async () => ({
         response: new Response("ok", { status: 200 }),
+        requestBody: "{}",
+        completion: Promise.reject(new Error("adapter bug")),
+      })),
+    );
+
+    expect((await request.settled).kind).toBe("pending_reconciliation");
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      reconciliationReason: "completion_rejected",
+    });
+  });
+
+  test("holds an error response for reconciliation when completion rejects", async () => {
+    // The completion is the only billing authority: without one, a 5xx is
+    // not assumed to be free.
+    const { billing, account, record } = await setup();
+    const request = await runMeteredRequest(
+      billing,
+      baseInput(account.accountId, async () => ({
+        response: new Response("upstream down", { status: 500 }),
         requestBody: "{}",
         completion: Promise.reject(new Error("adapter bug")),
       })),
