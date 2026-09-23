@@ -6,11 +6,8 @@ import {
   isTerminal,
   type ReplicateConfig,
 } from "../providers/replicate/predictions";
-import {
-  hasBillableMetrics,
-  predictionCost,
-  type ReplicatePricingSource,
-} from "../providers/replicate/pricing";
+import { predictionCharge } from "../providers/replicate/billing";
+import type { ReplicatePricingSource } from "../providers/replicate/pricing";
 import type { BillingEngine } from "./engine";
 import { Usd } from "./money";
 
@@ -129,10 +126,16 @@ type PendingRow = {
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 
 /** What a provider lookup found for a pending reservation. */
-type ProviderCharge =
+export type ProviderCharge =
   | { state: "charged"; costUsd: Usd; model: string; inputTokens: number; outputTokens: number }
   | { state: "not_found" }
   | { state: "not_ready"; detail: string };
+
+/** Looks up what the provider charged for one request id. Throws on transient failure. */
+export type ChargeLookup = (providerRequestId: string) => Promise<ProviderCharge>;
+
+/** What reconciliation needs from the providers: a lookup per provider key, or none. */
+export type ProviderLookups = { lookupFor(provider: string): ChargeLookup | null };
 
 const openRouterCharge = async (
   providerRequestId: string,
@@ -170,13 +173,11 @@ const replicateCharge = async (
   }
   const pricing = await config.pricing.get(prediction.model);
   if (!pricing) return { state: "not_ready", detail: `no pricing for ${prediction.model}` };
-  const metrics = prediction.metrics ?? {};
-  if (prediction.status === "succeeded" && !hasBillableMetrics(pricing, metrics)) {
-    return { state: "not_ready", detail: "succeeded without billable metrics" };
-  }
+  const charge = predictionCharge(prediction, pricing);
+  if (charge.state === "not_ready") return charge;
   return {
     state: "charged",
-    costUsd: predictionCost(pricing, metrics),
+    costUsd: charge.costUsd,
     model: prediction.model,
     inputTokens: 0,
     outputTokens: 0,

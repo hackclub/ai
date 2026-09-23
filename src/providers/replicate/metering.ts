@@ -1,7 +1,13 @@
 import { type CapturedBody, meterStreamed, type UsageVerdict } from "../metered-body";
 import type { MeteredProviderResponse } from "../types";
-import { isTerminal, parsePrediction, type PredictionSnapshot } from "./predictions";
-import { hasBillableMetrics, predictionCost, type ReplicatePricing } from "./pricing";
+import { predictionCharge } from "./billing";
+import {
+  isTerminal,
+  parsePrediction,
+  type PredictionSnapshot,
+  type TerminalPrediction,
+} from "./predictions";
+import type { ReplicatePricing } from "./pricing";
 
 const POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000];
 const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
@@ -22,7 +28,7 @@ export type PredictionSettlement = {
 const awaitTerminal = async (
   initial: PredictionSnapshot,
   settlement: PredictionSettlement,
-): Promise<PredictionSnapshot | null> => {
+): Promise<TerminalPrediction | null> => {
   if (isTerminal(initial)) return initial;
   if (!initial.id) return null;
   const sleep = settlement.sleep ?? Bun.sleep;
@@ -66,7 +72,7 @@ const settlePrediction = async (
   const initial = parsePrediction(body.text);
   if (!initial) return withoutUsage("Replicate response was not a prediction object");
   const predictionId = initial.id ?? null;
-  let final: PredictionSnapshot | null;
+  let final: TerminalPrediction | null;
   try {
     final = await awaitTerminal(initial, settlement);
   } catch (error) {
@@ -79,20 +85,15 @@ const settlePrediction = async (
     );
   }
   const finalId = final.id ?? predictionId;
-  const metrics = final.metrics ?? {};
-  // A successful run without the metric its price is keyed on cannot be
-  // billed from the response. Holding it for reconciliation beats closing
-  // it at $0 as if Replicate had reported nothing to charge.
-  if (final.status === "succeeded" && !hasBillableMetrics(settlement.pricing, metrics)) {
-    return withoutUsage(`Prediction ${predictionId ?? "?"} succeeded without billable metrics`, finalId);
+  const charge = predictionCharge(final, settlement.pricing);
+  // A run that cannot be billed from the response yet is held for
+  // reconciliation rather than closed at $0 as if Replicate had reported
+  // nothing to charge.
+  if (charge.state === "not_ready") {
+    return withoutUsage(`Prediction ${predictionId ?? "?"} ${charge.detail}`, finalId);
   }
   return {
-    usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-      costUsd: predictionCost(settlement.pricing, metrics),
-    },
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: charge.costUsd },
     providerRequestId: finalId,
   };
 };

@@ -1,5 +1,6 @@
 import { Usd } from "../../billing/money";
 import type { NormalizedUsage } from "../types";
+import { nonNegativeInteger } from "../values";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -7,13 +8,6 @@ const asRecord = (value: unknown): UnknownRecord | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
     : null;
-
-const nonNegativeInteger = (value: unknown) =>
-  typeof value === "number" &&
-  Number.isSafeInteger(value) &&
-  value >= 0
-    ? value
-    : 0;
 
 const cost = (value: unknown): Usd | null => {
   try {
@@ -53,13 +47,11 @@ export const openRouterUsage = (value: unknown): NormalizedUsage | null => {
     cost(usage.cost) ?? cost(costDetails?.upstream_inference_cost);
   if (!totalCost) return null;
 
-  const inputTokens = nonNegativeInteger(
-    usage.prompt_tokens ?? usage.input_tokens,
-  );
-  const outputTokens = nonNegativeInteger(
-    usage.completion_tokens ?? usage.output_tokens,
-  );
-  const reportedTotal = nonNegativeInteger(usage.total_tokens);
+  const inputTokens =
+    nonNegativeInteger(usage.prompt_tokens ?? usage.input_tokens) ?? 0;
+  const outputTokens =
+    nonNegativeInteger(usage.completion_tokens ?? usage.output_tokens) ?? 0;
+  const reportedTotal = nonNegativeInteger(usage.total_tokens) ?? 0;
 
   return {
     inputTokens,
