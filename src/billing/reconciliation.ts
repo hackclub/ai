@@ -6,89 +6,14 @@ import {
   isTerminal,
   type ReplicateConfig,
 } from "../providers/replicate/predictions";
+import type { OpenRouterConfig } from "../providers/openrouter/generation";
+import { openRouterProvider } from "../providers/openrouter/provider";
 import { predictionCharge } from "../providers/replicate/billing";
 import type { ReplicatePricingSource } from "../providers/replicate/pricing";
 import type { BillingEngine } from "./engine";
 import { Usd } from "./money";
 
 type Sql = postgres.Sql;
-
-export type OpenRouterConfig = {
-  apiKey: string;
-  baseUrl: string;
-  fetch?: typeof fetch;
-};
-
-export type GenerationRecord = {
-  id: string;
-  totalCostUsd: Usd;
-  promptTokens: number;
-  completionTokens: number;
-  model: string;
-};
-
-export type GenerationLookup =
-  | { state: "found"; generation: GenerationRecord }
-  | { state: "not_found" };
-
-const nonNegativeInteger = (value: unknown) =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : 0;
-
-/**
- * OpenRouter's generation metadata endpoint. Returns `not_found` for 404,
- * which OpenRouter also uses while a generation is still being recorded.
- */
-export async function fetchOpenRouterGeneration(
-  generationId: string,
-  config: OpenRouterConfig,
-): Promise<GenerationLookup> {
-  const fetchImplementation = config.fetch ?? fetch;
-  const url = new URL(`${config.baseUrl.replace(/\/$/, "")}/v1/generation`);
-  url.searchParams.set("id", generationId);
-  const response = await fetchImplementation(url, {
-    headers: { authorization: `Bearer ${config.apiKey}` },
-  });
-  if (response.status === 404) return { state: "not_found" };
-  if (!response.ok) {
-    throw new Error(`OpenRouter generation lookup failed with HTTP ${response.status}`);
-  }
-
-  const body = (await response.json()) as {
-    data?: {
-      id?: string;
-      model?: string;
-      total_cost?: number;
-      native_tokens_prompt?: number;
-      native_tokens_completion?: number;
-      usage?: number;
-    };
-  };
-  const data = body.data;
-  if (!data) return { state: "not_found" };
-
-  const cost =
-    typeof data.total_cost === "number"
-      ? data.total_cost
-      : typeof data.usage === "number"
-        ? data.usage
-        : null;
-  if (cost === null || cost < 0) {
-    throw new Error(`OpenRouter generation ${generationId} has no usable cost`);
-  }
-
-  return {
-    state: "found",
-    generation: {
-      id: data.id ?? generationId,
-      totalCostUsd: Usd.fromNumber(cost),
-      promptTokens: nonNegativeInteger(data.native_tokens_prompt),
-      completionTokens: nonNegativeInteger(data.native_tokens_completion),
-      model: typeof data.model === "string" ? data.model : "",
-    },
-  };
-}
 
 export type ReplicateReconcileConfig = ReplicateConfig & {
   pricing: ReplicatePricingSource;
@@ -136,22 +61,6 @@ export type ChargeLookup = (providerRequestId: string) => Promise<ProviderCharge
 
 /** What reconciliation needs from the providers: a lookup per provider key, or none. */
 export type ProviderLookups = { lookupFor(provider: string): ChargeLookup | null };
-
-const openRouterCharge = async (
-  providerRequestId: string,
-  config: OpenRouterConfig,
-): Promise<ProviderCharge> => {
-  const lookup = await fetchOpenRouterGeneration(providerRequestId, config);
-  if (lookup.state === "not_found") return { state: "not_found" };
-  const { generation } = lookup;
-  return {
-    state: "charged",
-    costUsd: generation.totalCostUsd,
-    model: generation.model,
-    inputTokens: generation.promptTokens,
-    outputTokens: generation.completionTokens,
-  };
-};
 
 /**
  * A Replicate prediction is billed from its terminal metrics and the live
@@ -227,10 +136,11 @@ export async function reconcilePendingReservations(
     LIMIT ${options.limit ?? 100}
   `;
 
+  const openRouter = openRouterProvider(options.openRouter).reconcile!;
   const lookupCharge = (row: PendingRow): Promise<ProviderCharge> | null => {
     if (!row.provider_request_id) return null;
     if (row.provider === "openrouter") {
-      return openRouterCharge(row.provider_request_id, options.openRouter);
+      return openRouter(row.provider_request_id);
     }
     if (row.provider === "replicate" && options.replicate) {
       return replicateCharge(row.provider_request_id, options.replicate);

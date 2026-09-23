@@ -6,7 +6,6 @@ import { BillingEngine } from "./engine";
 import { Usd } from "./money";
 import {
   expireStaleReservations,
-  fetchOpenRouterGeneration,
   type ReconcileOptions,
   reconcilePendingReservations,
 } from "./reconciliation";
@@ -118,30 +117,6 @@ const stateOf = async (requestId: string) => {
 
 const reconcile = (options: Partial<Omit<ReconcileOptions, "sql" | "billing">> = {}) =>
   reconcilePendingReservations({ sql, billing: engine, openRouter: openRouterUnused, ...options });
-
-describe("fetchOpenRouterGeneration", () => {
-  test("parses the generation record", async () => {
-    const lookup = await fetchOpenRouterGeneration(
-      "gen-1",
-      openRouter((url) => {
-        expect(url).toBe("https://upstream.test/api/v1/generation?id=gen-1");
-        return generationResponse(0.00042);
-      }),
-    );
-    if (lookup.state !== "found") throw new Error("expected found");
-    expect(lookup.generation.totalCostUsd.toString()).toBe("0.000420000000");
-    expect(lookup.generation.promptTokens).toBe(5);
-    expect(lookup.generation.completionTokens).toBe(7);
-    expect(lookup.generation.model).toBe("test/model");
-  });
-
-  test("treats 404 as not yet available and other errors as failures", async () => {
-    expect(await fetchOpenRouterGeneration("x", openRouter(notFound))).toEqual({ state: "not_found" });
-    await expect(
-      fetchOpenRouterGeneration("x", openRouter(() => new Response("", { status: 500 }))),
-    ).rejects.toThrow("HTTP 500");
-  });
-});
 
 describe("reconcilePendingReservations with OpenRouter", () => {
   test("finalizes with the provider's cost and a reconciled analytics event", async () => {

@@ -12,11 +12,11 @@ import postgres from "postgres";
 import type { BillingEngine } from "../billing/engine";
 import {
   expireStaleReservations,
-  type OpenRouterConfig,
   reconcilePendingReservations,
   type ReplicateReconcileConfig,
 } from "../billing/reconciliation";
 import { log } from "../log";
+import type { OpenRouterConfig } from "../providers/openrouter/generation";
 import {
   type RequestEventDrainer,
   startRequestEventDrainer,
