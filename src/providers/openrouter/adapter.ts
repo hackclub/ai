@@ -119,21 +119,31 @@ class OpenRouterResponseObserver {
   }
 }
 
+/** Without usage, a refused (non-2xx) response was not charged. */
 const uncertainCompletion = (
+  ok: boolean,
   observation: ObservedUsage,
   body: string,
   bodyCapture: "complete" | "partial" | "truncated",
   reason?: string,
-): ProviderCompletion => ({
-  state: "uncertain",
-  providerRequestId: observation.requestId,
-  reason:
-    reason ??
-    observation.providerError ??
-    "OpenRouter response ended without authoritative cost",
-  responseBody: body,
-  bodyCapture,
-});
+): ProviderCompletion =>
+  ok
+    ? {
+        state: "uncertain",
+        providerRequestId: observation.requestId,
+        reason:
+          reason ??
+          observation.providerError ??
+          "OpenRouter response ended without authoritative cost",
+        responseBody: body,
+        bodyCapture,
+      }
+    : {
+        state: "provider_error",
+        providerRequestId: observation.requestId,
+        responseBody: body,
+        bodyCapture,
+      };
 
 /**
  * OpenRouter reports usage only once generation has finished (the last
@@ -175,7 +185,7 @@ const meterResponse = (
 
   if (!upstream.body) {
     const observation = observer.finish("");
-    settle(uncertainCompletion(observation, "", "complete", "Empty response"));
+    settle(uncertainCompletion(upstream.ok, observation, "", "complete", "Empty response"));
     return { response: upstream, requestBody, completion };
   }
 
@@ -228,6 +238,7 @@ const meterResponse = (
         } else {
           settleOnce(
             uncertainCompletion(
+              upstream.ok,
               observation,
               captured,
               truncated ? "truncated" : "complete",
@@ -242,6 +253,7 @@ const meterResponse = (
         settleOnce(
           completeIfUsageSeen(observation, captured, truncated) ??
             uncertainCompletion(
+              upstream.ok,
               observation,
               captured,
               truncated ? "truncated" : "partial",
@@ -260,13 +272,16 @@ const meterResponse = (
       await reader.cancel(reason).catch(() => {});
       const captured = responseText(chunks);
       const observation = observer.finish(captured);
-      settleOnce(completeIfUsageSeen(observation, captured, truncated) ?? {
-        state: "cancelled",
-        providerRequestId: observation.requestId,
-        reason: typeof reason === "string" ? reason : "Client cancelled stream",
-        responseBody: captured,
-        bodyCapture: truncated ? "truncated" : "partial",
-      });
+      settleOnce(
+        completeIfUsageSeen(observation, captured, truncated) ??
+          uncertainCompletion(
+            upstream.ok,
+            observation,
+            captured,
+            truncated ? "truncated" : "partial",
+            typeof reason === "string" ? reason : "Client cancelled stream",
+          ),
+      );
     },
   });
 

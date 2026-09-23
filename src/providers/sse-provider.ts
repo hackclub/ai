@@ -76,9 +76,10 @@ export async function executeSseProvider(
       };
     }
     return {
-      state: "uncertain",
+      ...(upstream.ok
+        ? { state: "uncertain" as const, reason: fallbackReason }
+        : { state: "provider_error" as const }),
       providerRequestId,
-      reason: fallbackReason,
       responseBody: captured,
       bodyCapture: truncated ? "truncated" : "partial",
     };

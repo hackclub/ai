@@ -152,8 +152,6 @@ export const redactHeaders = (
 const elapsedMs = (startedAt: number) =>
   Math.max(0, Math.round(performance.now() - startedAt));
 
-const isSuccess = (status: number) => status >= 200 && status < 300;
-
 const isEventStream = (response: Response) =>
   response.headers.get("content-type")?.includes("text/event-stream") ??
   false;
@@ -170,7 +168,6 @@ const observation = (
   context: AnalyticsContext,
   completion: ProviderCompletion,
   outcome: RequestOutcome,
-  errorCode: string,
 ): RequestObservation => {
   const { input, response } = context;
   const usage = completion.state === "complete" ? completion.usage : null;
@@ -179,7 +176,7 @@ const observation = (
     endpoint: input.endpoint,
     model: completion.model ?? input.model,
     outcome,
-    errorCode,
+    errorCode: outcome === "provider_error" ? `http_${response.status}` : "",
     httpStatus: response.status,
     streamed: isEventStream(response),
     durationMs: context.durationMs,
@@ -203,48 +200,45 @@ const settleCompletion = async (
   context: AnalyticsContext,
   completion: ProviderCompletion,
 ): Promise<MeteredRequestOutcome> => {
-  const { input, response } = context;
+  const { input } = context;
   const providerRequestId = completion.providerRequestId ?? undefined;
 
-  if (completion.state === "complete") {
-    const reservation = await billing.finalize({
-      requestId: input.requestId,
-      actualCostUsd: completion.usage.costUsd,
-      usageSource: "provider_reported",
-      providerRequestId,
-      request: observation(context, completion, "completed", ""),
-    });
-    return { kind: "finalized", reservation, completion };
+  switch (completion.state) {
+    case "complete": {
+      const reservation = await billing.finalize({
+        requestId: input.requestId,
+        actualCostUsd: completion.usage.costUsd,
+        usageSource: "provider_reported",
+        providerRequestId,
+        request: observation(context, completion, "completed"),
+      });
+      return { kind: "finalized", reservation, completion };
+    }
+    case "provider_error": {
+      // The provider refused the request, so nothing was generated or charged.
+      // Finalizing at zero closes the reservation and still records the
+      // failed request for search and analytics.
+      const reservation = await billing.finalize({
+        requestId: input.requestId,
+        actualCostUsd: Usd.zero,
+        usageSource: "calculated",
+        providerRequestId,
+        request: observation(context, completion, "provider_error"),
+      });
+      return { kind: "finalized", reservation, completion };
+    }
+    case "uncertain": {
+      // A response that ended without authoritative usage (client
+      // cancellation, truncated stream, missing usage block) may still have
+      // been charged upstream. The reservation stays held until reconciled.
+      const reservation = await billing.markPendingReconciliation(
+        input.requestId,
+        completion.reason,
+        providerRequestId,
+      );
+      return { kind: "pending_reconciliation", reservation, completion };
+    }
   }
-
-  if (!isSuccess(response.status)) {
-    // The provider refused the request, so nothing was generated or charged.
-    // Finalizing at zero closes the reservation and still records the
-    // failed request for search and analytics.
-    const reservation = await billing.finalize({
-      requestId: input.requestId,
-      actualCostUsd: Usd.zero,
-      usageSource: "calculated",
-      providerRequestId,
-      request: observation(
-        context,
-        completion,
-        "provider_error",
-        `http_${response.status}`,
-      ),
-    });
-    return { kind: "finalized", reservation, completion };
-  }
-
-  // A successful response that ended without authoritative usage (client
-  // cancellation, truncated stream, missing usage block) may still have been
-  // charged upstream. The reservation stays held until reconciled.
-  const reservation = await billing.markPendingReconciliation(
-    input.requestId,
-    completion.reason,
-    providerRequestId,
-  );
-  return { kind: "pending_reconciliation", reservation, completion };
 };
 
 /**
@@ -253,10 +247,10 @@ const settleCompletion = async (
  * 1. Reserve the estimate. Insufficient funds or an exceeded limit throws
  *    before any provider call is made.
  * 2. Dispatch. A transport failure releases the reservation and rethrows.
- * 3. Once the response has been fully consumed or cancelled, finalize with
- *    the provider-reported cost, finalize at zero for a provider HTTP error,
- *    or mark the reservation pending reconciliation when the outcome is
- *    uncertain.
+ * 3. Once the response has been fully consumed or cancelled, settle as the
+ *    completion says: finalize with the provider-reported cost, finalize at
+ *    zero for a provider error, or mark the reservation pending
+ *    reconciliation when the outcome is uncertain.
  */
 export async function runMeteredRequest(
   billing: BillingLifecycle,
@@ -291,8 +285,9 @@ export async function runMeteredRequest(
   const timeToFirstByteMs = elapsedMs(startedAt);
 
   // Adapters resolve `completion` on every path, but the type cannot promise
-  // it. A rejection is treated as an unknown outcome so the reservation is
-  // still settled (held for reconciliation) rather than left to expire.
+  // it. A rejection is treated as an unknown outcome, whatever the HTTP
+  // status, so the reservation is still settled (held for reconciliation)
+  // rather than left to expire.
   const completion = metered.completion.catch((error: unknown): ProviderCompletion => {
     log.error({ err: error, requestId: input.requestId }, "provider completion rejected");
     return {

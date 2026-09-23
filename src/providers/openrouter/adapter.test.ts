@@ -92,7 +92,7 @@ describe("OpenRouterAdapter", () => {
 
     const completion = await result.completion;
     expect(cancelled).toBeTrue();
-    if (completion.state !== "cancelled") throw new Error("Expected cancel");
+    if (completion.state !== "uncertain") throw new Error("Expected uncertain");
     expect(completion.reason).toBe("client disconnected");
     expect(completion.providerRequestId).toBe("gen-cancelled");
     expect(completion.responseBody).toContain("gen-cancelled");
@@ -117,7 +117,7 @@ describe("OpenRouterAdapter", () => {
     await readOneThenCancel(result.response);
 
     const completion = await result.completion;
-    expect(completion.state).toBe("cancelled");
+    expect(completion.state).toBe("uncertain");
     expect(completion.providerRequestId).toBe("gen-gone");
   });
 
@@ -143,7 +143,7 @@ describe("OpenRouterAdapter", () => {
     await readOneThenCancel(result.response);
 
     const completion = await result.completion;
-    expect(completion.state).toBe("cancelled");
+    expect(completion.state).toBe("uncertain");
     expect(completion.providerRequestId).toBe("gen-header");
   });
 

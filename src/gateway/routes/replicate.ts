@@ -199,13 +199,11 @@ export const meterPrediction = (
     predictionId: string | null = null,
     bodyCapture: "complete" | "partial" = "complete",
   ) =>
-    settle({
-      state: "uncertain",
-      providerRequestId: predictionId,
-      reason,
-      responseBody: captured(),
-      bodyCapture,
-    });
+    settle(
+      upstream.ok
+        ? { state: "uncertain", providerRequestId: predictionId, reason, responseBody: captured(), bodyCapture }
+        : { state: "provider_error", providerRequestId: predictionId, responseBody: captured(), bodyCapture },
+    );
   const finish = async () => {
     const body = captured();
     if (!upstream.ok) {
@@ -284,13 +282,17 @@ export const meterPrediction = (
       // read still names a run that may be billed; keep its id for
       // reconciliation, exactly as `finish()` does.
       const predictionId = upstream.ok ? (parsePrediction(text)?.id ?? null) : null;
-      settle({
-        state: "cancelled",
-        providerRequestId: predictionId,
-        reason: typeof reason === "string" ? reason : "Client cancelled response",
-        responseBody: text,
-        bodyCapture: "partial",
-      });
+      settle(
+        upstream.ok
+          ? {
+              state: "uncertain",
+              providerRequestId: predictionId,
+              reason: typeof reason === "string" ? reason : "Client cancelled response",
+              responseBody: text,
+              bodyCapture: "partial",
+            }
+          : { state: "provider_error", providerRequestId: predictionId, responseBody: text, bodyCapture: "partial" },
+      );
     },
   });
   return {

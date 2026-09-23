@@ -61,9 +61,8 @@ export async function meterJsonResponse(
   const cost = success && !parseFailed ? options.extractCost(parsed) : null;
   if (!success) {
     completion = {
-      state: "uncertain",
+      state: "provider_error",
       providerRequestId,
-      reason: `Provider responded with HTTP ${upstream.status}`,
       responseBody: analyticsBody,
       bodyCapture: "complete",
     };

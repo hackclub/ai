@@ -202,9 +202,9 @@ describe("meterPrediction", () => {
     expect(completion.reason).toContain("without billable metrics");
   });
 
-  test("marks a provider error uncertain", async () => {
+  test("marks a provider error as a zero-cost provider error", async () => {
     const completion = await settle(Response.json({ detail: "bad" }, { status: 422 }));
-    expect(completion.state).toBe("uncertain");
+    expect(completion.state).toBe("provider_error");
   });
 
   test("retries a transient lookup failure instead of abandoning settlement", async () => {
@@ -251,7 +251,7 @@ describe("meterPrediction", () => {
     await reader?.read();
     await reader?.cancel("client disconnected");
     const completion = await metered.completion;
-    expectState(completion, "cancelled");
+    expectState(completion, "uncertain");
     expect(completion.providerRequestId).toBe("p7");
     expect(completion.reason).toBe("client disconnected");
   });
