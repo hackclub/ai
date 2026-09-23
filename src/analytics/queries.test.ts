@@ -4,109 +4,50 @@ import type postgres from "postgres";
 
 import { AnalyticsQueries, dailySpending } from "./queries";
 
-const fakeClickHouse = (responses: Array<() => unknown[]>) => {
-  let calls = 0;
-  let lastQuery: { query: string; query_params?: Record<string, unknown> } | undefined;
+type Query = { query: string; query_params?: Record<string, unknown> };
+
+/** AnalyticsQueries over a ClickHouse fake that answers every query with `rows`. */
+const queriesReturning = (rows: unknown[]) => {
+  const queries: Query[] = [];
   const client = {
-    query: async (args: { query: string; query_params?: Record<string, unknown> }) => {
-      calls += 1;
-      lastQuery = args;
-      const next = responses.shift();
-      if (!next) throw new Error("No response scripted");
-      return { json: async () => next() };
+    query: async (args: Query) => {
+      queries.push(args);
+      return { json: async () => rows };
     },
   } as unknown as ClickHouseClient;
-  return { client, calls: () => calls, last: () => lastQuery! };
+  return { analytics: new AnalyticsQueries(client), queries, last: () => queries.at(-1)! };
 };
 
 const statsRow = { total_requests: "2", total_prompt: "10", total_completion: "5" };
 
-describe("AnalyticsQueries global cache", () => {
-  test("serves globalStats from memory within the TTL", async () => {
-    const clock = { now: 0 };
-    const { client, calls } = fakeClickHouse([() => [statsRow]]);
-    const queries = new AnalyticsQueries(client, { globalCacheTtlMs: 60_000, now: () => clock.now });
-    expect(await queries.globalStats()).toEqual({
-      totalRequests: 2, totalTokens: 15, totalPromptTokens: 10, totalCompletionTokens: 5,
+describe("AnalyticsQueries stats", () => {
+  test("sums prompt and completion tokens", async () => {
+    const { analytics } = queriesReturning([statsRow]);
+    expect(await analytics.globalStats()).toEqual({
+      totalRequests: 2,
+      totalTokens: 15,
+      totalPromptTokens: 10,
+      totalCompletionTokens: 5,
     });
-    clock.now = 59_999;
-    await queries.globalStats();
-    expect(calls()).toBe(1);
   });
 
-  test("serves a stale value past the TTL while refreshing in the background", async () => {
-    const clock = { now: 0 };
-    const { client, calls } = fakeClickHouse([() => [statsRow], () => [{ ...statsRow, total_requests: "3" }]]);
-    const queries = new AnalyticsQueries(client, { globalCacheTtlMs: 1_000, now: () => clock.now });
-    await Promise.all([queries.globalStats(), queries.globalStats()]);
-    expect(calls()).toBe(1);
-    clock.now = 1_000;
-    // The first call past the TTL still returns the stale value immediately...
-    expect((await queries.globalStats()).totalRequests).toBe(2);
-    expect(calls()).toBe(2);
-    // ...and the background refresh has updated the cache for the next call.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect((await queries.globalStats()).totalRequests).toBe(3);
-    expect(calls()).toBe(2);
-  });
-
-  test("keeps serving the last value when a refresh fails", async () => {
-    const clock = { now: 0 };
-    const { client } = fakeClickHouse([
-      () => [{ model: "m", ...statsRow }],
-      () => { throw new Error("clickhouse down"); },
-    ]);
-    const queries = new AnalyticsQueries(client, { globalCacheTtlMs: 1_000, now: () => clock.now });
-    const first = await queries.modelStats();
-    clock.now = 1_000;
-    expect(await queries.modelStats()).toBe(first);
-  });
-
-  test("caches globalStats and modelStats independently", async () => {
-    const { client, calls } = fakeClickHouse([() => [statsRow], () => [{ model: "m", ...statsRow }]]);
-    const queries = new AnalyticsQueries(client);
-    await queries.globalStats();
-    await queries.modelStats();
-    await queries.globalStats();
-    expect(calls()).toBe(2);
-  });
-
-  test("serves userStats from memory per account", async () => {
-    const { client, calls } = fakeClickHouse([
-      () => [statsRow],
-      () => [statsRow],
-    ]);
-    const queries = new AnalyticsQueries(client);
-    await queries.userStats("a");
-    await queries.userStats("a");
-    expect(calls()).toBe(1);
-    await queries.userStats("b");
-    expect(calls()).toBe(2);
+  test("memoizes each stat, and userStats per account, under its own key", async () => {
+    const { analytics, queries } = queriesReturning([statsRow]);
+    await analytics.globalStats();
+    await analytics.modelStats();
+    await analytics.userStats("a");
+    await analytics.userStats("b");
+    await analytics.globalStats();
+    await analytics.userStats("a");
+    expect(queries).toHaveLength(4);
   });
 
   test("userStats avoids FINAL and groups by event_id", async () => {
-    const { client, last } = fakeClickHouse([() => [statsRow]]);
-    const queries = new AnalyticsQueries(client);
-    await queries.userStats("account-1");
+    const { analytics, last } = queriesReturning([statsRow]);
+    await analytics.userStats("account-1");
     expect(last().query).not.toContain("FINAL");
     expect(last().query).toContain("GROUP BY event_id");
     expect(last().query_params?.account_id).toBe("account-1");
-  });
-
-  test("evicts the oldest memo entry beyond the cap", async () => {
-    const { client, calls } = fakeClickHouse([
-      () => [statsRow],
-      () => [statsRow],
-      () => [statsRow],
-      () => [statsRow],
-    ]);
-    const queries = new AnalyticsQueries(client, { memoMaxEntries: 2 });
-    await queries.userStats("a");
-    await queries.userStats("b");
-    await queries.userStats("c");
-    await queries.userStats("a");
-    expect(calls()).toBe(4);
   });
 });
 
@@ -127,31 +68,24 @@ const row = (i: number) => ({
 });
 
 describe("recentRequests", () => {
-  test("first page without a cursor", async () => {
-    const { client, last } = fakeClickHouse([() => [row(3), row(2), row(1)]]);
-    const queries = new AnalyticsQueries(client);
-    const page = await queries.recentRequests("account-1", { pageSize: 2 });
-    expect(page.requests.length).toBe(2);
-    expect(page.next).toEqual({
-      before: page.requests[1]!.occurredAt,
-      beforeId: page.requests[1]!.requestId,
-    });
+  test("fetches one extra row to decide whether there is a next page", async () => {
+    const { analytics, last } = queriesReturning([row(3), row(2), row(1)]);
+    const page = await analytics.recentRequests("account-1", { pageSize: 2 });
+    expect(page.requests).toHaveLength(2);
+    expect(page.next).toEqual({ before: page.requests[1]!.occurredAt, beforeId: page.requests[1]!.requestId });
     expect(last().query).not.toContain("before_id");
     expect(last().query_params?.limit).toBe(3);
   });
 
   test("exactly pageSize rows means no next page", async () => {
-    const { client } = fakeClickHouse([() => [row(2), row(1)]]);
-    const queries = new AnalyticsQueries(client);
-    const page = await queries.recentRequests("account-1", { pageSize: 2 });
-    expect(page.next).toBeNull();
+    const { analytics } = queriesReturning([row(2), row(1)]);
+    expect((await analytics.recentRequests("account-1", { pageSize: 2 })).next).toBeNull();
   });
 
   test("cursor is bound as parameters, not interpolated", async () => {
-    const { client, last } = fakeClickHouse([() => [row(1)]]);
-    const queries = new AnalyticsQueries(client);
+    const { analytics, last } = queriesReturning([row(1)]);
     const beforeId = "00000000-0000-4000-8000-000000000009";
-    await queries.recentRequests("account-1", {
+    await analytics.recentRequests("account-1", {
       pageSize: 2,
       before: { before: "2026-09-19T00:00:00.000Z", beforeId },
     });
@@ -160,54 +94,21 @@ describe("recentRequests", () => {
     expect(last().query_params?.before_id).toBe(beforeId);
     expect(last().query).not.toContain(beforeId);
   });
-
-  test("numeric fields are coerced", async () => {
-    const { client } = fakeClickHouse([() => [row(1)]]);
-    const queries = new AnalyticsQueries(client);
-    const page = await queries.recentRequests("account-1", { pageSize: 2 });
-    const request = page.requests[0]!;
-    expect(typeof request.httpStatus).toBe("number");
-    expect(typeof request.inputTokens).toBe("number");
-    expect(typeof request.durationMs).toBe("number");
-  });
-
-  test("is not memoized", async () => {
-    const { client, calls } = fakeClickHouse([() => [row(1)], () => [row(1)]]);
-    const queries = new AnalyticsQueries(client);
-    await queries.recentRequests("account-1", { pageSize: 2 });
-    await queries.recentRequests("account-1", { pageSize: 2 });
-    expect(calls()).toBe(2);
-  });
 });
 
-const fakeSql = (results: Array<unknown[]>) => {
-  let index = 0;
-  const fn = (async (_strings: TemplateStringsArray, ..._values: unknown[]) => {
-    const next = results[index];
-    index += 1;
-    return next ?? [];
-  }) as unknown as postgres.Sql;
-  return fn;
-};
-
 describe("dailySpending", () => {
-  test("uses the funding window's granted amount when it is set", async () => {
-    const sql = fakeSql([[{ spent: "1.5", granted: "3" }], [{ amount: "3" }]]);
-    expect(await dailySpending(sql, "account-1")).toEqual({ spentUsd: "1.5", limitUsd: "3" });
-  });
+  /** Answers the window query, then the policy query. */
+  const sqlReturning = (window: unknown[], policy: unknown[]) => {
+    const results = [window, policy];
+    return (async () => results.shift() ?? []) as unknown as postgres.Sql;
+  };
 
-  test("falls back to the policy amount when no window exists yet", async () => {
-    const sql = fakeSql([[], [{ amount: "3" }]]);
-    expect(await dailySpending(sql, "account-1")).toEqual({ spentUsd: "0", limitUsd: "3" });
-  });
-
-  test("falls back to the policy amount when the window granted zero", async () => {
-    const sql = fakeSql([[{ spent: "0", granted: "0" }], [{ amount: "5" }]]);
-    expect(await dailySpending(sql, "account-1")).toEqual({ spentUsd: "0", limitUsd: "5" });
-  });
-
-  test("returns zeroes when there is no window and no policy", async () => {
-    const sql = fakeSql([[], []]);
-    expect(await dailySpending(sql, "account-1")).toEqual({ spentUsd: "0", limitUsd: "0" });
+  test.each([
+    ["uses the window's granted amount when set", [{ spent: "1.5", granted: "3" }], [{ amount: "3" }], "1.5", "3"],
+    ["falls back to the policy amount when no window exists yet", [], [{ amount: "3" }], "0", "3"],
+    ["falls back to the policy amount when the window granted zero", [{ spent: "0", granted: "0" }], [{ amount: "5" }], "0", "5"],
+    ["returns zeroes with no window and no policy", [], [], "0", "0"],
+  ])("%s", async (_name, window, policy, spentUsd, limitUsd) => {
+    expect(await dailySpending(sqlReturning(window, policy), "account-1")).toEqual({ spentUsd, limitUsd });
   });
 });

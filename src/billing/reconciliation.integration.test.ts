@@ -55,16 +55,30 @@ describe("reconciliation with PostgreSQL", () => {
     await sql.end();
   });
 
-  integrationTest("finalizes a pending reservation from the provider record", async () => {
-    if (!sql || !engine) throw new Error("Missing database");
-    const requestId = crypto.randomUUID();
-    const generationId = `gen-reconcile-${runId}`;
+  const reserve = async (requestId: string, ttlMs?: number) => {
+    if (!engine) throw new Error("Missing database");
     await engine.reserve({
       requestId,
       accountId,
       provider: "openrouter",
       estimatedCostUsd: Usd.parse("0.01"),
+      ttlMs,
     });
+  };
+
+  const stateOf = async (requestId: string) => {
+    if (!sql) throw new Error("Missing database");
+    const [row] = await sql<{ state: string }[]>`
+      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
+    `;
+    return row?.state;
+  };
+
+  integrationTest("finalizes a pending reservation from the provider record", async () => {
+    if (!sql || !engine) throw new Error("Missing database");
+    const requestId = crypto.randomUUID();
+    const generationId = `gen-reconcile-${runId}`;
+    await reserve(requestId);
     await engine.markPendingReconciliation(requestId, "client disconnected", generationId);
 
     const result = await reconcilePendingReservations({
@@ -102,12 +116,11 @@ describe("reconciliation with PostgreSQL", () => {
       usage_source: "reconciled",
     });
 
-    const [reservation] = await sql<{ id: string }[]>`
-      SELECT id FROM billing_reservations WHERE request_id = ${requestId}::uuid
-    `;
     const [job] = await sql<{ payload: Record<string, unknown> }[]>`
       SELECT payload FROM request_event_outbox
-      WHERE payload->>'reservation_id' = ${reservation?.id ?? ""}
+      WHERE payload->>'reservation_id' = (
+        SELECT id::text FROM billing_reservations WHERE request_id = ${requestId}::uuid
+      )
     `;
     expect(job?.payload.outcome).toBe("reconciled");
     expect(job?.payload.input_tokens).toBe(10);
@@ -125,13 +138,7 @@ describe("reconciliation with PostgreSQL", () => {
   integrationTest("releases reservations that expired without settlement", async () => {
     if (!sql || !engine) throw new Error("Missing database");
     const requestId = crypto.randomUUID();
-    await engine.reserve({
-      requestId,
-      accountId,
-      provider: "openrouter",
-      estimatedCostUsd: Usd.parse("0.01"),
-      ttlMs: 60_000,
-    });
+    await reserve(requestId, 60_000);
     await sql`
       UPDATE billing_reservations SET expires_at = now() - INTERVAL '1 minute'
       WHERE request_id = ${requestId}::uuid
@@ -139,31 +146,20 @@ describe("reconciliation with PostgreSQL", () => {
 
     const result = await expireStaleReservations({ sql, billing: engine });
     expect(result.released).toBeGreaterThanOrEqual(1);
-    const [row] = await sql<{ state: string }[]>`
-      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
-    `;
-    expect(row?.state).toBe("released");
+    expect(await stateOf(requestId)).toBe("released");
   });
 
   integrationTest("releases a pending reservation only once the database says it is old", async () => {
     if (!sql || !engine) throw new Error("Missing database");
     const requestId = crypto.randomUUID();
-    await engine.reserve({
-      requestId,
-      accountId,
-      provider: "openrouter",
-      estimatedCostUsd: Usd.parse("0.01"),
-    });
+    await reserve(requestId);
     // No provider id: the only way out is release after maxAgeMs.
     await engine.markPendingReconciliation(requestId, "no usage block");
     const openRouter = { apiKey: "key", baseUrl: "https://upstream.test/api" };
 
     const young = await reconcilePendingReservations({ sql, billing: engine, openRouter });
-    const [beforeRow] = await sql<{ state: string }[]>`
-      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
-    `;
-    expect(beforeRow?.state).toBe("pending_reconciliation");
     expect(young.failed).toBe(0);
+    expect(await stateOf(requestId)).toBe("pending_reconciliation");
 
     await sql`
       UPDATE billing_reservations SET created_at = now() - INTERVAL '25 hours'
@@ -171,9 +167,6 @@ describe("reconciliation with PostgreSQL", () => {
     `;
     const old = await reconcilePendingReservations({ sql, billing: engine, openRouter });
     expect(old.released).toBeGreaterThanOrEqual(1);
-    const [afterRow] = await sql<{ state: string }[]>`
-      SELECT state FROM billing_reservations WHERE request_id = ${requestId}::uuid
-    `;
-    expect(afterRow?.state).toBe("released");
+    expect(await stateOf(requestId)).toBe("released");
   });
 });

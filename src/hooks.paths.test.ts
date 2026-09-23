@@ -3,16 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { isApiPath, isCrossOriginFormSubmission } from "./hooks.paths";
 
 describe("isApiPath", () => {
-  test.each([
-    "/up",
-    "/proxy",
-    "/proxy/v1/models",
-    "/api/keys",
-    "/auth/login",
-    "/internal/revoke",
-  ])("%s is served by Elysia", (pathname) => {
-    expect(isApiPath(pathname)).toBeTrue();
-  });
+  test.each(["/up", "/proxy", "/proxy/v1/models", "/api/keys", "/auth/login", "/internal/revoke"])(
+    "%s is served by Elysia",
+    (pathname) => {
+      expect(isApiPath(pathname)).toBeTrue();
+    },
+  );
 
   test.each(["/dashboard", "/proxying", "/apix", "/"])("%s is a page route", (pathname) => {
     expect(isApiPath(pathname)).toBeFalse();
@@ -21,54 +17,21 @@ describe("isApiPath", () => {
 
 describe("isCrossOriginFormSubmission", () => {
   const origin = "https://gw.test";
+  const evil = "https://evil.test";
+  const form = "application/x-www-form-urlencoded";
 
-  const request = (init: RequestInit) => new Request("https://gw.test/dashboard", init);
-
-  test("POST + form content-type + foreign origin is cross-origin", () => {
-    const req = request({
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.test" },
+  test.each([
+    ["POST", form, evil, true],
+    ["POST", form, origin, false],
+    ["GET", form, evil, false],
+    ["POST", "application/json", evil, false],
+    ["POST", "multipart/form-data; boundary=x", evil, true],
+    ["POST", "text/plain", evil, true],
+  ])("%s %s from %s -> %p", (method, contentType, from, expected) => {
+    const request = new Request("https://gw.test/dashboard", {
+      method,
+      headers: { "content-type": contentType, origin: from },
     });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeTrue();
-  });
-
-  test("POST + form content-type + same origin is not cross-origin", () => {
-    const req = request({
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin },
-    });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeFalse();
-  });
-
-  test("GET requests are never cross-origin form submissions", () => {
-    const req = request({
-      method: "GET",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.test" },
-    });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeFalse();
-  });
-
-  test("application/json is not a form submission", () => {
-    const req = request({
-      method: "POST",
-      headers: { "content-type": "application/json", origin: "https://evil.test" },
-    });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeFalse();
-  });
-
-  test("multipart/form-data with a boundary, foreign origin, is cross-origin", () => {
-    const req = request({
-      method: "POST",
-      headers: { "content-type": "multipart/form-data; boundary=x", origin: "https://evil.test" },
-    });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeTrue();
-  });
-
-  test("text/plain, foreign origin, is cross-origin", () => {
-    const req = request({
-      method: "POST",
-      headers: { "content-type": "text/plain", origin: "https://evil.test" },
-    });
-    expect(isCrossOriginFormSubmission(req, origin)).toBeTrue();
+    expect(isCrossOriginFormSubmission(request, origin)).toBe(expected);
   });
 });

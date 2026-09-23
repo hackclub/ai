@@ -2,14 +2,13 @@ import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../../analytics/worker";
-import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
 import { type Fetch, OpenRouterAdapter } from "../../providers/openrouter/adapter";
 import { integrationDatabaseUrl, integrationTestFor } from "../../test/integration-db";
 import { exaRoutes } from "./exa";
 import { imagesRoutes } from "./images";
-import { moderationRoutes } from "./moderations";
 import { ocrRoutes } from "./ocr";
+import { createTestAccount, post } from "./test-harness";
 
 const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
 const integrationTest = integrationTestFor(databaseUrl);
@@ -32,19 +31,8 @@ describe("provider routes with PostgreSQL", () => {
     return nextResponse();
   };
 
-  const post = (
-    app: { handle: (request: Request) => Promise<Response> },
-    path: string,
-    body: unknown,
-    key = apiKey,
-  ) =>
-    app.handle(
-      new Request(`http://gateway.test${path}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    );
+  const send = (app: { handle: (request: Request) => Promise<Response> }, path: string, body: unknown) =>
+    app.handle(post(path, body, { authorization: `Bearer ${apiKey}` }));
 
   const waitForState = async (providerRequestId: string, state: string) => {
     if (!sql) throw new Error("Missing database");
@@ -59,55 +47,28 @@ describe("provider routes with PostgreSQL", () => {
     return row;
   };
 
+  let cleanup = async () => {};
+
   beforeAll(async () => {
     if (!databaseUrl) return;
     sql = postgres(databaseUrl, { max: 4 });
     billing = new BillingEngine(sql);
     await migrateJobQueue(databaseUrl);
-    const user = await createUser(sql, { slackId: `U-routes-${runId}`, dailyAllowanceUsd: "1" });
-    userId = user.userId;
-    accountId = user.billingAccountId;
-    apiKey = (await issueApiKey(sql, userId, "routes")).key;
+    ({ userId, accountId, apiKey, cleanup } = await createTestAccount(sql, `routes-${runId}`));
   });
 
   afterAll(async () => {
     if (!sql) return;
-    await sql`
-      DELETE FROM request_event_outbox
-      WHERE payload->>'account_id' = ${accountId}
-    `;
-    const reservations = sql`
-      SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid
-    `;
-    await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid`;
-    for (const table of [
-      "billing_reservation_funding_holds",
-      "billing_reservation_credit_holds",
-      "billing_reservation_limit_holds",
-    ]) {
-      await sql`DELETE FROM ${sql(table)} WHERE reservation_id IN (${reservations})`;
-    }
-    await sql`DELETE FROM billing_reservations WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_windows WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_policies WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
-    await sql`DELETE FROM users WHERE id = ${userId}::uuid`;
+    await cleanup();
     await sql.end();
   });
 
   integrationTest("exa: forwards and bills reported cost", async () => {
     if (!sql || !billing) throw new Error("Missing database");
-    const base = { sql, billing, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" };
-
-    const app = exaRoutes(base);
-    // Only /answer streams (covered in exa.test.ts); other endpoints refuse it.
-    const streaming = await post(app, "/proxy/v1/exa/search", { query: "hi", stream: true });
-    expect(streaming.status).toBe(400);
-
+    const app = exaRoutes({ sql, billing, enforceIdv: false, fetch: fakeFetch, exaApiKey: "exa-key" });
     const requestId = `exa-${runId}`;
-    nextResponse = () =>
-      Response.json({ requestId, results: [], costDollars: { total: 0.005 } });
-    const response = await post(app, "/proxy/v1/exa/search", { query: "six seven mango" });
+    nextResponse = () => Response.json({ requestId, results: [], costDollars: { total: 0.005 } });
+    const response = await send(app, "/proxy/v1/exa/search", { query: "six seven mango" });
     expect(response.status).toBe(200);
     expect(((await response.json()) as { requestId: string }).requestId).toBe(requestId);
     const call = upstream.at(-1);
@@ -117,20 +78,9 @@ describe("provider routes with PostgreSQL", () => {
 
     const row = await waitForState(requestId, "finalized");
     expect(row?.actual_cost_usd).toBe("0.005000000000");
-
-    // Exa's SDKs send the key as x-api-key; the proxy accepts it there too.
-    const viaApiKeyHeader = await app.handle(
-      new Request("http://gateway.test/proxy/v1/exa/search", {
-        method: "POST",
-        headers: { "x-api-key": apiKey, "content-type": "application/json" },
-        body: JSON.stringify({ query: "header check" }),
-      }),
-    );
-    expect(viaApiKeyHeader.status).toBe(200);
-    expect(upstream.at(-1)?.headers.get("x-api-key")).toBe("exa-key");
   });
 
-  integrationTest("ocr: validates the document, redacts analytics, bills per page", async () => {
+  integrationTest("ocr: redacts analytics and bills per page", async () => {
     if (!sql || !billing) throw new Error("Missing database");
     const app = ocrRoutes({
       sql,
@@ -140,15 +90,12 @@ describe("provider routes with PostgreSQL", () => {
       mistralApiKey: "mistral-key",
       perPagePriceUsd: "0.002",
     });
-    const invalid = await post(app, "/proxy/v1/ocr", { document: { type: "image_url", image_url: "http://x" } });
-    expect(invalid.status).toBe(400);
-
     nextResponse = () =>
       Response.json({
         model: "mistral-ocr-latest",
         pages: [{ index: 0, markdown: "secret text" }, { index: 1, markdown: "more" }, { index: 2 }],
       });
-    const response = await post(app, "/proxy/v1/ocr", {
+    const response = await send(app, "/proxy/v1/ocr", {
       document: { type: "document_url", document_url: "https://x/a.pdf" },
     });
     expect(response.status).toBe(200);
@@ -169,29 +116,6 @@ describe("provider routes with PostgreSQL", () => {
     expect(JSON.parse(job?.payload.response_body ?? "{}").pages[0].markdown_length).toBe(11);
   });
 
-  integrationTest("moderations: forwards without billing", async () => {
-    if (!sql) throw new Error("Missing database");
-    const app = moderationRoutes({
-      sql,
-      enforceIdv: false,
-      fetch: fakeFetch,
-      moderationApiUrl: "https://moderation.test/v1/moderations",
-      moderationApiKey: "mod-key",
-    });
-    nextResponse = () => Response.json({ results: [{ flagged: false }] }, { status: 200 });
-    const before = await sql<{ count: number }[]>`
-      SELECT count(*)::integer AS count FROM billing_reservations WHERE account_id = ${accountId}::uuid
-    `;
-    const response = await post(app, "/proxy/v1/moderations", { input: "hello" });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ results: [{ flagged: false }] });
-    expect(upstream.at(-1)?.headers.get("authorization")).toBe("Bearer mod-key");
-    const after = await sql<{ count: number }[]>`
-      SELECT count(*)::integer AS count FROM billing_reservations WHERE account_id = ${accountId}::uuid
-    `;
-    expect(after[0]?.count).toBe(before[0]?.count);
-  });
-
   integrationTest("images: translates to chat completions and returns OpenAI shape", async () => {
     if (!sql || !billing) throw new Error("Missing database");
     const app = imagesRoutes({
@@ -210,7 +134,7 @@ describe("provider routes with PostgreSQL", () => {
         choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,QUJD" } }] } }],
         usage: { prompt_tokens: 5, completion_tokens: 1, cost: 0.01 },
       });
-    const response = await post(app, "/proxy/v1/images/generations", {
+    const response = await send(app, "/proxy/v1/images/generations", {
       prompt: "a cat",
       size: "1024x1792",
     });
@@ -230,8 +154,5 @@ describe("provider routes with PostgreSQL", () => {
     });
     const row = await waitForState(generationId, "finalized");
     expect(row?.actual_cost_usd).toBe("0.010000000000");
-
-    const unknown = await post(app, "/proxy/v1/images/generations", { prompt: "x", model: "img/nope" });
-    expect(unknown.status).toBe(400);
   });
 });

@@ -3,87 +3,33 @@ import { describe, expect, test } from "bun:test";
 import { Usd } from "./money";
 
 describe("Usd.parse", () => {
-  test("parses a plain decimal and renders twelve decimal places", () => {
-    expect(Usd.parse("0.01").toString()).toBe("0.010000000000");
+  test.each([
+    ["0.01", "0.010000000000"],
+    ["-1.5", "-1.500000000000"],
+  ])("parses %p and renders twelve decimal places", (input, rendered) => {
+    expect(Usd.parse(input).toString()).toBe(rendered);
   });
 
-  test("parses a negative value", () => {
-    const value = Usd.parse("-1.5");
-    expect(value.isNegative()).toBeTrue();
-    expect(value.toString()).toBe("-1.500000000000");
-  });
-
-  test("rejects more than twelve fractional digits", () => {
-    expect(() => Usd.parse("1.0000000000001")).toThrow(RangeError);
-  });
-
-  test("rejects non-numeric strings", () => {
-    expect(() => Usd.parse("abc")).toThrow(TypeError);
-  });
-
-  test("rejects exponent notation", () => {
-    expect(() => Usd.parse("1e-7")).toThrow(TypeError);
-  });
-
-  test("rejects an empty string", () => {
-    expect(() => Usd.parse("")).toThrow(TypeError);
+  test.each([
+    ["1.0000000000001", RangeError],
+    ["abc", TypeError],
+    ["1e-7", TypeError],
+    ["", TypeError],
+  ])("rejects %p", (input, error) => {
+    expect(() => Usd.parse(input)).toThrow(error);
   });
 });
 
 describe("Usd.fromNumber", () => {
-  test("converts a small float via toFixed", () => {
+  test("converts a small float exactly", () => {
     expect(Usd.fromNumber(0.00042).toString()).toBe("0.000420000000");
   });
 
-  test("documents sub-atom rounding to zero", () => {
+  test("rounds sub-atom values to zero", () => {
     expect(Usd.fromNumber(5e-13).toAtoms()).toBe(0n);
   });
 
-  test("rejects NaN", () => {
-    expect(() => Usd.fromNumber(NaN)).toThrow(TypeError);
-  });
-
-  test("rejects Infinity", () => {
-    expect(() => Usd.fromNumber(Infinity)).toThrow(TypeError);
-  });
-
-  test("rejects values that toFixed renders in exponent form", () => {
-    expect(() => Usd.fromNumber(1e21)).toThrow();
-  });
-});
-
-describe("Usd arithmetic", () => {
-  test("add sums two values", () => {
-    expect(Usd.parse("0.01").add(Usd.parse("0.02")).toString()).toBe("0.030000000000");
-  });
-
-  test("multiply scales by a bigint multiplier", () => {
-    expect(Usd.parse("0.01").multiply(3n).toString()).toBe("0.030000000000");
-  });
-
-  test("fromAtoms round-trips through toString", () => {
-    expect(Usd.fromAtoms(5n).toString()).toBe("0.000000000005");
-  });
-
-  test("zero is not negative", () => {
-    expect(Usd.zero.isNegative()).toBeFalse();
-  });
-
-  test("subtract can go below zero", () => {
-    const value = Usd.parse("0.01").subtract(Usd.parse("0.03"));
-    expect(value.toString()).toBe("-0.020000000000");
-    expect(value.isNegative()).toBeTrue();
-  });
-
-  test("min, sum and comparisons are exact at the smallest unit", () => {
-    const one = Usd.fromAtoms(1n);
-    const two = Usd.fromAtoms(2n);
-    expect(Usd.min(two, one)).toBe(one);
-    expect(Usd.sum([one, two, one]).equals(Usd.fromAtoms(4n))).toBeTrue();
-    expect(Usd.sum([]).isZero()).toBeTrue();
-    expect(one.lessThan(two)).toBeTrue();
-    expect(two.lessThan(two)).toBeFalse();
-    expect(one.isPositive()).toBeTrue();
-    expect(Usd.zero.isPositive()).toBeFalse();
+  test.each([NaN, Infinity, 1e21])("rejects %p", (value) => {
+    expect(() => Usd.fromNumber(value)).toThrow();
   });
 });

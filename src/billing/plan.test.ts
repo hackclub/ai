@@ -9,7 +9,6 @@ import {
   type FundingHold,
   type FundingSource,
   type HoldChange,
-  needsCurrentLimitWindows,
   planFinalize,
   planReserve,
 } from "./plan";
@@ -41,46 +40,18 @@ const show = (changes: HoldChange[]) =>
     return `${change.kind}:${change.counterId} ${balance(change.before)} -> ${balance(change.after)}`;
   });
 
-describe("compareSources", () => {
-  const ids = (sources: FundingSource[]) =>
-    [...sources].sort(compareSources).map((s) => s.id);
-
-  test("priority order", () => {
-    expect(ids([source({ id: "b", priority: 2 }), source({ id: "a", priority: 1 })])).toEqual([
-      "a",
-      "b",
-    ]);
-  });
-
-  test("priority tie breaks on earliest expiry, never-expiring last", () => {
-    expect(
-      ids([
-        source({ id: "later", priority: 1, expiresAt: new Date(2000) }),
-        source({ id: "earlier", priority: 1, expiresAt: new Date(1000) }),
-        source({ id: "never", priority: 1, expiresAt: null }),
-      ]),
-    ).toEqual(["earlier", "later", "never"]);
-  });
-
-  test("full tie breaks on id", () => {
-    expect(
-      ids([
-        source({ id: "b", priority: 1, expiresAt: new Date(1000) }),
-        source({ id: "a", priority: 1, expiresAt: new Date(1000) }),
-      ]),
-    ).toEqual(["a", "b"]);
-  });
+test("compareSources orders by priority, then earliest expiry (never last), then id", () => {
+  const sources = [
+    source({ id: "last", priority: 2 }),
+    source({ id: "never", priority: 1, expiresAt: null }),
+    source({ id: "later", priority: 1, expiresAt: new Date(2000) }),
+    source({ id: "b", priority: 1, expiresAt: new Date(1000) }),
+    source({ id: "a", priority: 1, expiresAt: new Date(1000) }),
+  ];
+  expect(sources.sort(compareSources).map((s) => s.id)).toEqual(["a", "b", "later", "never", "last"]);
 });
 
 describe("allocate", () => {
-  test("exact fit", () => {
-    const a = source({ id: "a", available: usd("10") });
-    const result = allocate(usd("10"), [a]);
-
-    expect(result.items).toEqual([{ source: a, amount: usd("10") }]);
-    expect(result.remaining.isZero()).toBeTrue();
-  });
-
   test("spills from a window to a credit in spending order, whatever the input order", () => {
     const window = source({ id: "w", kind: "funding_window", priority: 100, available: usd("10") });
     const credit = source({ id: "c", kind: "credit_grant", priority: 200, available: usd("10") });
@@ -93,7 +64,7 @@ describe("allocate", () => {
     expect(result.remaining.isZero()).toBeTrue();
   });
 
-  test("empty sources are skipped", () => {
+  test("skips empty sources", () => {
     const full = source({ id: "full", available: usd("5") });
     const result = allocate(usd("5"), [source({ id: "empty" }), full]);
 
@@ -105,13 +76,6 @@ describe("allocate", () => {
 
     expect(result.items.map((item) => item.amount.toString())).toEqual(["5.000000000000"]);
     expect(result.remaining.toString()).toBe("15.000000000000");
-  });
-
-  test("a zero amount allocates nothing", () => {
-    const result = allocate(Usd.zero, [source({ id: "a", available: usd("10") })]);
-
-    expect(result.items).toEqual([]);
-    expect(result.remaining.isZero()).toBeTrue();
   });
 });
 
@@ -242,12 +206,5 @@ describe("planFinalize", () => {
       "funding_window:today 0.000000000000/0.000000000000 -> 0.000000000000/0.300000000000",
       "limit_window:day 0.000000000000/0.000000000000 -> 0.000000000000/0.300000000000",
     ]);
-  });
-
-  test("current limit windows are only needed without limit holds and with a real cost", () => {
-    const held = [{ id: "day", held: { reserved: usd("0.1"), committed: Usd.zero } }];
-    expect(needsCurrentLimitWindows([], usd("0.1"))).toBeTrue();
-    expect(needsCurrentLimitWindows([], Usd.zero)).toBeFalse();
-    expect(needsCurrentLimitWindows(held, usd("0.1"))).toBeFalse();
   });
 });

@@ -64,11 +64,13 @@ describe("Hack Club OAuth with PostgreSQL", () => {
   integrationTest("callback creates the user with funding and a session", async () => {
     if (!sql) throw new Error("Missing database");
     const app = routes();
-    const response = await app.handle(
-      new Request("http://gateway.test/auth/callback?code=the-code&state=s1", {
-        headers: { cookie: "oauth_state=s1" },
-      }),
-    );
+    const callback = (code: string, state: string) =>
+      app.handle(
+        new Request(`http://gateway.test/auth/callback?code=${code}&state=${state}`, {
+          headers: { cookie: `oauth_state=${state}` },
+        }),
+      );
+    const response = await callback("the-code", "s1");
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("/dashboard");
     expect(tokenRequests[0]).toContain("code=the-code");
@@ -90,12 +92,7 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     expect(policy?.amount_usd).toBe("3.000000000000");
 
     // Signing in again updates rather than duplicates.
-    const again = await app.handle(
-      new Request("http://gateway.test/auth/callback?code=c2&state=s2", {
-        headers: { cookie: "oauth_state=s2" },
-      }),
-    );
-    expect(again.status).toBe(302);
+    expect((await callback("c2", "s2")).status).toBe(302);
     const [count] = await sql<{ count: number }[]>`
       SELECT count(*)::integer AS count FROM users WHERE slack_id = ${slackId}
     `;

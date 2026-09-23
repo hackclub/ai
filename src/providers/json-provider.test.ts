@@ -30,7 +30,6 @@ describe("executeJsonProvider", () => {
     expect(await result.response.text()).toBe(wire);
     expect(result.requestBody).toBe('{"q":1}');
     const completion = await result.completion;
-    expect(completion.state).toBe("complete");
     if (completion.state !== "complete") throw new Error("expected complete");
     expect(completion.usage.costUsd.toString()).toBe("0.002000000000");
     expect(completion.providerRequestId).toBe("r1");
@@ -50,7 +49,6 @@ describe("executeJsonProvider", () => {
     [new Response('{"data":1}'), "did not report a cost"],
   ])("marks %o uncertain", async (response, reason) => {
     const completion = await (await run(response)).completion;
-    expect(completion.state).toBe("uncertain");
     if (completion.state !== "uncertain") throw new Error("expected uncertain");
     expect(completion.reason).toContain(reason);
   });

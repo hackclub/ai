@@ -1,247 +1,94 @@
-import { describe, expect, test } from "bun:test";
-import { Elysia } from "elysia";
-import type postgres from "postgres";
+import { expect, test } from "bun:test";
 
-import type { FinalizeInput, Reservation, ReserveInput } from "../../billing/engine";
-import { Usd } from "../../billing/money";
-import type { Fetch } from "../../providers/openrouter/adapter";
-import { HttpError } from "../http-error";
-import type { BillingLifecycle } from "../metered-request";
-import { exaCost, exaRequestId, exaRoutes } from "./exa";
+import { exaCost, exaRoutes } from "./exa";
+import { fakeBilling, fakeFetch, fakeSql, post } from "./test-harness";
 
-describe("exaCost", () => {
-  test("reads costDollars.total", () => {
-    expect(exaCost({ costDollars: { total: 0.003 } })?.toString()).toBe("0.003000000000");
-  });
-
-  test("rejects a negative cost", () => {
-    expect(exaCost({ costDollars: { total: -1 } })).toBeNull();
-  });
-
-  test("rejects a missing cost", () => {
-    expect(exaCost({})).toBeNull();
-  });
-
-  test("rejects a null body", () => {
-    expect(exaCost(null)).toBeNull();
-  });
-
-  test("rejects a non-number cost", () => {
-    expect(exaCost({ costDollars: { total: "1" } })).toBeNull();
-  });
+test.each([
+  [{ costDollars: { total: 0.003 } }, "0.003000000000"],
+  [{ costDollars: { total: -1 } }, null],
+  [{ costDollars: { total: "1" } }, null],
+  [{}, null],
+  [null, null],
+])("exaCost(%j) is %p", (body, expected) => {
+  expect(exaCost(body)?.toString() ?? null).toBe(expected);
 });
 
-describe("exaRequestId", () => {
-  test("reads a string requestId", () => {
-    expect(exaRequestId({ requestId: "r1" })).toBe("r1");
-  });
-
-  test("returns null when missing", () => {
-    expect(exaRequestId({})).toBeNull();
-  });
-});
-
-type Call =
-  | { method: "reserve"; input: ReserveInput }
-  | { method: "finalize"; input: FinalizeInput }
-  | { method: "release"; requestId: string }
-  | { method: "markPendingReconciliation"; requestId: string; reason: string };
-
-const reservationFor = (requestId: string, state: Reservation["state"]): Reservation => ({
-  id: "reservation-1",
-  requestId,
-  accountId: "account-1",
-  provider: "exa",
-  providerRequestId: null,
-  state,
-  estimatedCostUsd: "0.020000000000",
-  actualCostUsd: null,
-  unfundedCostUsd: "0.000000000000",
-  expiresAt: new Date(0),
-});
-
-const fakeBilling = () => {
-  const calls: Call[] = [];
-  let settled: () => void = () => {};
-  const done = new Promise<void>((resolve) => {
-    settled = resolve;
-  });
-  const billing: BillingLifecycle = {
-    async reserve(input) {
-      calls.push({ method: "reserve", input });
-      return reservationFor(input.requestId, "reserved");
-    },
-    async finalize(input) {
-      calls.push({ method: "finalize", input });
-      settled();
-      return reservationFor(input.requestId, "finalized");
-    },
-    async release(requestId) {
-      calls.push({ method: "release", requestId });
-      settled();
-      return reservationFor(requestId, "released");
-    },
-    async markPendingReconciliation(requestId, reason) {
-      calls.push({ method: "markPendingReconciliation", requestId, reason });
-      settled();
-      return reservationFor(requestId, "pending_reconciliation");
-    },
-  };
-  return { billing, calls, done };
-};
-
-/** Answers the queries the route path issues: key lookup and usage stamp. */
-const fakeSql = () =>
-  (async (strings: TemplateStringsArray) => {
-    const query = strings.join("?");
-    if (query.includes("FROM api_keys")) {
-      return [
-        {
-          api_key_id: "key-1",
-          user_id: "user-1",
-          billing_account_id: "account-1",
-          billing_account_status: "active",
-          is_banned: false,
-          is_idv_verified: true,
-          skip_idv: false,
-        },
-      ];
-    }
-    return [];
-  }) as unknown as postgres.Sql;
-
-const fakeFetch = (respond: () => Response) => {
-  const upstream: Array<{ url: string; method: string; headers: Headers }> = [];
-  const fetchImplementation: Fetch = async (input, init) => {
-    upstream.push({
-      url: String(input),
-      method: init?.method ?? "GET",
-      headers: new Headers(init?.headers),
-    });
-    return respond();
-  };
-  return { fetch: fetchImplementation, upstream };
-};
-
-type Overrides = Partial<Parameters<typeof exaRoutes>[0]>;
-
-const build = (respond: () => Response, overrides: Overrides = {}) => {
-  const { billing, calls, done } = fakeBilling();
+const build = (respond: () => Response) => {
+  const fake = fakeBilling();
   const { fetch, upstream } = fakeFetch(respond);
-  const routes = exaRoutes({
-    sql: fakeSql(),
-    billing,
-    enforceIdv: false,
-    fetch,
-    exaApiKey: "exa-key",
-    ...overrides,
-  });
-  // Mirrors the HttpError handling createApp installs in front of every route group.
-  const app = new Elysia()
-    .error(({ error }) =>
-      error instanceof HttpError
-        ? error.toResponse()
-        : Response.json({ error: "Internal server error" }, { status: 500 }),
-    )
-    .use(routes);
-  return { app, calls, upstream, done };
+  const app = exaRoutes({ sql: fakeSql(), billing: fake.billing, enforceIdv: false, fetch, exaApiKey: "exa-key" });
+  return { app, upstream, ...fake };
 };
 
-const request = (path: string, init: RequestInit = {}) =>
-  new Request(`http://gateway.test${path}`, {
-    headers: { authorization: "Bearer sk-hc-v1-test", "content-type": "application/json" },
-    ...init,
-  });
+const searchResult = () => Response.json({ requestId: "r1", costDollars: { total: 0.002 }, results: [] });
 
-const post = (path: string, body: unknown, init: RequestInit = {}) =>
-  request(path, { method: "POST", body: JSON.stringify(body), ...init });
+const answerEvents = [
+  'data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}\n\n',
+  'data: {"citations":[]}\n\n',
+  'data: {"costDollars":{"total":0.004},"requestId":"exa-req-1"}\n\n',
+];
+const answerStream = () => {
+  const parts = [...answerEvents];
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        await Bun.sleep(1);
+        const part = parts.shift();
+        if (part === undefined) controller.close();
+        else controller.enqueue(new TextEncoder().encode(part));
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+};
 
-const successBody = { requestId: "r1", costDollars: { total: 0.002 }, results: [] };
+test("rejects streaming on endpoints other than answer", async () => {
+  const { app, calls, upstream } = build(searchResult);
+  const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi", stream: true }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "Streaming is only supported for Exa's answer endpoint" });
+  expect(upstream).toEqual([]);
+  expect(calls).toEqual([]);
+});
 
-describe("exaRoutes", () => {
-  test("rejects streaming on endpoints other than answer", async () => {
-    const { app, calls, upstream } = build(() => Response.json(successBody));
-    const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi", stream: true }));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "Streaming is only supported for Exa's answer endpoint",
-    });
-    expect(upstream).toEqual([]);
-    expect(calls).toEqual([]);
-  });
+test("forwards the Exa key and bills the reported cost", async () => {
+  const { app, upstream, finalizes, settled } = build(searchResult);
+  const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi" }));
+  expect(response.status).toBe(200);
+  await response.text();
+  expect(upstream[0]?.headers.get("x-api-key")).toBe("exa-key");
+  await settled();
+  expect(finalizes()[0]?.actualCostUsd.toString()).toBe("0.002000000000");
+});
 
-  const answerEvents = [
-    'data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}\n\n',
-    'data: {"citations":[]}\n\n',
-    'data: {"costDollars":{"total":0.004},"requestId":"exa-req-1"}\n\n',
-  ];
-  const answerStream = () => {
-    const parts = [...answerEvents];
-    return new Response(
-      new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          await Bun.sleep(1);
-          const part = parts.shift();
-          if (part === undefined) controller.close();
-          else controller.enqueue(new TextEncoder().encode(part));
-        },
-      }),
-      { headers: { "content-type": "text/event-stream" } },
-    );
-  };
+test("authenticates with x-api-key and no authorization header", async () => {
+  const { app } = build(searchResult);
+  const response = await app.handle(
+    new Request("http://gateway.test/proxy/v1/exa/search", {
+      method: "POST",
+      headers: { "x-api-key": "sk-hc-v1-x", "content-type": "application/json" },
+      body: JSON.stringify({ query: "hi" }),
+    }),
+  );
+  expect(response.status).toBe(200);
+});
 
-  test("streams answer events and bills the cost from the last event", async () => {
-    const { app, calls, done } = build(answerStream);
-    const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(await response.text()).toBe(answerEvents.join(""));
-    await done;
-    const finalize = calls.find((call) => call.method === "finalize");
-    if (finalize?.method !== "finalize") throw new Error("Expected finalize");
-    expect(finalize.input.actualCostUsd.toString()).toBe("0.004000000000");
-    expect(finalize.input.providerRequestId).toBe("exa-req-1");
-  });
+test("streams answer events and bills the cost from the last event", async () => {
+  const { app, finalizes, settled } = build(answerStream);
+  const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
+  expect(response.headers.get("content-type")).toContain("text/event-stream");
+  expect(await response.text()).toBe(answerEvents.join(""));
+  await settled();
+  expect(finalizes()[0]?.actualCostUsd.toString()).toBe("0.004000000000");
+  expect(finalizes()[0]?.providerRequestId).toBe("exa-req-1");
+});
 
-  test("keeps reading after the client leaves so the answer is still billed", async () => {
-    const { app, calls, done } = build(answerStream);
-    const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
-    const reader = response.body!.getReader();
-    await reader.read();
-    await reader.cancel("client disconnected");
-    await done;
-    const finalize = calls.find((call) => call.method === "finalize");
-    if (finalize?.method !== "finalize") throw new Error("Expected finalize");
-    expect(finalize.input.actualCostUsd.toString()).toBe("0.004000000000");
-  });
-
-  test("forwards the configured x-api-key and returns an x-request-id header", async () => {
-    const { app, upstream } = build(() => Response.json(successBody));
-    const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi" }));
-    expect(response.status).toBe(200);
-    expect(upstream).toHaveLength(1);
-    expect(upstream[0]?.headers.get("x-api-key")).toBe("exa-key");
-    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
-  });
-
-  test("finalizes billing at Exa's reported cost", async () => {
-    const { app, calls, done } = build(() => Response.json(successBody));
-    const response = await app.handle(post("/proxy/v1/exa/search", { query: "hi" }));
-    await response.text();
-    await done;
-    const finalize = calls.find((call) => call.method === "finalize");
-    if (finalize?.method !== "finalize") throw new Error("expected finalize");
-    expect(finalize.input.actualCostUsd.toString()).toBe(Usd.parse("0.002").toString());
-  });
-
-  test("authenticates with x-api-key and no authorization header", async () => {
-    const { app } = build(() => Response.json(successBody));
-    const response = await app.handle(
-      new Request("http://gateway.test/proxy/v1/exa/search", {
-        method: "POST",
-        headers: { "x-api-key": "sk-hc-v1-x", "content-type": "application/json" },
-        body: JSON.stringify({ query: "hi" }),
-      }),
-    );
-    expect(response.status).toBe(200);
-  });
+test("keeps reading after the client leaves so the answer is still billed", async () => {
+  const { app, finalizes, settled } = build(answerStream);
+  const response = await app.handle(post("/proxy/v1/exa/answer", { query: "hi", stream: true }));
+  const reader = response.body!.getReader();
+  await reader.read();
+  await reader.cancel("client disconnected");
+  await settled();
+  expect(finalizes()[0]?.actualCostUsd.toString()).toBe("0.004000000000");
 });

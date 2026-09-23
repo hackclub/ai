@@ -29,7 +29,7 @@ describe("log", () => {
       code: "23505",
     });
     logger.error({ err }, "db");
-    const logged = lines[0]!.err as { message: string; stack: string; code: string };
+    const logged = lines[0]!.err as { stack: string; code: string };
     expect(logged.code).toBe("23505");
     expect(logged.stack).toContain("caused by: Error: root");
   });

@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect } from "bun:test";
 import postgres, { type Sql } from "postgres";
 
 import { migrateJobQueue } from "../../analytics/worker";
-import { createUser, issueApiKey } from "../../auth/users";
 import { BillingEngine } from "../../billing/engine";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { Usd } from "../../billing/money";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import { integrationDatabaseUrl, integrationTestFor } from "../../test/integration-db";
 import { replicateRoutes } from "./replicate";
+import { createTestAccount } from "./test-harness";
 
 const databaseUrl = integrationDatabaseUrl("BILLING_TEST_DATABASE_URL");
 const integrationTest = integrationTestFor(databaseUrl);
@@ -20,7 +20,6 @@ const [owner, name] = knownModel.split("/") as [string, string];
 
 describe("Replicate routes with PostgreSQL", () => {
   let sql: Sql | undefined;
-  let userId: string;
   let accountId: string;
   let apiKey: string;
   const upstream: Array<{
@@ -111,38 +110,18 @@ describe("Replicate routes with PostgreSQL", () => {
       }),
     );
 
+  let cleanup = async () => {};
+
   beforeAll(async () => {
     if (!databaseUrl) return;
     sql = postgres(databaseUrl, { max: 4 });
     await migrateJobQueue(databaseUrl);
-    const user = await createUser(sql, { slackId: `U-replicate-${runId}`, dailyAllowanceUsd: "1" });
-    userId = user.userId;
-    accountId = user.billingAccountId;
-    apiKey = (await issueApiKey(sql, userId, "replicate")).key;
+    ({ accountId, apiKey, cleanup } = await createTestAccount(sql, `replicate-${runId}`));
   });
 
   afterAll(async () => {
     if (!sql) return;
-    await sql`
-      DELETE FROM request_event_outbox
-      WHERE payload->>'account_id' = ${accountId}
-    `;
-    const reservations = sql`
-      SELECT id FROM billing_reservations WHERE account_id = ${accountId}::uuid
-    `;
-    await sql`DELETE FROM billing_ledger_entries WHERE account_id = ${accountId}::uuid`;
-    for (const table of [
-      "billing_reservation_funding_holds",
-      "billing_reservation_credit_holds",
-      "billing_reservation_limit_holds",
-    ]) {
-      await sql`DELETE FROM ${sql(table)} WHERE reservation_id IN (${reservations})`;
-    }
-    await sql`DELETE FROM billing_reservations WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_windows WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_funding_policies WHERE account_id = ${accountId}::uuid`;
-    await sql`DELETE FROM billing_accounts WHERE id = ${accountId}::uuid`;
-    await sql`DELETE FROM users WHERE id = ${userId}::uuid`;
+    await cleanup();
     await sql.end();
   });
 
@@ -291,8 +270,8 @@ describe("Replicate routes with PostgreSQL", () => {
     const cancelled = await call(`/predictions/${id}/cancel`, { method: "POST" });
     expect(cancelled.status).toBe(200);
 
-    const stranger = await createUser(sql, { slackId: `U-stranger-${runId}`, dailyAllowanceUsd: "1" });
-    const strangerKey = (await issueApiKey(sql, stranger.userId, "stranger")).key;
+    const stranger = await createTestAccount(sql, `stranger-${runId}`);
+    const strangerKey = stranger.apiKey;
     const before = upstream.length;
     const theirs = await call(`/predictions/${id}`, {
       method: "GET",
@@ -305,7 +284,7 @@ describe("Replicate routes with PostgreSQL", () => {
     });
     expect(theirCancel.status).toBe(404);
     expect(upstream.length).toBe(before);
-    await sql`DELETE FROM users WHERE id = ${stranger.userId}::uuid`;
+    await stranger.cleanup();
     await latestReservation();
   });
 

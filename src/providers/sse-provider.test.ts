@@ -35,7 +35,6 @@ describe("executeSseProvider", () => {
 
     const completion = await result.completion;
     expect(upstreamCancelled).toBeTrue();
-    expect(completion.state).toBe("uncertain");
     if (completion.state !== "uncertain") throw new Error("Expected uncertain");
     expect(completion.reason).toContain("drain timeout");
   });
