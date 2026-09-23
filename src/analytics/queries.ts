@@ -59,10 +59,6 @@ const toStats = (row: StatsRow | undefined): UsageStats => {
   };
 };
 
-/**
- * Dashboard reads against ClickHouse. These are analytics: they never feed
- * billing enforcement, which stays in PostgreSQL.
- */
 export type AnalyticsQueriesOptions = {
   /** How long a global aggregate is served from memory. Default 60 s. */
   globalCacheTtlMs?: number;
@@ -251,11 +247,6 @@ export type DailySpending = {
   limitUsd: string;
 };
 
-/**
- * Today's spend against the current daily allowance window, from PostgreSQL
- * so it agrees exactly with enforcement. Reserved (in-flight) amounts count
- * as spent, matching what the engine would refuse.
- */
 export async function dailySpending(
   sql: postgres.Sql,
   accountId: string,
