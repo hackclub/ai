@@ -44,7 +44,12 @@ type LegacyLog = {
   response: string;
 };
 
-const CURSOR_ROWS = 500;
+const CURSOR_ROWS = 100;
+/**
+ * The client serialises an insert into one string, and legacy bodies average
+ * about 1 MB on busy days, so batches are bounded by body size, not rows.
+ */
+const MAX_BATCH_CHARS = 32 * 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -94,47 +99,60 @@ export async function importEvents(
       WHERE timestamp >= ${day} AND timestamp < ${end}
     `.cursor(CURSOR_ROWS);
 
+    let values: ReturnType<typeof toClickHouseEvent>[] = [];
+    let chars = 0;
+    const flush = async () => {
+      if (values.length === 0) return;
+      await clickhouse.insert({ table: "request_events", values, format: "JSONEachRow" });
+      dayRows += values.length;
+      values = [];
+      chars = 0;
+    };
+
     for await (const batch of cursor) {
-      const values = batch.map((log) => {
+      for (const log of batch) {
         const owner = owners.get(log.slack_id);
         if (!owner) unattributed++;
         const withBody = log.occurred_at >= options.bodiesSince;
-        return toClickHouseEvent({
-          event_id: log.id,
-          occurred_at: log.occurred_at.toISOString(),
-          request_id: log.id,
-          reservation_id: null,
-          // Logs of users since deleted keep the nil account so totals still add up.
-          account_id: owner?.account_id ?? NIL_UUID,
-          user_id: owner?.user_id ?? null,
-          api_key_id: log.api_key_id,
-          provider: legacyProvider(log.model),
-          provider_request_id: "",
-          endpoint: "",
-          model: log.model,
-          outcome: "completed",
-          error_code: "",
-          http_status: 200,
-          streamed: false,
-          duration_ms: log.duration,
-          time_to_first_byte_ms: null,
-          input_tokens: log.prompt_tokens,
-          output_tokens: log.completion_tokens,
-          estimated_cost_usd: log.cost,
-          provider_cost_usd: log.cost,
-          billed_cost_usd: log.cost,
-          unfunded_cost_usd: "0",
-          usage_source: "legacy",
-          request_headers: redactHeaders(log.headers ?? undefined),
-          response_headers: {},
-          attributes: { ip: log.ip, source: "legacy", body_capture: withBody ? "complete" : "none" },
-          request_body: log.request,
-          response_body: log.response,
-        });
-      });
-      await clickhouse.insert({ table: "request_events", values, format: "JSONEachRow" });
-      dayRows += values.length;
+        values.push(
+          toClickHouseEvent({
+            event_id: log.id,
+            occurred_at: log.occurred_at.toISOString(),
+            request_id: log.id,
+            reservation_id: null,
+            // Logs of users since deleted keep the nil account so totals still add up.
+            account_id: owner?.account_id ?? NIL_UUID,
+            user_id: owner?.user_id ?? null,
+            api_key_id: log.api_key_id,
+            provider: legacyProvider(log.model),
+            provider_request_id: "",
+            endpoint: "",
+            model: log.model,
+            outcome: "completed",
+            error_code: "",
+            http_status: 200,
+            streamed: false,
+            duration_ms: log.duration,
+            time_to_first_byte_ms: null,
+            input_tokens: log.prompt_tokens,
+            output_tokens: log.completion_tokens,
+            estimated_cost_usd: log.cost,
+            provider_cost_usd: log.cost,
+            billed_cost_usd: log.cost,
+            unfunded_cost_usd: "0",
+            usage_source: "legacy",
+            request_headers: redactHeaders(log.headers ?? undefined),
+            response_headers: {},
+            attributes: { ip: log.ip, source: "legacy", body_capture: withBody ? "complete" : "none" },
+            request_body: log.request,
+            response_body: log.response,
+          }),
+        );
+        chars += log.request.length + log.response.length;
+        if (chars >= MAX_BATCH_CHARS) await flush();
+      }
     }
+    await flush();
     rows += dayRows;
     options.onDay?.(day, dayRows);
   }
