@@ -5,7 +5,11 @@ RUN bun install --frozen-lockfile
 COPY . .
 # The build imports the server hook, which validates configuration; these
 # placeholders satisfy it and never reach the runtime image.
-RUN DATABASE_URL=postgres://build@localhost/build \
+# SvelteKit loads src/env.ts through a throwaway Vite dev server whose file
+# watcher takes one inotify instance per directory under Bun; build hosts
+# share a small per-user limit (128), so poll instead.
+RUN CHOKIDAR_USEPOLLING=1 \
+    DATABASE_URL=postgres://build@localhost/build \
     OPENROUTER_API_KEY=build \
     TYPESAFE_API_KEY=build \
     bun run build
