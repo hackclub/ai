@@ -93,7 +93,7 @@ const NO_RETRY = { "x-should-retry": "false" };
 export const billingErrorToHttp = (error: unknown) => {
   if (error instanceof InsufficientFundsError) {
     return new HttpError(
-      429,
+      402,
       "Spending limit reached. Need a higher limit? hey@mahadk.com",
       NO_RETRY,
     );
