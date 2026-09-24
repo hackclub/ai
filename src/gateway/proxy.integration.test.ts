@@ -193,7 +193,7 @@ describe("proxy routes with PostgreSQL", () => {
       model: "test/pricey",
       messages: [{ role: "user", content: "expensive" }],
     });
-    expect(response.status).toBe(429);
+    expect(response.status).toBe(402);
     expect(((await response.json()) as { error: string }).error).toContain(
       "Spending limit reached",
     );
