@@ -12,7 +12,11 @@ export type AbuseRules = {
   /** Matched against the Referer and X-Title headers. */
   apps: string[];
   userAgents: string[];
-  /** Prompt fragments, grouped by the agent they come from. */
+  /**
+   * Phrases an agent always sends in its own instructions or tool
+   * descriptions, grouped by agent. Compared as words: case, punctuation,
+   * line breaks and JSON escaping do not matter. User messages are never read.
+   */
   prompts: Record<string, string[]>;
   /** A request offering at least `minMatches` of an agent's tools is that agent. */
   toolsets: Toolset[];
@@ -23,28 +27,61 @@ export const NO_RULES: AbuseRules = { apps: [], userAgents: [], prompts: {}, too
 export const BLOCKED_MESSAGE =
   "For now, AI coding agents and frontends like SillyTavern aren't allowed to be used with ai.hackclub.com. Join #hackclub-ai on the Hack Club Slack for future updates.";
 
-export const BODY_SCAN_LIMIT = 256 * 1024;
-export const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Longest instruction or tool description read; an agent's identity is at its start. */
+const TEXT_LIMIT = 256 * 1024;
 
-const unicodeEscape = (char: string) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
-export const promptForms = (prompt: string) => {
-  const json = JSON.stringify(prompt).slice(1, -1);
-  return [...new Set([prompt, json, json.replace(/[^\x00-\x7f]/g, unicodeEscape)])];
+type Json = Record<string, unknown>;
+const isRecord = (value: unknown): value is Json => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Text of a message `content`: a string, or the `text` of each part. */
+const textOf = (content: unknown): string[] => {
+  if (typeof content === "string") return [content];
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((part) =>
+    typeof part === "string" ? [part] : isRecord(part) && typeof part.text === "string" ? [part.text] : [],
+  );
 };
 
-const NAME_FIELD = /"name"\s*:\s*"([A-Za-z0-9_.:-]{1,64})"/g;
-export const toolNames = (body: string): Set<string> =>
-  new Set(Array.from(body.matchAll(NAME_FIELD), (match) => match[1] as string));
+const INSTRUCTION_ROLES = new Set(["system", "developer"]);
+
+export type AgentSurface = { instructions: string[]; tools: { name: string; description: string }[] };
+
+/**
+ * The parts of a request an agent writes, not its user: system and developer
+ * messages (Chat Completions, Responses `input`), Anthropic's `system`,
+ * Responses' `instructions`, Replicate's `input.system_prompt`, and the tools.
+ */
+export const agentSurface = (body: unknown): AgentSurface => {
+  if (!isRecord(body)) return { instructions: [], tools: [] };
+  const instructions = [...textOf(body.system), ...textOf(body.instructions)];
+  for (const list of [body.messages, body.input]) {
+    if (!Array.isArray(list)) continue;
+    for (const message of list) {
+      if (isRecord(message) && INSTRUCTION_ROLES.has(message.role as string)) instructions.push(...textOf(message.content));
+    }
+  }
+  if (isRecord(body.input)) instructions.push(...textOf(body.input.system_prompt));
+  const tools = Array.isArray(body.tools)
+    ? body.tools.flatMap((tool) => {
+        if (!isRecord(tool)) return [];
+        const definition = isRecord(tool.function) ? tool.function : tool;
+        return typeof definition.name === "string"
+          ? [{ name: definition.name, description: typeof definition.description === "string" ? definition.description : "" }]
+          : [];
+      })
+    : [];
+  return { instructions, tools };
+};
+
+/** Words only, padded so that a phrase matches whole words: " you are claude code ". */
+export const normalizeText = (text: string) =>
+  ` ${text.slice(0, TEXT_LIMIT).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
 
 /** The first agent whose tools the request offers, or null. */
 export const matchToolset = (names: ReadonlySet<string>, toolsets: readonly Toolset[]): Toolset | null =>
   toolsets.find(
     (toolset) => toolset.tools.reduce((count, tool) => count + (names.has(tool) ? 1 : 0), 0) >= toolset.minMatches,
   ) ?? null;
-
-/** The head and tail of the body: system prompts sit at the start, tool definitions at the end. */
-const scanWindows = (body: string) =>
-  body.length > 2 * BODY_SCAN_LIMIT ? [body.slice(0, BODY_SCAN_LIMIT), body.slice(-BODY_SCAN_LIMIT)] : [body];
 
 const isStrings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
@@ -59,6 +96,8 @@ export const parseAbuseRules = (value: unknown): AbuseRules => {
   if (!prompts || typeof prompts !== "object" || !Object.values(prompts).every(isStrings)) {
     throw new Error("abuse rules: prompts must map agent names to lists of strings");
   }
+  const blank = Object.values(prompts as Record<string, string[]>).flat().find((prompt) => normalizeText(prompt).trim() === "");
+  if (blank !== undefined) throw new Error(`abuse rules: prompt ${JSON.stringify(blank)} has no words to match`);
   if (
     !Array.isArray(toolsets) ||
     !toolsets.every(
@@ -82,13 +121,20 @@ export const loadAbuseRules = async (path: string): Promise<AbuseRules | null> =
   return parseAbuseRules(await file.json());
 };
 
+const parseJson = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Not JSON: the route refuses it with 400, and there is no agent surface to read.
+    return null;
+  }
+};
+
 /** A check that throws 403 for a request from a blocked client. */
 export const createAbuseFilter = (rules: AbuseRules) => {
   const apps = rules.apps.map((app) => app.toLowerCase());
   const agents = rules.userAgents.map((agent) => agent.toLowerCase());
-  const fragments = Object.values(rules.prompts).flat();
-  const prompts =
-    fragments.length > 0 ? new RegExp(fragments.flatMap(promptForms).map(escapeRegExp).join("|")) : null;
+  const phrases = [...new Set(Object.values(rules.prompts).flat().map(normalizeText))];
 
   return (headers: Headers, body: string | null) => {
     const referer = (headers.get("referer") ?? headers.get("http-referer") ?? "").toLowerCase();
@@ -102,11 +148,13 @@ export const createAbuseFilter = (rules: AbuseRules) => {
       throw new HttpError(403, BLOCKED_MESSAGE);
     }
     if (!body) return;
-    const windows = scanWindows(body);
-    if (prompts && windows.some((window) => prompts.test(window))) {
-      throw new HttpError(403, BLOCKED_MESSAGE);
+    const surface = agentSurface(parseJson(body));
+    if (phrases.length > 0) {
+      // Each piece is capped on its own, so a long system prompt cannot push tool descriptions out.
+      const text = [...surface.instructions, ...surface.tools.map((tool) => tool.description)].map(normalizeText).join("");
+      if (phrases.some((phrase) => text.includes(phrase))) throw new HttpError(403, BLOCKED_MESSAGE);
     }
-    if (rules.toolsets.length > 0 && matchToolset(new Set(windows.flatMap((window) => [...toolNames(window)])), rules.toolsets)) {
+    if (matchToolset(new Set(surface.tools.map((tool) => tool.name)), rules.toolsets)) {
       throw new HttpError(403, BLOCKED_MESSAGE);
     }
   };

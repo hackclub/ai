@@ -132,7 +132,7 @@ describe("proxyRoutes", () => {
 
   test("rejects a blocked prompt with 403 and never calls the adapter", async () => {
     const { chat, dispatches, records } = await setup();
-    const response = await chat({ messages: [{ role: "user", content: abuseRules.prompts["Test agent"][0] }] });
+    const response = await chat({ messages: [{ role: "system", content: abuseRules.prompts["Test agent"][0] }, { role: "user", content: "hi" }] });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
     expect(dispatches()).toBe(0);

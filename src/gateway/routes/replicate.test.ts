@@ -203,7 +203,7 @@ describe("POST /predictions", () => {
     const fetchCalls: string[] = [];
     const response = await postPrediction(buildApp({ fetch: refuseFetch(fetchCalls) }), {
       version: knownModel,
-      input: { prompt: abuseRules.prompts["Test agent"][0] },
+      input: { prompt: "a cat", system_prompt: abuseRules.prompts["Test agent"][0] },
     });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
