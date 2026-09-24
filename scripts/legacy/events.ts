@@ -25,6 +25,8 @@ export type EventImportOptions = {
   /** Exclusive. */
   to: Date;
   bodiesSince: Date;
+  /** Days imported at once, each on its own cursor; `legacy` needs a pool at least this large. */
+  concurrency?: number;
   onDay?: (day: Date, rows: number) => void;
 };
 
@@ -85,7 +87,10 @@ export async function importEvents(
 
   let rows = 0;
   let unattributed = 0;
-  for (let day = utcDay(options.from); day < options.to; day = new Date(day.getTime() + DAY_MS)) {
+  const days: Date[] = [];
+  for (let day = utcDay(options.from); day < options.to; day = new Date(day.getTime() + DAY_MS)) days.push(day);
+
+  const importDay = async (day: Date) => {
     const end = new Date(Math.min(day.getTime() + DAY_MS, options.to.getTime()));
     let dayRows = 0;
     const cursor = legacy<LegacyLog[]>`
@@ -155,6 +160,13 @@ export async function importEvents(
     await flush();
     rows += dayRows;
     options.onDay?.(day, dayRows);
-  }
+  };
+
+  // Each worker takes the next day off the queue until none remain.
+  const queue = days.values();
+  const worker = async () => {
+    for (const day of queue) await importDay(day);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, options.concurrency ?? 1) }, worker));
   return { rows, unattributed };
 }

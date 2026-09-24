@@ -145,10 +145,11 @@ describe("importEvents", () => {
       from: new Date("2026-05-01T00:00:00Z"),
       to: new Date("2026-09-22T00:00:00Z"),
       bodiesSince: new Date("2026-06-24T00:00:00Z"),
+      concurrency: 3,
       onDay: (day, rows) => rows && days.push(`${day.toISOString().slice(0, 10)}:${rows}`),
     });
     expect(result).toEqual({ rows: 3, unattributed: 1 });
-    expect(days).toEqual(["2026-05-01:1", "2026-09-20:1", "2026-09-21:1"]);
+    expect(days.toSorted()).toEqual(["2026-05-01:1", "2026-09-20:1", "2026-09-21:1"]);
 
     const rows = await (
       await clickhouse.query({

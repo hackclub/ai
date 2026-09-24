@@ -2,7 +2,7 @@
  * One-off import from the previous gateway's database (see scripts/legacy/).
  *
  *   bun scripts/import-legacy.ts identity
- *   bun scripts/import-legacy.ts events --from=2025-11-01 --to=2026-09-25 [--bodies-since=2026-06-26]
+ *   bun scripts/import-legacy.ts events --from=2025-11-01 --to=2026-09-25 [--bodies-since=2026-06-26] [--concurrency=4]
  *
  * Reads LEGACY_DATABASE_URL (opened read-only), DATABASE_URL and
  * CLICKHOUSE_URL / CLICKHOUSE_USER / CLICKHOUSE_PASSWORD / CLICKHOUSE_DB.
@@ -38,8 +38,11 @@ if (command !== "identity" && command !== "events") {
   throw new Error("usage: bun scripts/import-legacy.ts identity | events --from=YYYY-MM-DD --to=YYYY-MM-DD");
 }
 
+const concurrency = Number(flag("concurrency") ?? 1);
+if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
+
 const legacy = postgres(required("LEGACY_DATABASE_URL"), {
-  max: 1,
+  max: concurrency,
   onnotice: () => {},
   connection: { TimeZone: "UTC", default_transaction_read_only: true },
 });
@@ -61,6 +64,7 @@ try {
         from: date("from"),
         to: date("to"),
         bodiesSince: date("bodies-since", new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)),
+        concurrency,
         onDay: (day, rows) => console.log(`${day.toISOString().slice(0, 10)} ${rows}`),
       });
       console.log(result);
