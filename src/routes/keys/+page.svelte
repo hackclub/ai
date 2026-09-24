@@ -5,14 +5,13 @@
   import { CreateKeyDialog, RevokeKeyDialog, type ApiKey } from "#lib/components/keys/index.ts";
   import { Button } from "#lib/components/ui/button/index.ts";
   import PageHeader from "#lib/components/page-header.svelte";
-  import { formatRelativeTime } from "#lib/format.ts";
+  import { formatDate, formatRelativeTime } from "#lib/format.ts";
 
   let { data } = $props();
 
   let createKeyDialog: { show: () => void } | undefined = $state();
   let revokeKeyDialog: { show: (key: ApiKey) => void } | undefined = $state();
 
-  const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
   const lastUsed = (iso: string | null) => (iso ? formatRelativeTime(iso) : "Never");
 </script>
 
@@ -49,9 +48,9 @@
             <div class="min-w-0 flex-1">
               <p class="truncate text-base font-medium sm:text-sm">{key.name}</p>
               <p class="text-muted-foreground mt-1 truncate font-mono text-sm">{key.keyPreview}</p>
-              <p class="text-muted-foreground mt-2 text-sm sm:hidden">Created {dateOf(key.createdAt)} · Last used {lastUsed(key.lastUsedAt)}</p>
+              <p class="text-muted-foreground mt-2 text-sm sm:hidden">Created {formatDate(key.createdAt)} · Last used {lastUsed(key.lastUsedAt)}</p>
             </div>
-            <p class="text-muted-foreground hidden text-sm sm:block">{dateOf(key.createdAt)}</p>
+            <p class="text-muted-foreground hidden text-sm sm:block">{formatDate(key.createdAt)}</p>
             <p class="text-muted-foreground hidden text-sm sm:block">{lastUsed(key.lastUsedAt)}</p>
             <Button variant="destructive" size="icon-sm" class="relative" aria-label={`Revoke ${key.name}`} onclick={() => revokeKeyDialog?.show(key)}>
               <DeleteIcon class="size-4 shrink-0" />

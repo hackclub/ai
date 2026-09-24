@@ -23,20 +23,27 @@ export function formatNumberShort(num: number): string {
   return num.toString();
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad = (n: number) => n.toString().padStart(2, "0");
+
+export const formatDate = (timestamp: string | Date) => {
+  const d = new Date(timestamp);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+};
+
 export const formatRelativeTime = (timestamp: string | Date, now = Date.now()) => {
   const diff = Math.floor((now - new Date(timestamp).getTime()) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(timestamp).toLocaleDateString();
+  return formatDate(timestamp);
 };
 
-export const formatFullTime = (timestamp: string | Date) =>
-  new Date(timestamp).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "medium",
-  });
+export const formatFullTime = (timestamp: string | Date) => {
+  const d = new Date(timestamp);
+  return `${formatDate(d)}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+};
 
 export const formatDuration = (ms: number) => {
   if (ms < 1000) return `${ms}ms`;
