@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
+import type { UsageStats } from "../analytics/queries";
 import type { BillingLifecycle, SettlementTracker } from "./metered-request";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
@@ -20,6 +21,8 @@ export type ProxyDependencies = {
   /** Settlements still in flight; the backend drains it on shutdown. */
   settlements: SettlementTracker;
   catalog: ModelCatalog;
+  /** Lifetime usage for `GET /proxy/v1/stats`. */
+  usageStats: (accountId: string) => Promise<UsageStats>;
   adapter: OpenRouterAdapter;
   openRouterApiKey: string;
   enforceIdv: boolean;
@@ -253,6 +256,13 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         deps.catalog.list("embedding"),
       ]);
       return jsonWithEtag(request, { data: [...language, ...embedding] });
+    })
+    .get("/embeddings/models", async ({ request }) =>
+      jsonWithEtag(request, { data: await deps.catalog.list("embedding") }),
+    )
+    .get("/stats", async ({ request }) => {
+      const principal = await authorizeProviderRequest(deps, rateLimiter, request, "");
+      return Response.json(await deps.usageStats(principal.billingAccountId));
     })
     .post("/chat/completions", ({ request }) =>
       handle("chat/completions", request),

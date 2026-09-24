@@ -4,11 +4,13 @@ import { issueApiKey } from "../auth/api-keys";
 import { createUser } from "../auth/users";
 import { createApp } from "../app";
 import { testBilling } from "./routes/test-harness";
+import { AnalyticsQueries } from "../analytics/queries";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
-import { testDatabase } from "../test/database";
+import { testClickHouse, testDatabase } from "../test/database";
 
 const { sql } = await testDatabase();
+const analytics = new AnalyticsQueries((await testClickHouse()).clickhouse);
 
 const encoder = new TextEncoder();
 const streamOf = (parts: string[]) =>
@@ -63,6 +65,7 @@ describe("proxy routes with PostgreSQL", () => {
           apiKey: "upstream-key",
           fetch: fakeFetch,
         }),
+        usageStats: (accountId) => analytics.userStats(accountId),
         adapter: new OpenRouterAdapter({
           baseUrl: "https://upstream.test/api",
           fetch: fakeFetch,
@@ -104,6 +107,22 @@ describe("proxy routes with PostgreSQL", () => {
       "test/chat",
       "test/pricey",
     ]);
+  });
+
+  test("keeps the previous gateway's embedding listing and per-key stats", async () => {
+    const embeddings = await call("/proxy/v1/embeddings/models");
+    expect(embeddings.status).toBe(200);
+    expect(await embeddings.json()).toEqual({ data: [] });
+
+    expect((await call("/proxy/v1/stats")).status).toBe(401);
+    const stats = await call("/proxy/v1/stats", { headers: { authorization: `Bearer ${apiKey}` } });
+    expect(stats.status).toBe(200);
+    expect(await stats.json()).toEqual({
+      totalRequests: 0,
+      totalTokens: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+    });
   });
 
   test("rejects missing and unknown keys", async () => {

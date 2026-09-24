@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
+import { AnalyticsQueries } from "../analytics/queries";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { blockedPrompts } from "../config/blocked-prompts";
 import { BLOCKED_MESSAGE } from "./abuse";
 import { proxyRoutes, withKeepAlive } from "./proxy";
-import { testDatabase } from "../test/database";
+import { testClickHouse, testDatabase } from "../test/database";
 import { billingRecords, createTestAccount, fakeFetch, onlyBillingRecord, testBilling } from "./routes/test-harness";
 
 const { sql } = await testDatabase();
+const analytics = new AnalyticsQueries((await testClickHouse()).clickhouse);
 
 const encoder = new TextEncoder();
 
@@ -81,6 +83,7 @@ const setup = async (catalogEntry: unknown = null) => {
       apiKey: "or-key",
       fetch: listing.fetch as typeof fetch,
     }),
+    usageStats: (accountId) => analytics.userStats(accountId),
     adapter: new OpenRouterAdapter({ baseUrl: "https://openrouter.test/api", fetch: upstream.fetch }),
     openRouterApiKey: "or-key",
     enforceIdv: false,

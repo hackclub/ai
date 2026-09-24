@@ -169,6 +169,7 @@ export const createBackend = (env: Env): Backend => {
       billing,
       settlements,
       catalog,
+      usageStats: (accountId) => queries.userStats(accountId),
       adapter,
       openRouterApiKey: env.openRouterApiKey,
       enforceIdv: env.enforceIdv,
