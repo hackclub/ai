@@ -5,12 +5,14 @@ import { createUser } from "../auth/users";
 import { createApp } from "../app";
 import { testBilling } from "./routes/test-harness";
 import { AnalyticsQueries } from "../analytics/queries";
+import { drainRequestEvents } from "../analytics/request-events";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { testClickHouse, testDatabase } from "../test/database";
 
 const { sql } = await testDatabase();
-const analytics = new AnalyticsQueries((await testClickHouse()).clickhouse);
+const { clickhouse } = await testClickHouse();
+const analytics = new AnalyticsQueries(clickhouse);
 
 const encoder = new TextEncoder();
 const streamOf = (parts: string[]) =>
@@ -46,7 +48,9 @@ describe("proxy routes with PostgreSQL", () => {
   const fakeFetch: typeof fetch = (async (input, init) => {
     const url = String(input);
     if (url.endsWith("/v1/models")) return modelListing.clone();
-    if (url.endsWith("/v1/embeddings/models")) return Response.json({ data: [] });
+    if (url.endsWith("/v1/embeddings/models")) {
+      return Response.json({ data: [{ id: "test/embed", pricing: { prompt: "0.0000001", completion: "0" } }] });
+    }
     upstreamCalls.push({
       url,
       body: JSON.parse(String(init?.body)),
@@ -55,11 +59,12 @@ describe("proxy routes with PostgreSQL", () => {
     return nextUpstream();
   }) as typeof fetch;
 
+  const billing = testBilling(sql);
   const app = () =>
     createApp({
       proxy: {
         sql,
-        ...testBilling(sql),
+        ...billing,
         catalog: new ModelCatalog({
           baseUrl: "https://upstream.test/api",
           apiKey: "upstream-key",
@@ -106,22 +111,47 @@ describe("proxy routes with PostgreSQL", () => {
     expect(listing.data.map((model) => model.id)).toEqual([
       "test/chat",
       "test/pricey",
+      "test/embed",
     ]);
   });
 
-  test("keeps the previous gateway's embedding listing and per-key stats", async () => {
-    const embeddings = await call("/proxy/v1/embeddings/models");
-    expect(embeddings.status).toBe(200);
-    expect(await embeddings.json()).toEqual({ data: [] });
+  test("lists only embedding models under /embeddings/models", async () => {
+    const response = await call("/proxy/v1/embeddings/models");
+    expect(response.status).toBe(200);
+    const listing = (await response.json()) as { data: Array<{ id: string }> };
+    expect(listing.data.map((model) => model.id)).toEqual(["test/embed"]);
+  });
+
+  test("reports the key owner's lifetime usage from ClickHouse", async () => {
+    const owner = await createUser(sql, { slackId: `U-stats-${crypto.randomUUID()}`, dailyAllowanceUsd: "1" });
+    const ownerKey = (await issueApiKey(sql, owner.userId, "stats")).key;
+    const stats = async (key: string) =>
+      call("/proxy/v1/stats", { headers: { authorization: `Bearer ${key}` } });
 
     expect((await call("/proxy/v1/stats")).status).toBe(401);
-    const stats = await call("/proxy/v1/stats", { headers: { authorization: `Bearer ${apiKey}` } });
-    expect(stats.status).toBe(200);
-    expect(await stats.json()).toEqual({
-      totalRequests: 0,
-      totalTokens: 0,
-      totalPromptTokens: 0,
-      totalCompletionTokens: 0,
+
+    for (const [prompt, completion] of [[10, 4], [6, 2]] as const) {
+      nextUpstream = () =>
+        Response.json({
+          id: `gen-${crypto.randomUUID()}`,
+          choices: [{ message: { role: "assistant", content: "ok" } }],
+          usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion, cost: 0.00001 },
+        });
+      const response = await chat({ model: "test/chat", messages: [{ role: "user", content: "hi" }] }, ownerKey);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    await billing.settled();
+    await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
+
+    // Other tests' requests are in ClickHouse too; only this key's owner counts.
+    const response = await stats(ownerKey);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      totalRequests: 2,
+      totalTokens: 22,
+      totalPromptTokens: 16,
+      totalCompletionTokens: 6,
     });
   });
 
@@ -136,13 +166,14 @@ describe("proxy routes with PostgreSQL", () => {
   });
 
   test("rejects malformed bodies but forwards unlisted models", async () => {
+    const callsBefore = upstreamCalls.length;
     const notJson = await call("/proxy/v1/chat/completions", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}` },
       body: "nope",
     });
     expect(notJson.status).toBe(400);
-    expect(upstreamCalls.length).toBe(0);
+    expect(upstreamCalls.length).toBe(callsBefore);
 
     // There is no allowlist: a model missing from the listing still reaches
     // OpenRouter, which is the authority on whether it exists.
