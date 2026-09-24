@@ -30,7 +30,6 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Local databases | `bun run db:up` / `db:down` / `db:logs` |
 | Wipe local databases | `bun run db:reset` (destructive) |
 | Apply migrations | `bun run db:migrate` (`--status` lists pending) |
-| Seed a dev user, key, and session | `bun run dev:seed` |
 
 Verification baseline for any change: `bun run typecheck` exits 0 and
 `bun test` reports `0 fail`. `bun test` needs PostgreSQL 18 and ClickHouse

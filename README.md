@@ -79,12 +79,10 @@ the same `bun test`.
 bun install --frozen-lockfile
 cp .env.example .env   # fill in every provider key; all are required
 bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 via Docker
-bun run dev:seed       # local user, API key, and browser session (dev only)
 bun run dev            # http://localhost:3000
 ```
 
-`dev:seed` prints an API key for the proxy and a cookie that signs you into
-the dashboard without Hack Club OAuth. Every provider is always mounted, so
+Sign in through Hack Club OAuth. Every provider is always mounted, so
 the server refuses to start unless all of their keys are set:
 `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, `HACK_CLUB_CLIENT_ID`,
 `HACK_CLUB_CLIENT_SECRET`, `OPENAI_MODERATION_API_KEY`, `MISTRAL_API_KEY`,
