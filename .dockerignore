@@ -1,0 +1,10 @@
+*
+!package.json
+!bun.lock
+!tsconfig.json
+!vite.config.js
+!src
+!static
+!migrations
+!scripts
+**/*.test.ts
