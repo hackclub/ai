@@ -254,6 +254,31 @@ response = client.chat.send(
 
 print(response.choices[0].message.content)`;
 
+  // Models that accept image input (e.g. Gemini image models) can also EDIT an
+  // existing image: send the source image as a base64 data URL alongside the
+  // instruction. Show a dedicated example so the edit path is discoverable.
+  const supportsImageInput =
+    modelType === "image" &&
+    !!model.architecture?.input_modalities?.includes("image");
+  const editExample = supportsImageInput
+    ? `curl https://ai.hackclub.com/proxy/v1/chat/completions \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${modelId}",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Make the sky a warm sunset orange"},
+          {"type": "image_url", "image_url": {"url": "data:image/png;base64,BASE64_ENCODED_IMAGE"}}
+        ]
+      }
+    ],
+    "modalities": ["image", "text"]
+  }'`
+    : null;
+
   return (
     <div x-data="{ activeTab: 'curl' }">
       <div class="flex gap-1 mb-4 bg-brand-bg rounded-xl p-1 inline-flex">
@@ -292,6 +317,20 @@ print(response.choices[0].message.content)`;
       <div x-show="activeTab === 'python'" x-cloak>
         <CodeBlock code={pythonExample} />
       </div>
+
+      {editExample ? (
+        <div class="mt-6">
+          <h3 class="text-sm font-semibold text-brand-heading mb-2">
+            Edit an existing image
+          </h3>
+          <p class="text-xs text-brand-text mb-2">
+            Send the source image as a base64 data URL together with your
+            instruction; the edited image comes back in{" "}
+            <code>choices[0].message.images[0].image_url.url</code>.
+          </p>
+          <CodeBlock code={editExample} />
+        </div>
+      ) : null}
     </div>
   );
 };
