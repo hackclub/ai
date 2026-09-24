@@ -41,13 +41,16 @@ export const keysApiRoutes = (options: KeysApiOptions) =>
       keys: await listApiKeys(options.sql, user.id),
     }))
     .post("/keys", async ({ request, user }) => {
-      let body: { name?: unknown } = {};
+      let body: unknown;
       try {
-        body = (await request.json()) as { name?: unknown };
+        body = await request.json();
       } catch {
         throw new HttpError(400, "Request body must be valid JSON");
       }
-      const created = await createApiKey(options.sql, user.id, body.name);
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        throw new HttpError(400, "Request body must be a JSON object");
+      }
+      const created = await createApiKey(options.sql, user.id, (body as { name?: unknown }).name);
       options.onKeyCreated?.(user.id, created.id, created.name);
       return created;
     })

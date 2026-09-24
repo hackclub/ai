@@ -4,7 +4,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "svelte-kit sync && tsc --noEmit",
-    "dev": "bunx --bun vite dev --port 3000",
+    "dev": "node node_modules/vite/bin/vite.js dev --port 3000",
     "db:up": "docker compose up -d --wait && bun run db:migrate",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres clickhouse",

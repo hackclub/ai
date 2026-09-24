@@ -158,6 +158,17 @@ describe("Replicate routes with PostgreSQL", () => {
     await latestReservation();
   });
 
+  test("sends a JSON content type when the caller includes a charset", async () => {
+    const response = await call(`/models/${owner}/${name}/predictions`, {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ input: { prompt: "hello" } }),
+    });
+    expect(response.status).toBe(201);
+    await response.text();
+    expect(upstream.at(-1)?.headers.get("content-type")).toBe("application/json");
+  });
+
   test("rejects conflicting versions in path and body", async () => {
     const response = await call(`/models/${owner}/${name}:${knownVersion}/predictions`, {
       method: "POST",

@@ -15,7 +15,7 @@ export type HackClubIdentity = {
   first_name: string;
   last_name: string;
   verification_status: string;
-  ysws_eligible: boolean;
+  ysws_eligible?: boolean;
 };
 
 export type HackClubAuthOptions = {
@@ -52,6 +52,7 @@ async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
   if (!identity.slack_id) {
     throw new HttpError(400, "User does not have a linked Slack account");
   }
+  const isIdvVerified = identity.ysws_eligible === true;
   const name = `${identity.first_name} ${identity.last_name}`.trim() || null;
   const avatar = avatarUrlForSlackId(identity.slack_id);
   const updateExisting = async () => {
@@ -61,7 +62,7 @@ async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
         email = ${identity.primary_email},
         name = ${name},
         avatar = ${avatar},
-        is_idv_verified = ${identity.ysws_eligible},
+        is_idv_verified = ${isIdvVerified},
         updated_at = now()
       WHERE slack_id = ${identity.slack_id}
       RETURNING id
@@ -90,7 +91,7 @@ async function upsertHackClubUser(sql: Sql, identity: HackClubIdentity) {
     throw error;
   }
   await sql`
-    UPDATE users SET is_idv_verified = ${identity.ysws_eligible}
+    UPDATE users SET is_idv_verified = ${isIdvVerified}
     WHERE id = ${created.userId}::uuid
   `;
   return created.userId;

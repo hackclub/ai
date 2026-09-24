@@ -14,7 +14,6 @@ import {
   createTestAccount,
   onlyBillingRecord,
   testBilling,
-  withFaults,
 } from "./routes/test-harness";
 
 const { sql } = await testDatabase();
@@ -136,31 +135,15 @@ describe("runMeteredRequest", () => {
     expect(await billingRecords(sql, account.accountId)).toEqual([]);
   });
 
-  test("releases the reservation when dispatch fails", async () => {
+  test("holds a rejected dispatch for reconciliation because upstream acceptance is unknown", async () => {
     const { billing, account, record } = await setup();
     const { failure, input } = dispatchFailure(account.accountId);
     await expect(runMeteredRequest(billing, input)).rejects.toBe(failure);
-    expect((await record()).state).toBe("released");
-  });
-
-  test("rethrows the dispatch error when release also fails", async () => {
-    const { billing, account } = await setup();
-    const releaseFailure = new Error("pool closed");
-    const failing = withFaults(billing, {
-      release: async () => {
-        throw releaseFailure;
-      },
+    expect(await record()).toMatchObject({
+      state: "pending_reconciliation",
+      reconciliationReason: "dispatch_failed",
+      providerRequestId: null,
     });
-    const releaseErrors: unknown[][] = [];
-    const { failure, input } = dispatchFailure(account.accountId);
-
-    await expect(
-      runMeteredRequest(failing, {
-        ...input,
-        onReleaseError: (...args) => releaseErrors.push(args),
-      }),
-    ).rejects.toBe(failure);
-    expect(releaseErrors).toEqual([[releaseFailure, input.requestId]]);
   });
 
   test("finalizes provider HTTP errors at zero cost", async () => {

@@ -226,6 +226,24 @@ describe("reconcilePendingReservations with OpenRouter", () => {
     expect((await stateOf(ok))?.state).toBe("finalized");
   });
 
+  test("rotates a failed lookup so a later reservation can progress next pass", async () => {
+    const accountId = await newAccount();
+    const failedProviderId = uniqueId("gen-failed-");
+    const nextProviderId = uniqueId("gen-next-");
+    const failed = await pending(accountId, failedProviderId, { age: "2 minutes" });
+    const next = await pending(accountId, nextProviderId, { age: "1 minute" });
+    const provider = openRouter((url) =>
+      url.endsWith(nextProviderId)
+        ? generationResponse(0.001, nextProviderId)
+        : new Response("", { status: 500 }),
+    );
+
+    expect(await reconcile({ openRouter: provider, limit: 1 })).toEqual({ finalized: 0, released: 0, skipped: 0, failed: 1 });
+    expect(await reconcile({ openRouter: provider, limit: 1 })).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
+    expect((await stateOf(failed))?.state).toBe("pending_reconciliation");
+    expect((await stateOf(next))?.state).toBe("finalized");
+  });
+
   test("decides expiry on the database clock and logs an age beyond int4 raw", async () => {
     const accountId = await newAccount();
     const justExpired = await pending(accountId, null, { age: "61 seconds" });

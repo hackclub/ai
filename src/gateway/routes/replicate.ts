@@ -193,9 +193,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     };
     const prefer = request.headers.get("prefer");
     if (prefer) headers.prefer = prefer;
-    if (request.headers.get("content-type") === "application/json") {
-      headers["content-type"] = "application/json";
-    }
     return headers;
   };
 
@@ -321,7 +318,11 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       // that still executes (and still delivers to any webhook).
       execute: async () =>
         meterPrediction(
-          await callUpstream(request, path, { method: "POST", body: requestBody }),
+          await callUpstream(request, path, {
+            method: "POST",
+            headers: { ...upstreamHeaders(request), "content-type": "application/json" },
+            body: requestBody,
+          }),
           requestBody,
           { pricing, lookup: lookupPrediction, timeoutMs: settlementTimeoutMs },
         ),

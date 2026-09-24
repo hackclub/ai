@@ -115,7 +115,7 @@ export type IssuedApiKey = {
 };
 
 export async function issueApiKey(
-  sql: Sql,
+  sql: Sql | postgres.TransactionSql,
   userId: string,
   name: string,
 ): Promise<IssuedApiKey> {
@@ -166,16 +166,19 @@ export async function createApiKey(sql: Sql, userId: string, rawName: unknown) {
   if (name.length < 1 || name.length > 100) {
     throw new HttpError(400, "Key name must be between 1 and 100 characters");
   }
-  const [count] = await sql<{ count: number }[]>`
-    SELECT count(*)::integer AS count
-    FROM api_keys
-    WHERE user_id = ${userId}::uuid AND revoked_at IS NULL
-  `;
-  if ((count?.count ?? 0) >= MAX_ACTIVE_KEYS) {
-    throw new HttpError(400, "Maximum API key limit reached");
-  }
-  const issued = await issueApiKey(sql, userId, name);
-  return { key: issued.key, name, id: issued.id };
+  return sql.begin(async (tx) => {
+    await tx`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+    const [count] = await tx<{ count: number }[]>`
+      SELECT count(*)::integer AS count
+      FROM api_keys
+      WHERE user_id = ${userId}::uuid AND revoked_at IS NULL
+    `;
+    if ((count?.count ?? 0) >= MAX_ACTIVE_KEYS) {
+      throw new HttpError(400, "Maximum API key limit reached");
+    }
+    const issued = await issueApiKey(tx, userId, name);
+    return { key: issued.key, name, id: issued.id };
+  });
 }
 
 /**

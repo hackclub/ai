@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { revokeApiKeyByToken } from "../auth/api-keys";
+import { issueApiKey, revokeApiKeyByToken } from "../auth/api-keys";
 import { createSessions } from "../auth/sessions";
 import { BANNED_MESSAGE, createUser } from "../auth/users";
 import { testDatabase } from "../test/database";
@@ -38,6 +38,31 @@ describe("keys API and revoke webhooks with PostgreSQL", () => {
     const response = await app.handle(new Request(`${BASE_URL}/api/keys`));
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Authentication required" });
+  });
+
+  test("rejects valid JSON that is not an object", async () => {
+    for (const body of ["null", "[]", '"name"']) {
+      const response = await call("/api/keys", { method: "POST", body });
+      expect(response.status).toBe(400);
+    }
+  });
+
+  test("enforces the 50-key cap under concurrent requests", async () => {
+    const { userId, cookie: concurrentCookie } = await signIn("U-keys-concurrent");
+    for (let index = 0; index < 49; index++) {
+      await issueApiKey(sql, userId, `existing-${index}`);
+    }
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        call("/api/keys", { method: "POST", body: JSON.stringify({ name: `race-${index}` }) }, concurrentCookie),
+      ),
+    );
+    const [row] = await sql<{ count: number }[]>`
+      SELECT count(*)::integer AS count FROM api_keys
+      WHERE user_id = ${userId}::uuid AND revoked_at IS NULL
+    `;
+    expect(row?.count).toBe(50);
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
   });
 
   test("refuses a banned user's valid session", async () => {

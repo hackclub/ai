@@ -61,12 +61,6 @@ export type MeteredRequestInput = {
   analytics?: MeteredRequestAnalytics;
   /** Dispatches the upstream call. Only invoked after the reservation holds. */
   execute: () => Promise<MeteredProviderResponse>;
-  /**
-   * Called when the dispatch-error path's `billing.release` itself throws.
-   * The upstream error is still what's thrown from `runMeteredRequest`; this
-   * is purely a reporting hook. Not wired from routes in this plan.
-   */
-  onReleaseError?: (error: unknown, requestId: string) => void;
 };
 
 export type MeteredRequestOutcome =
@@ -243,7 +237,8 @@ const settleCompletion = async (
  *
  * 1. Reserve the estimate. Insufficient funds or an exceeded limit throws
  *    before any provider call is made.
- * 2. Dispatch. A transport failure releases the reservation and rethrows.
+ * 2. Dispatch. A transport failure has an uncertain provider outcome, so
+ *    keep the reservation for reconciliation and rethrow.
  * 3. Once the response has been fully consumed or cancelled, settle as the
  *    completion says: finalize with the provider-reported cost, finalize at
  *    zero for a provider error, or mark the reservation pending
@@ -271,11 +266,9 @@ export async function runMeteredRequest(
     metered = await input.execute();
   } catch (error) {
     try {
-      await billing.release(input.requestId);
-    } catch (releaseError) {
-      // The upstream failure is the useful signal; the leaked hold is
-      // recovered by the expiry sweeper. Report both, rethrow the original.
-      input.onReleaseError?.(releaseError, input.requestId);
+      await billing.markPendingReconciliation(input.requestId, "dispatch_failed");
+    } catch (settlementError) {
+      log.error({ err: settlementError, requestId: input.requestId }, "failed to record uncertain dispatch");
     }
     throw error;
   }

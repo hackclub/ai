@@ -50,7 +50,7 @@ export type ProviderLookups = { lookupFor(provider: string): ChargeLookup | null
 
 /**
  * Moves a row the pass could not settle to the back of the queue so a
- * backlog of not-ready rows cannot starve newer ones. Touches only
+ * backlog of not-ready or failed rows cannot starve newer ones. Touches only
  * `updated_at`; billing state is untouched, which is why this UPDATE lives
  * here rather than in the engine.
  */
@@ -155,6 +155,15 @@ export async function reconcilePendingReservations(
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      try {
+        await deferRow(options.sql, row.request_id);
+      } catch (deferError) {
+        log(
+          `failed to defer ${row.request_id}: ${
+            deferError instanceof Error ? deferError.message : String(deferError)
+          }`,
+        );
+      }
     }
   }
 

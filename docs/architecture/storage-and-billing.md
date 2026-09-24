@@ -128,8 +128,10 @@ upstream call takes through billing:
 
 1. Reserve the estimate. An insufficient-funds or limit error is raised before
    any provider traffic.
-2. Dispatch through the provider adapter. A transport failure releases the
-   reservation and rethrows.
+2. Dispatch through the provider adapter. A transport failure may happen
+   after the provider accepted the request, so the reservation is marked
+   pending reconciliation and the error is rethrown. Without a provider ID,
+   the pending hold follows the normal 24-hour resolution policy.
 3. Stream the provider response to the caller byte-for-byte through
    `src/providers/metered-body.ts`: the adapter's usage reader observes a
    copy of the same bytes, and the body is captured up to a cap.
