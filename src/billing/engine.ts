@@ -429,6 +429,7 @@ export class BillingEngine {
             provider_request_id
           ),
           reconciliation_reason = ${reason},
+          pending_since = now(),
           updated_at = now()
         WHERE id = ${reservation.id}::uuid
         RETURNING ${reservationColumns(tx)}

@@ -11,8 +11,13 @@ export type ReconcileOptions = {
   billing: Pick<BillingEngine, "finalize" | "release">;
   /** The lookup for each provider key; a key without one is released after `maxAgeMs`. */
   providers: ProviderLookups;
-  /** Age after which a reservation without a provider record is released. */
+  /** Age after which a reservation with nothing to look up is released. */
   maxAgeMs?: number;
+  /**
+   * How long after a request ended a provider's "no record" is believed.
+   * OpenRouter writes a generation's record about 10–15 s after it ends.
+   */
+  notFoundGraceMs?: number;
   limit?: number;
   log?: (message: string) => void;
 };
@@ -31,10 +36,12 @@ type PendingRow = {
   reconciliation_reason: string | null;
   endpoint: string | null;
   expired: boolean;
+  record_overdue: boolean;
   age_ms: number | string;
 };
 
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+const DEFAULT_NOT_FOUND_GRACE_MS = 5 * 60 * 1_000;
 
 /** What a provider lookup found for a pending reservation. */
 export type ProviderCharge =
@@ -73,6 +80,7 @@ export async function reconcilePendingReservations(
   options: ReconcileOptions,
 ): Promise<ReconcileResult> {
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+  const notFoundGraceMs = options.notFoundGraceMs ?? DEFAULT_NOT_FOUND_GRACE_MS;
   const log = options.log ?? (() => {});
   const result: ReconcileResult = { finalized: 0, released: 0, skipped: 0, failed: 0 };
 
@@ -84,6 +92,8 @@ export async function reconcilePendingReservations(
       reconciliation_reason,
       endpoint,
       created_at < now() - make_interval(secs => ${maxAgeMs / 1_000}) AS expired,
+      COALESCE(pending_since, updated_at) < now() - make_interval(secs => ${notFoundGraceMs / 1_000})
+        AS record_overdue,
       floor(extract(epoch FROM (now() - created_at)) * 1000)::bigint AS age_ms
     FROM billing_reservations
     WHERE state = 'pending_reconciliation'
@@ -116,7 +126,7 @@ export async function reconcilePendingReservations(
 
       const charge = await pending;
       if (charge.state === "not_found") {
-        if (expired) {
+        if (row.record_overdue) {
           await options.billing.release(row.request_id);
           log(
             `released ${row.request_id}: ${row.provider} has no record ${row.provider_request_id}`,

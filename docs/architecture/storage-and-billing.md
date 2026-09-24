@@ -189,8 +189,11 @@ runs every five minutes (`src/billing/reconciliation.ts`):
    (`ProviderModule`, registered in `src/server.ts`); reconciliation only
    asks the registry and imports no provider code.
 
-3. A pending reservation with no provider record after 24 hours is released;
-   younger ones are retried on the next run.
+3. When the provider says it has no record, the reservation is released
+   five minutes after the request ended (`pending_since`); OpenRouter writes
+   a generation's record 10–15 seconds after it ends. A reservation with no
+   provider request ID to look up is released after 24 hours. Until then,
+   rows are retried on the next run.
 
 A row the provider knows about but cannot yet be billed (`not_ready`) is
 kept pending and moved to the back of the queue; its 24-hour expiry is

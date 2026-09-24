@@ -106,18 +106,24 @@ const reserve = async (
   return requestId;
 };
 
-/** A reservation the gateway could not settle, as it reaches the reconciliation queue. */
+/**
+ * A reservation the gateway could not settle, as it reaches the reconciliation
+ * queue. `age` backdates the request's start, `pendingFor` (default: `age`)
+ * when it ended.
+ */
 const pending = async (
   accountId: string,
   providerRequestId: string | null,
-  options: { provider?: string; age?: string } = {},
+  options: { provider?: string; age?: string; pendingFor?: string } = {},
 ) => {
   const requestId = await reserve(accountId, options);
   await engine.markPendingReconciliation(requestId, "client disconnected", providerRequestId ?? undefined);
   if (options.age) {
     // markPendingReconciliation touches updated_at; keep the row's place in the queue.
     await sql`
-      UPDATE billing_reservations SET updated_at = created_at WHERE request_id = ${requestId}::uuid
+      UPDATE billing_reservations
+      SET updated_at = created_at, pending_since = now() - ${options.pendingFor ?? options.age}::interval
+      WHERE request_id = ${requestId}::uuid
     `;
   }
   return requestId;
@@ -194,9 +200,9 @@ describe("reconcilePendingReservations with OpenRouter", () => {
   test("waits for young reservations and releases old ones without a record", async () => {
     const accountId = await newAccount();
     // Young rows are backdated too, so a deferral visibly moves updated_at.
-    const youngMissing = await pending(accountId, uniqueId("gen-young-"), { age: "5 minutes" });
+    const youngMissing = await pending(accountId, uniqueId("gen-young-"), { age: "4 minutes" });
     const oldMissing = await pending(accountId, uniqueId("gen-old-"), { age: "24 hours 1 minute" });
-    const youngNoId = await pending(accountId, null, { age: "5 minutes" });
+    const youngNoId = await pending(accountId, null, { age: "4 minutes" });
     const oldNoId = await pending(accountId, null, { age: "24 hours 1 minute" });
 
     const result = await reconcile({ openRouter: openRouter(notFound) });
@@ -207,6 +213,20 @@ describe("reconcilePendingReservations with OpenRouter", () => {
     expect((await stateOf(oldMissing))?.state).toBe("released");
     expect((await stateOf(oldNoId))?.state).toBe("released");
     expect((await billingRecords(sql, accountId)).filter((record) => record.event)).toEqual([]);
+  });
+
+  test("believes a missing generation five minutes after the request ended, however long it ran", async () => {
+    const accountId = await newAccount();
+    // A rate-limited request that failed six minutes ago holds no funds any more.
+    const failed = await pending(accountId, uniqueId("gen-failed-"), { age: "6 minutes" });
+    // A three-hour stream that ended a minute ago may not have a record yet.
+    const longStream = await pending(accountId, uniqueId("gen-long-"), { age: "3 hours", pendingFor: "1 minute" });
+
+    const result = await reconcile({ openRouter: openRouter(notFound) });
+
+    expect(result).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
+    expect((await stateOf(failed))?.state).toBe("released");
+    expect(await stateOf(longStream)).toEqual({ state: "pending_reconciliation", deferred: true });
   });
 
   test("counts per-row failures and keeps going", async () => {
