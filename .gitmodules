@@ -1,0 +1,3 @@
+[submodule "secrets"]
+	path = secrets
+	url = https://github.com/hackclub/ai-secrets.git

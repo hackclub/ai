@@ -3,6 +3,9 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
+# The private secrets submodule is absent from open-source checkouts; the
+# gateway then runs without abuse rules, so an empty directory is enough.
+RUN mkdir -p secrets
 # The build imports the server hook, which validates configuration; these
 # placeholders satisfy it and never reach the runtime image.
 # SvelteKit loads src/env.ts through a throwaway Vite dev server whose file
@@ -33,6 +36,7 @@ COPY migrations ./migrations
 COPY scripts ./scripts
 # scripts/legacy imports from src; one-off imports run inside this container.
 COPY src ./src
+COPY --from=build /app/secrets ./secrets
 USER bun
 EXPOSE 3000
 CMD ["bun", "run", "start"]

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { AnalyticsQueries } from "../analytics/queries";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
-import { blockedPrompts } from "../config/blocked-prompts";
+import abuseRules from "../test/abuse-rules.json";
 import { BLOCKED_MESSAGE } from "./abuse";
 import { proxyRoutes, withKeepAlive } from "./proxy";
 import { testClickHouse, testDatabase } from "../test/database";
@@ -132,7 +132,7 @@ describe("proxyRoutes", () => {
 
   test("rejects a blocked prompt with 403 and never calls the adapter", async () => {
     const { chat, dispatches, records } = await setup();
-    const response = await chat({ messages: [{ role: "user", content: blockedPrompts[0] }] });
+    const response = await chat({ messages: [{ role: "user", content: abuseRules.prompts["Test agent"][0] }] });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
     expect(dispatches()).toBe(0);

@@ -77,6 +77,7 @@ the same `bun test`.
 
 ```bash
 bun install --frozen-lockfile
+git submodule update --init   # maintainers only: private anti-abuse rules
 cp .env.example .env   # fill in every provider key; all are required
 bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 via Docker
 bun run dev            # http://localhost:3000

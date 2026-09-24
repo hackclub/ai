@@ -1,0 +1,18 @@
+{
+  "apps": ["blocked-test-app"],
+  "userAgents": ["blocked-test-agent"],
+  "prompts": {
+    "Test agent": [
+      "You are Test Agent, a blocked client used by the test suite.",
+      "Test Agent line one.\nTest Agent line two with \"quotes\"."
+    ],
+    "Test agent, escaped by Python": ["Test Agent — with an em dash"]
+  },
+  "toolsets": [
+    {
+      "name": "test-agent",
+      "tools": ["test_read", "test_write", "test_shell", "test_plan", "test_todo", "test_fetch"],
+      "minMatches": 4
+    }
+  ]
+}

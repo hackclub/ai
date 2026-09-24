@@ -62,6 +62,11 @@ running (`src/test/database.ts`, `docs/adr/0001`).
 - `src/auth/` — API keys, sessions, Hack Club OAuth.
 - `src/routes/` + `src/lib/` — SvelteKit pages and shared UI/server code.
 - `migrations/postgres`, `migrations/clickhouse` — numbered SQL files.
+- `secrets/` — the private `hackclub/ai-secrets` submodule: anti-abuse rules
+  (`abuse.json`: blocked apps, User-Agents, prompts, tool fingerprints) that
+  `src/gateway/abuse.ts` loads at startup. Optional: without it the gateway
+  runs unscreened, and tests always use `src/test/abuse-rules.json`. Never
+  add real rules to this repo; it is public.
 - `src/lib/components/ui/**` — vendored shadcn-svelte. Do not edit.
 
 ## Hard rules

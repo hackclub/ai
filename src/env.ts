@@ -130,6 +130,9 @@ export const loadEnv = (
   };
 };
 
+export const abuseRulesPath = (source: Record<string, string | undefined> = process.env) =>
+  source.ABUSE_RULES_PATH || "secrets/abuse.json";
+
 /**
  * SvelteKit 3 reserves `src/env.ts` as its environment-schema module and
  * requires this export. The gateway validates its own configuration with

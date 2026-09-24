@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
 import { allowedReplicateModels } from "../../config/replicate-models";
-import { blockedPrompts } from "../../config/blocked-prompts";
+import abuseRules from "../../test/abuse-rules.json";
 import type { Fetch } from "../../providers/openrouter/adapter";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import { BLOCKED_MESSAGE } from "../abuse";
@@ -203,7 +203,7 @@ describe("POST /predictions", () => {
     const fetchCalls: string[] = [];
     const response = await postPrediction(buildApp({ fetch: refuseFetch(fetchCalls) }), {
       version: knownModel,
-      input: { prompt: blockedPrompts[0] },
+      input: { prompt: abuseRules.prompts["Test agent"][0] },
     });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
