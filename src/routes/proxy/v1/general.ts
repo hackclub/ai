@@ -94,19 +94,24 @@ function sleep(ms: number): Promise<void> {
  * - Streaming requests (body bytes may already be committed)
  * - 4xx errors other than 429 (client errors are not transient)
  * - Network errors other than our own timeout abort
+ *
+ * Pass `{ skipHeaderTimeout: true }` for requests that legitimately take
+ * longer than UPSTREAM_HEADER_TIMEOUT_MS to return headers (e.g. image
+ * models, which can take 10-30s+). Retries for transient upstream errors
+ * still apply.
  */
 async function fetchWithRetries(
   url: string,
   init: RequestInit,
+  { skipHeaderTimeout = false }: { skipHeaderTimeout?: boolean } = {},
 ): Promise<Response> {
   const isStreaming = init.body && typeof init.body !== "string";
 
   for (let attempt = 0; attempt <= UPSTREAM_RETRY_ATTEMPTS; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      UPSTREAM_HEADER_TIMEOUT_MS,
-    );
+    const timeout = skipHeaderTimeout
+      ? undefined
+      : setTimeout(() => controller.abort(), UPSTREAM_HEADER_TIMEOUT_MS);
 
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
@@ -174,10 +179,13 @@ async function handleProxy(c: Ctx, endpoint: string) {
     };
 
     // Image models take 10-30s+ to produce headers; skip the header
-    // timeout entirely for those requests.
-    const res = isImageModalityRequest(body)
-      ? await fetch(upstreamUrl, requestInit)
-      : await fetchWithRetries(upstreamUrl, requestInit);
+    // timeout entirely for those requests. Transient upstream errors
+    // (429/502/503/504) are still retried — without this, an upstream
+    // rate-limit 429 on an image request was passed straight through to
+    // the client with no retry at all, while text requests retried it.
+    const res = await fetchWithRetries(upstreamUrl, requestInit, {
+      skipHeaderTimeout: isImageModalityRequest(body),
+    });
 
     if (!body.stream || endpoint === "embeddings") {
       // For non-streaming requests, we still need to keep Cloudflare alive
