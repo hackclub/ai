@@ -170,14 +170,20 @@ export const compactRows = <T extends BodyColumns>(rows: T[]) => {
   return { rows: compacted, blobs: [...blobs.values()] };
 };
 
+const UPLOAD_CONCURRENCY = 16;
+
 /** Content-addressed, so a redelivered batch rewrites nothing. */
-export const uploadBlobs = (blobs: BodyBlob[], blobStore: S3Client) =>
-  Promise.all(
-    blobs.map(async (blob) => {
+export const uploadBlobs = async (blobs: BodyBlob[], blobStore: S3Client) => {
+  let next = 0;
+  const upload = async () => {
+    while (next < blobs.length) {
+      const blob = blobs[next++]!;
       const file = blobStore.file(blob.key);
       if (!(await file.exists())) await file.write(blob.bytes, { type: blob.type });
-    }),
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, blobs.length) }, upload));
+};
 
 /**
  * Compacts rows' bodies and uploads the blobs they reference before the rows

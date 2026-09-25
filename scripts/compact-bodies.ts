@@ -7,8 +7,8 @@
  *   bun scripts/compact-bodies.ts [--dry-run] [--from=YYYY-MM-DD]
  *
  * Reads CLICKHOUSE_URL / CLICKHOUSE_USER / CLICKHOUSE_PASSWORD / CLICKHOUSE_DB
- * and the BLOB_STORE_* variables. Safe to re-run: compacted rows no longer
- * match, and an interrupted run resumes with --from.
+ * and the BLOB_STORE_* variables. Safe to re-run: an event whose newest
+ * version is compacted is left alone, and an interrupted run resumes with --from.
  */
 import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import type { S3Client } from "bun";
@@ -41,7 +41,7 @@ const PENDING = `(
 )`;
 
 /** Rows fetched and rewritten together; bodies run up to 20 MiB. */
-const PAGE = 100;
+const PAGE = 50;
 
 export const compactStoredBodies = async ({
   clickhouse,
@@ -77,11 +77,19 @@ export const compactStoredBodies = async ({
     ).map((row) => row.event_id);
     const dayTotals = { rewritten: 0, blobs: 0, before: 0, after: 0 };
     for (let start = 0; start < ids.length; start += PAGE) {
-      const rows = await query<Row>(
-        `SELECT * FROM request_events FINAL
-         WHERE toDate(occurred_at) = {day:Date} AND event_id IN {ids:Array(UUID)} AND ${PENDING}`,
+      // No FINAL: it reads every column across the key range. Every stored
+      // version of the page's events comes back and the newest one wins, so
+      // an unmerged older version can never overwrite a compacted one.
+      const versions = await query<Row>(
+        `SELECT * FROM request_events WHERE toDate(occurred_at) = {day:Date} AND event_id IN {ids:Array(UUID)}`,
         { day, ids: ids.slice(start, start + PAGE) },
       );
+      const latest = new Map<string, Row>();
+      for (const row of versions) {
+        const seen = latest.get(row.event_id);
+        if (!seen || row.event_version > seen.event_version) latest.set(row.event_id, row);
+      }
+      const rows = [...latest.values()];
       const compacted = compactRows(rows);
       const size = (row: Row) => row.request_body.length + row.response_body.length;
       const changed = compacted.rows.filter((row, index) => {

@@ -38,7 +38,7 @@ test("rewrites raw SSE and inline images as a new version and leaves the rest al
   });
 
   expect(await compactStoredBodies({ clickhouse, blobStore, log: () => {} })).toMatchObject({ rows: 2, rewritten: 2, blobs: 1 });
-  expect(await compactStoredBodies({ clickhouse, blobStore, log: () => {} })).toMatchObject({ rows: 0 });
+  expect(await compactStoredBodies({ clickhouse, blobStore, log: () => {} })).toMatchObject({ rewritten: 0 });
 
   const result = await clickhouse.query({
     query: `
