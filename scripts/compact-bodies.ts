@@ -28,7 +28,10 @@ type Row = {
 
 const SETTINGS = {
   max_threads: 2,
-  max_memory_usage: "4000000000",
+  max_memory_usage: "8000000000",
+  // Bodies run up to 20 MiB; default blocks of them exhaust the memory cap.
+  max_block_size: "256",
+  preferred_block_size_bytes: "67108864",
   // Decimals must round-trip exactly; UInt64 columns here are small.
   output_format_json_quote_decimals: 1,
   output_format_json_quote_64bit_integers: 0,
@@ -41,7 +44,7 @@ const PENDING = `(
 )`;
 
 /** Rows fetched and rewritten together; bodies run up to 20 MiB. */
-const PAGE = 50;
+const PAGE = 20;
 
 export const compactStoredBodies = async ({
   clickhouse,
