@@ -7,5 +7,5 @@
 !static
 !migrations
 !scripts
-!secrets/abuse.json
+!secrets
 **/*.test.ts
