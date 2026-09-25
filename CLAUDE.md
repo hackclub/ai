@@ -9,7 +9,7 @@ Read this before changing anything. `README.md` covers setup;
 Bun 1.4 · Elysia 2.0 pre-release (exact pin in `package.json`) · SvelteKit 3
 `next` + `@sveltejs/adapter-bun` `next` · Svelte 5 runes · Tailwind v4 ·
 TypeScript 6 · PostgreSQL 18 (`postgres` driver) · ClickHouse 26.2
-(`@clickhouse/client`) · Graphile Worker.
+(`@clickhouse/client`) · Garage 2.4 (S3 API via `Bun.S3Client`) · Graphile Worker.
 
 Never run `bun update`, never change a framework version as a side effect of
 another change, and always install with `bun install --frozen-lockfile`.
@@ -32,9 +32,10 @@ Version ranges in `package.json` are pinned exactly for `elysia`,
 | Apply migrations | `bun run db:migrate` (`--status` lists pending) |
 
 Verification baseline for any change: `bun run typecheck` exits 0 and
-`bun test` reports `0 fail`. `bun test` needs PostgreSQL 18 and ClickHouse
-running (`bun run db:up`, or `TEST_DATABASE_URL` / `TEST_CLICKHOUSE_URL`)
-and fails before any test when either is unreachable; nothing is skipped.
+`bun test` reports `0 fail`. `bun test` needs PostgreSQL 18, ClickHouse and Garage
+running (`bun run db:up`, or `TEST_DATABASE_URL` / `TEST_CLICKHOUSE_URL` /
+`TEST_BLOB_STORE_URL`) and fails before any test when one is unreachable;
+nothing is skipped.
 Each run creates and drops its own databases, so the dev server can keep
 running (`src/test/database.ts`, `docs/adr/0001`).
 
@@ -59,6 +60,8 @@ running (`src/test/database.ts`, `docs/adr/0001`).
   and its reconciliation lookup, or `null`), registered in `src/server.ts`.
   A new provider is a new module there, not a branch in `billing/`.
 - `src/analytics/` — outbox → ClickHouse drainer and dashboard queries.
+  `bodies.ts` compacts bodies on the way in (assembled streams, base64
+  blobs moved to Garage); never write raw `data:` URLs to ClickHouse.
 - `src/auth/` — API keys, sessions, Hack Club OAuth.
 - `src/routes/` + `src/lib/` — SvelteKit pages and shared UI/server code.
 - `migrations/postgres`, `migrations/clickhouse` — numbered SQL files.

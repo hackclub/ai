@@ -1,11 +1,12 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { testClickHouse, testDatabase } from "../test/database";
+import { testBlobStore, testClickHouse, testDatabase } from "../test/database";
 import { drainRequestEvents, MAX_DELIVERY_ATTEMPTS, stripParkedBodies } from "./request-events";
 
 const { sql } = await testDatabase();
 const { clickhouse } = await testClickHouse();
+const blobStore = await testBlobStore();
 
 describe("request event delivery with PostgreSQL and ClickHouse", () => {
   const accountId = crypto.randomUUID();
@@ -40,7 +41,7 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
 
   test("delivers complete searchable bodies, deletes the row, and parks an unmappable one", async () => {
     // Every row the outbox holds is taken; other tests' rows are delivered too.
-    await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
+    await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
 
     const result = await clickhouse.query({
       query: `
@@ -78,13 +79,51 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
       RETURNING id::text, claimed_at
     `;
 
-    await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
+    await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
 
     expect(await sql`SELECT 1 FROM request_event_outbox WHERE payload->>'event_id' = ${expiredEventId}`).toHaveLength(0);
     const freshRow = await sql<{ claimed_at: Date }[]>`
       SELECT claimed_at FROM request_event_outbox WHERE id = ${fresh!.id}::bigint
     `;
     expect(freshRow.map((row) => row.claimed_at.toISOString())).toEqual([fresh!.claimed_at.toISOString()]);
+  });
+
+  test("stores a streamed response assembled and moves images to the blob store", async () => {
+    const streamedEventId = crypto.randomUUID();
+    const image = crypto.getRandomValues(new Uint8Array(4096));
+    const dataUrl = `data:image/png;base64,${Buffer.from(image).toString("base64")}`;
+    const delta = (content: string) =>
+      `data: ${JSON.stringify({ id: "gen-1", model: "test/model", choices: [{ index: 0, delta: { role: "assistant", content } }] })}\n\n`;
+    await sql`
+      INSERT INTO request_event_outbox (payload)
+      VALUES (${sql.json(
+        payload(streamedEventId, {
+          occurred_at: "2026-09-25T12:00:00.000Z",
+          request_body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: dataUrl } }] }] }),
+          response_body: `${delta("six seven")}${delta(" mango")}data: [DONE]\n\n`,
+        }),
+      )} || '{"streamed": true}'::jsonb)
+    `;
+
+    await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
+
+    const result = await clickhouse.query({
+      query: `
+        SELECT request_body, response_body, attributes['response_body_format'] AS format
+        FROM request_events
+        WHERE event_id = {event_id:UUID} AND hasAllTokens(response_body, 'six seven mango')
+      `,
+      query_params: { event_id: streamedEventId },
+      format: "JSONEachRow",
+    });
+    const [row] = await result.json<{ request_body: string; response_body: string; format: string }>();
+    const key = `2026-09-25/${new Bun.CryptoHasher("sha256").update(image).digest("hex")}`;
+    expect(JSON.parse(row!.request_body).messages[0].content[0].image_url.url).toBe(`blob:image/png;${key}`);
+    expect(JSON.parse(row!.response_body).choices[0].message.content).toBe("six seven mango");
+    expect(row!.format).toBe("assembled_stream");
+    const blob = blobStore.file(key);
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(image);
+    expect((await blob.stat()).type).toBe("image/png");
   });
 
   test("releases the claim and counts an attempt when the ClickHouse insert fails", async () => {
@@ -96,7 +135,7 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
         throw new Error("boom");
       },
     } as unknown as ClickHouseClient;
-    await expect(drainRequestEvents({ sql, clickhouse: failingClickhouse, batchSize: 1_000 })).rejects.toThrow("boom");
+    await expect(drainRequestEvents({ sql, clickhouse: failingClickhouse, blobStore, batchSize: 1_000 })).rejects.toThrow("boom");
 
     const [row] = await sql`
       SELECT attempts, claimed_at, last_error FROM request_event_outbox WHERE payload->>'event_id' = ${failingEventId}

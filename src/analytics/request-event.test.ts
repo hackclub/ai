@@ -9,16 +9,17 @@ import { exaRoutes } from "../gateway/routes/exa";
 import { createTestAccount, fakeFetch, post, testBilling } from "../gateway/routes/test-harness";
 import { openRouterProvider } from "../providers/openrouter/provider";
 import { providerRegistry } from "../providers/provider";
-import { testClickHouse, testDatabase } from "../test/database";
+import { testBlobStore, testClickHouse, testDatabase } from "../test/database";
 import { toClickHouseEvent } from "./request-event";
 import { drainRequestEvents } from "./request-events";
 
 const { sql } = await testDatabase();
 const { clickhouse } = await testClickHouse();
+const blobStore = await testBlobStore();
 
 /** The request_events row for a request, money rendered by ClickHouse as text. */
 const clickHouseRow = async (requestId: string) => {
-  await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
+  await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
   const result = await clickhouse.query({
     query: `
       SELECT

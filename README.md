@@ -5,7 +5,8 @@ Elysia and Bun, with a SvelteKit dashboard built on shadcn-svelte.
 
 ## Local datastores
 
-Copy the development environment and start PostgreSQL 18 and ClickHouse 26.2:
+Copy the development environment and start PostgreSQL 18, ClickHouse 26.2 and
+Garage (the blob store):
 
 ```bash
 cp .env.example .env
@@ -17,11 +18,23 @@ The default endpoints are:
 - PostgreSQL: `postgres://hcai:hcai@localhost:55432/hcai`
 - ClickHouse HTTP: `http://localhost:8123`
 - ClickHouse native protocol: `localhost:9000`
+- Garage S3 API: `http://localhost:3900`, bucket `request-blobs`
 
 In production the server refuses to start unless `CLICKHOUSE_URL`,
-`CLICKHOUSE_USER`, and `CLICKHOUSE_PASSWORD` are set explicitly; the
-compose defaults above are for local development only, and compose binds
-both datastores to `127.0.0.1`.
+`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `BLOB_STORE_URL`,
+`BLOB_STORE_ACCESS_KEY_ID` and `BLOB_STORE_SECRET_ACCESS_KEY` are set
+explicitly; the compose defaults above are for local development only, and
+compose binds every datastore to `127.0.0.1`.
+
+The production bucket must expire objects so blobs leave with the bodies
+that reference them (90-day TTL, plus a day of slack). Garage supports
+`Expiration` lifecycle rules:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration --endpoint-url "$BLOB_STORE_URL" \
+  --bucket request-blobs --lifecycle-configuration \
+  '{"Rules":[{"ID":"body-ttl","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":91}}]}'
+```
 
 Schema changes are SQL files in `migrations/postgres` and
 `migrations/clickhouse`, applied by [dbmate](https://github.com/amacneil/dbmate)
@@ -49,7 +62,7 @@ bun run db:reset # removes local database volumes
 
 ### Tests
 
-`bun test` runs every suite against real PostgreSQL 18 and ClickHouse,
+`bun test` runs every suite against real PostgreSQL 18, ClickHouse and Garage,
 including the billing engine; nothing is faked except upstream providers
 (docs/adr/0001). Start the datastores first:
 
@@ -79,7 +92,7 @@ the same `bun test`.
 bun install --frozen-lockfile
 git submodule update --init   # maintainers only: private anti-abuse rules
 cp .env.example .env   # fill in every provider key; all are required
-bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 via Docker
+bun run db:up          # PostgreSQL 18 + ClickHouse 26.2 + Garage via Docker
 bun run dev            # http://localhost:3000
 ```
 

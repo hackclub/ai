@@ -1,4 +1,5 @@
 import type { ClickHouseClient } from "@clickhouse/client";
+import type { S3Client } from "bun";
 import {
   parseCronItems,
   run,
@@ -36,6 +37,7 @@ export type ReconciliationDependencies = {
 export type AnalyticsWorkerOptions = {
   connectionString: string;
   clickhouse: ClickHouseClient;
+  blobStore: S3Client;
   concurrency?: number;
   /** Pause between outbox passes once it is empty. Default one second. */
   drainIntervalMs?: number;
@@ -149,6 +151,7 @@ export const startAnalyticsWorker = async (
   const drainer = startRequestEventDrainer({
     sql,
     clickhouse: options.clickhouse,
+    blobStore: options.blobStore,
     intervalMs: options.drainIntervalMs,
     onError: (error) =>
       log.error({ err: error }, "request event delivery failed"),

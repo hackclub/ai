@@ -5,6 +5,7 @@ import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import { $ } from "bun";
 import postgres from "postgres";
 
+import { createBlobStore } from "../analytics/bodies";
 import { migrateJobQueue } from "../analytics/worker";
 
 const SERVER_URL = process.env.TEST_DATABASE_URL ?? "postgres://hcai:hcai@localhost:55432/postgres";
@@ -217,6 +218,30 @@ export const testClickHouse = async (): Promise<TestClickHouse> => {
   }
   afterAll(() => clickhouse.close());
   return { clickhouse, config };
+};
+
+const BLOB_STORE = {
+  endpoint: process.env.TEST_BLOB_STORE_URL ?? "http://localhost:3900",
+  bucket: "request-blobs",
+  region: "garage",
+  accessKeyId: "GK000000000000000000000000",
+  secretAccessKey: "0000000000000000000000000000000000000000000000000000000000000000",
+};
+
+let blobStoreReady: Promise<void> | undefined;
+
+export const testBlobStore = async () => {
+  const blobStore = createBlobStore(BLOB_STORE);
+  await (blobStoreReady ??= blobStore.list({ maxKeys: 1 }).then(
+    () => {},
+    (cause: unknown) => {
+      throw new Error(
+        `bun test needs a running Garage at ${BLOB_STORE.endpoint}. Start one with \`bun run db:up\`, or set TEST_BLOB_STORE_URL.`,
+        { cause },
+      );
+    },
+  ));
+  return blobStore;
 };
 
 const redact = (value: string) => {

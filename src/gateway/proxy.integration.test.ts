@@ -8,10 +8,11 @@ import { AnalyticsQueries } from "../analytics/queries";
 import { drainRequestEvents } from "../analytics/request-events";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
-import { testClickHouse, testDatabase } from "../test/database";
+import { testBlobStore, testClickHouse, testDatabase } from "../test/database";
 
 const { sql } = await testDatabase();
 const { clickhouse } = await testClickHouse();
+const blobStore = await testBlobStore();
 const analytics = new AnalyticsQueries(clickhouse);
 
 const encoder = new TextEncoder();
@@ -142,7 +143,7 @@ describe("proxy routes with PostgreSQL", () => {
       await response.text();
     }
     await billing.settled();
-    await drainRequestEvents({ sql, clickhouse, batchSize: 1_000 });
+    await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
 
     // Other tests' requests are in ClickHouse too; only this key's owner counts.
     const response = await stats(ownerKey);

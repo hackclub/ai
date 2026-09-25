@@ -1,6 +1,8 @@
 import { type ClickHouseClient, ClickHouseError } from "@clickhouse/client";
+import type { S3Client } from "bun";
 import type postgres from "postgres";
 
+import { compactBodies } from "./bodies";
 import { toClickHouseEvent } from "./request-event";
 
 /**
@@ -20,6 +22,8 @@ export const POISON_ROW_FAILURES = 5;
 export type DrainOptions = {
   sql: postgres.Sql;
   clickhouse: ClickHouseClient;
+  /** Receives the base64 blobs lifted out of bodies (`compactBodies`). */
+  blobStore: S3Client;
   /** Rows taken per pass. */
   batchSize?: number;
 };
@@ -37,7 +41,8 @@ export const CLAIM_LEASE_MS = 5 * 60 * 1_000;
  * to ClickHouse and returns how many rows it took. Three short statements:
  * claim rows by stamping claimed_at (SKIP LOCKED so drainers never contend),
  * insert into ClickHouse with no Postgres transaction open, then delete the
- * delivered ids. A crash between insert and delete leaves the claim to expire
+ * delivered ids. Bodies are compacted, and their blobs uploaded, just before
+ * the insert. A crash between insert and delete leaves the claim to expire
  * and the batch is redelivered, which ReplacingMergeTree collapses by
  * event_id. Any failure after the batch was handed to the ClickHouse client
  * counts against every row's attempt budget; a payload that cannot be mapped
@@ -46,6 +51,7 @@ export const CLAIM_LEASE_MS = 5 * 60 * 1_000;
 export const drainRequestEvents = async ({
   sql,
   clickhouse,
+  blobStore,
   batchSize = 500,
 }: DrainOptions): Promise<number> => {
   const rows = await sql<OutboxRow[]>`
@@ -93,7 +99,7 @@ export const drainRequestEvents = async ({
     try {
       await clickhouse.insert({
         table: "request_events",
-        values: events,
+        values: await compactBodies(events, blobStore),
         format: "JSONEachRow",
       });
     } catch (error) {

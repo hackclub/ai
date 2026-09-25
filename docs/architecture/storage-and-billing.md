@@ -14,6 +14,14 @@ integration suite; production sizing remains to be validated.
 - ClickHouse keeps request and response bodies for 90 days (column TTL);
   event dimensions (ids, model, tokens, cost, headers, attributes) are
   retained indefinitely. Changing that is a policy decision, not a bug.
+- Before a body reaches ClickHouse the drainer compacts it
+  (`src/analytics/bodies.ts`): a streamed response is stored as the message
+  its chunks add up to (attribute `response_body_format = assembled_stream`),
+  and each base64 `data:` URL of 1 KiB or more is moved to the blob store
+  (Garage, S3 API) and replaced by `blob:<mime>;<day>/<sha256>`. Blobs are
+  uploaded before the row is inserted, so a reference always resolves; keys
+  are content-addressed per day, so a resent image is stored once a day and
+  the bucket's 91-day expiry removes it after the rows that use it.
 - Billing enforcement never queries ClickHouse.
 - Finalized usage reaches ClickHouse through the `request_event_outbox`
   table, written in the finalization transaction. The analytics worker

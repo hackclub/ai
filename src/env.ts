@@ -3,6 +3,14 @@
  * module only checks shape and applies defaults so a misconfigured deploy
  * fails at startup rather than on the first request.
  */
+export type BlobStoreConfig = {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
 export type Env = {
   nodeEnv: "development" | "production" | "test";
   port: number;
@@ -13,6 +21,7 @@ export type Env = {
   clickhousePassword: string;
   /** The ClickHouse database holding `request_events`. Queries name tables unqualified. */
   clickhouseDatabase: string;
+  blobStore: BlobStoreConfig;
   openRouterApiKey: string;
   openRouterBaseUrl: string;
   /** Models shown on the landing page and in quickstart snippets. */
@@ -101,6 +110,16 @@ export const loadEnv = (
     clickhouseUser: requiredInProduction("CLICKHOUSE_USER", "hcai"),
     clickhousePassword: requiredInProduction("CLICKHOUSE_PASSWORD", "hcai"),
     clickhouseDatabase: source.CLICKHOUSE_DB ?? "hcai",
+    blobStore: {
+      endpoint: requiredInProduction("BLOB_STORE_URL", "http://localhost:3900"),
+      bucket: source.BLOB_STORE_BUCKET || "request-blobs",
+      region: source.BLOB_STORE_REGION || "garage",
+      accessKeyId: requiredInProduction("BLOB_STORE_ACCESS_KEY_ID", "GK000000000000000000000000"),
+      secretAccessKey: requiredInProduction(
+        "BLOB_STORE_SECRET_ACCESS_KEY",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    },
     openRouterApiKey: required(source, "OPENROUTER_API_KEY"),
     openRouterBaseUrl: source.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api",
     featuredModels: list(source.FEATURED_MODELS),

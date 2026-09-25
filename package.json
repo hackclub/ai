@@ -7,7 +7,7 @@
     "dev": "bunx --bun vite dev --port 3000",
     "db:up": "docker compose up -d --wait && bun run db:migrate",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres clickhouse",
+    "db:logs": "docker compose logs -f postgres clickhouse garage",
     "db:reset": "docker compose down --volumes",
     "db:migrate": "bun scripts/migrate.ts",
     "abuse:check": "bun scripts/abuse-check.ts",

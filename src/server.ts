@@ -4,6 +4,7 @@ import type { AnyElysia } from "elysia";
 import postgres from "postgres";
 
 import { AnalyticsQueries } from "./analytics/queries";
+import { createBlobStore } from "./analytics/bodies";
 import { startAnalyticsWorker } from "./analytics/worker";
 import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
@@ -193,6 +194,7 @@ export const createBackend = (env: Env): Backend => {
     worker ??= await startAnalyticsWorker({
       connectionString: env.databaseUrl,
       clickhouse,
+      blobStore: createBlobStore(env.blobStore),
       reconciliation: {
         sql,
         billing,

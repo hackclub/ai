@@ -2,7 +2,10 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { describe, expect, test } from "bun:test";
 import type postgres from "postgres";
 
+import { testBlobStore } from "../test/database";
 import { drainRequestEvents } from "./request-events";
+
+const blobStore = await testBlobStore();
 
 describe("drainRequestEvents", () => {
   type Statement = { text: string; values: unknown[] };
@@ -20,7 +23,7 @@ describe("drainRequestEvents", () => {
       return text.includes("SET claimed_at = now()") ? claimed : [];
     }) as unknown as postgres.Sql;
     const clickhouse = { insert } as unknown as ClickHouseClient;
-    return { statements, result: drainRequestEvents({ sql, clickhouse }) };
+    return { statements, result: drainRequestEvents({ sql, clickhouse, blobStore }) };
   };
 
   test("claims, inserts, then deletes with no transaction open across the insert", async () => {
