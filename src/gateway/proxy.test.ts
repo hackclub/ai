@@ -89,18 +89,22 @@ const setup = async (catalogEntry: unknown = null) => {
     enforceIdv: false,
     reservationFallbackOutputTokens: 1_000,
   });
-  const chat = (body: Record<string, unknown>) =>
+  const chat = (body: Record<string, unknown>, headers: Record<string, string> = {}) =>
     app.handle(
       new Request("http://gateway.test/proxy/v1/chat/completions", {
         method: "POST",
-        headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json", ...headers },
         body: JSON.stringify({ model: "openai/gpt-4o-mini", messages: [], ...body }),
       }),
     );
   const records = () => billingRecords(sql, account.accountId);
   const estimates = async () => (await records()).map((record) => record.estimatedCostUsd);
+  const abuseEvents = () => sql<{ kind: string; rule: string; enforced: boolean; endpoint: string; user_agent: string }[]>`
+    SELECT kind, rule, enforced, endpoint, user_agent FROM abuse_events WHERE user_id = ${account.userId}::uuid ORDER BY id
+  `;
   return {
     chat,
+    abuseEvents,
     settled,
     records,
     record: () => onlyBillingRecord(sql, account.accountId),
@@ -130,13 +134,49 @@ describe("proxyRoutes", () => {
     });
   });
 
-  test("rejects a blocked prompt with 403 and never calls the adapter", async () => {
-    const { chat, dispatches, records } = await setup();
-    const response = await chat({ messages: [{ role: "system", content: abuseRules.prompts["Test agent"][0] }, { role: "user", content: "hi" }] });
+  test("rejects a blocked prompt with 403, records the refusal and never calls the adapter", async () => {
+    const { chat, dispatches, records, abuseEvents } = await setup();
+    const response = await chat(
+      { messages: [{ role: "system", content: abuseRules.prompts["Test agent"][0] }, { role: "user", content: "hi" }] },
+      { "user-agent": "curl/8.7" },
+    );
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: BLOCKED_MESSAGE });
     expect(dispatches()).toBe(0);
     expect(await records()).toEqual([]);
+    expect([...(await abuseEvents())]).toEqual([
+      { kind: "prompt", rule: "Test agent", enforced: true, endpoint: "/proxy/v1/chat/completions", user_agent: "curl/8.7" },
+    ]);
+  });
+
+  test("screens only after authentication, so the rules cannot be probed without a key", async () => {
+    const { chat } = await setup();
+    const response = await chat(
+      { messages: [{ role: "system", content: abuseRules.prompts["Test agent"][0] }] },
+      { authorization: "", "user-agent": "Blocked-Test-Agent/1.0" },
+    );
+    expect(response.status).toBe(401);
+  });
+
+  test("a shadow rule records its match and lets the request through", async () => {
+    const { chat, abuseEvents, settled, record } = await setup();
+    const response = await chat({ messages: [{ role: "user", content: "hi" }] }, { "x-title": "Shadow-Test-App" });
+    expect(response.status).toBe(200);
+    await response.text();
+    await settled();
+    expect((await record()).state).toBe("finalized");
+    expect([...(await abuseEvents())]).toMatchObject([{ kind: "app", rule: "shadow-test-app", enforced: false }]);
+  });
+
+  test("records the request shape for the behavioural scan", async () => {
+    const { chat, settled, record } = await setup();
+    const response = await chat({
+      messages: [{ role: "system", content: "s" }, { role: "user", content: "hi" }, { role: "assistant", content: "yo" }],
+      tools: [{ type: "function", function: { name: "lookup" } }],
+    });
+    await response.text();
+    await settled();
+    expect((await record()).event?.attributes).toMatchObject({ tool_count: "1", message_count: "3" });
   });
 
   test("reserves the unknown-model hold when the listing has no usable pricing", async () => {

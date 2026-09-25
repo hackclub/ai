@@ -10,6 +10,7 @@ import {
 import postgres from "postgres";
 
 import type { BillingEngine } from "../billing/engine";
+import { pruneAbuseEvents } from "../gateway/abuse-events";
 import {
   expireStaleReservations,
   type ProviderLookups,
@@ -24,6 +25,7 @@ import {
 
 export const RECONCILE_TASK = "billing.reconcile";
 export const OUTBOX_RETENTION_TASK = "analytics.strip_parked_bodies";
+export const ABUSE_RETENTION_TASK = "abuse.prune_events";
 
 export type ReconciliationDependencies = {
   sql: postgres.Sql;
@@ -78,6 +80,10 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
     const stripped = await stripParkedBodies(resolved.sql);
     helpers.logger.info(`analytics.strip_parked_bodies: stripped=${stripped}`);
   };
+  tasks[ABUSE_RETENTION_TASK] = async (_payload, helpers) => {
+    const pruned = await pruneAbuseEvents(resolved.sql);
+    helpers.logger.info(`abuse.prune_events: pruned=${pruned}`);
+  };
   return tasks;
 };
 
@@ -101,8 +107,8 @@ export const startAnalyticsWorker = async (
   // polling on a connection that no caller holds a stop() for.
   const runner = await run({
     connectionString: options.connectionString,
-    // The drainer's max: 1 pool is shared with the retention task below; the
-    // retention statement is short and runs once a day, so contention with
+    // The drainer's max: 1 pool is shared with the retention tasks below; the
+    // retention statements are short and run once a day, so contention with
     // the once-a-second drain loop is negligible.
     taskList: taskList({
       sql,
@@ -117,6 +123,12 @@ export const startAnalyticsWorker = async (
         match: "17 3 * * *",
         identifier: OUTBOX_RETENTION_TASK,
         options: { queueName: OUTBOX_RETENTION_TASK, maxAttempts: 3, backfillPeriod: 0 },
+      },
+      {
+        task: ABUSE_RETENTION_TASK,
+        match: "37 3 * * *",
+        identifier: ABUSE_RETENTION_TASK,
+        options: { queueName: ABUSE_RETENTION_TASK, maxAttempts: 3, backfillPeriod: 0 },
       },
       ...(options.reconciliation
         ? [

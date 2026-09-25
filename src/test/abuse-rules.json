@@ -14,5 +14,11 @@
       "tools": ["test_read", "test_write", "test_shell", "test_plan", "test_todo", "test_fetch"],
       "minMatches": 4
     }
-  ]
+  ],
+  "shadow": {
+    "apps": ["shadow-test-app"]
+  },
+  "detectors": {
+    "learnedToolsets": "enforce"
+  }
 }

@@ -3,7 +3,7 @@ import type postgres from "postgres";
 
 import { type AuthenticatedPrincipal, authenticateApiKey, touchApiKey } from "../../auth/api-keys";
 import { InsufficientFundsError, LimitExceededError } from "../../billing/errors";
-import { assertNotBlockedClient } from "../abuse";
+import { screenRequest } from "../abuse-screen";
 import { HttpError } from "../http-error";
 import {
   type BillingLifecycle,
@@ -51,7 +51,9 @@ export const requestAuthorization = (
 
 /**
  * The checks every metered provider route shares, in the same order as the
- * OpenRouter proxy: abuse blocklist, API key, rate limit.
+ * OpenRouter proxy: API key, rate limit, abuse screen. The screen runs last so
+ * each match is attributed to a user and a refused client keeps its retries
+ * inside the rate limit.
  */
 export async function authorizeProviderRequest(
   deps: { sql: postgres.Sql; enforceIdv: boolean },
@@ -60,13 +62,18 @@ export async function authorizeProviderRequest(
   rawBody: string,
   options: { acceptApiKeyHeader?: boolean } = {},
 ): Promise<AuthenticatedPrincipal> {
-  assertNotBlockedClient(request.headers, rawBody);
   const principal = await authenticateApiKey(
     deps.sql,
     requestAuthorization(request.headers, options),
     { enforceIdv: deps.enforceIdv },
   );
   rateLimiter.consume(principal.userId);
+  await screenRequest(deps.sql, principal, {
+    headers: request.headers,
+    endpoint: new URL(request.url).pathname,
+    ip: clientIp(request.headers),
+    body: rawBody || null,
+  });
   touchApiKey(deps.sql, principal.apiKeyId);
   return principal;
 }

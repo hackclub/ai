@@ -221,6 +221,13 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         model: body.model,
         estimatedCostUsd: estimateFor(kind, model, body),
         reservationTtlMs,
+        // Request shape, for the behavioural abuse scan that reads metadata only.
+        attributes: {
+          tool_count: String(Array.isArray(body.tools) ? body.tools.length : 0),
+          message_count: String(
+            Array.isArray(body.messages) ? body.messages.length : Array.isArray(body.input) ? body.input.length : 1,
+          ),
+        },
         execute: () =>
           deps.adapter.execute({
             endpoint,

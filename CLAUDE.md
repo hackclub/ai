@@ -63,10 +63,13 @@ running (`src/test/database.ts`, `docs/adr/0001`).
 - `src/routes/` + `src/lib/` — SvelteKit pages and shared UI/server code.
 - `migrations/postgres`, `migrations/clickhouse` — numbered SQL files.
 - `secrets/` — the private `hackclub/ai-secrets` submodule: anti-abuse rules
-  (`abuse.json`: blocked apps, User-Agents, prompts, tool fingerprints) that
-  `src/gateway/abuse.ts` loads at startup. Optional: without it the gateway
-  runs unscreened, and tests always use `src/test/abuse-rules.json`. Never
-  add real rules to this repo; it is public.
+  (`abuse.json`: blocked apps, User-Agents, prompts, tool fingerprints, shadow
+  rules, detector modes) that `src/gateway/abuse.ts` loads at startup.
+  `abuse-screen.ts` screens each request after authentication and records
+  every match in `abuse_events`; `bun run abuse:check` tests a body locally.
+  Optional: without it the gateway runs unscreened, and tests always use
+  `src/test/abuse-rules.json`. Never add real rules to this repo; it is
+  public.
 - `src/lib/components/ui/**` — vendored shadcn-svelte. Do not edit.
 
 ## Hard rules

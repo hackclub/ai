@@ -10,6 +10,7 @@
     "db:logs": "docker compose logs -f postgres clickhouse",
     "db:reset": "docker compose down --volumes",
     "db:migrate": "bun scripts/migrate.ts",
+    "abuse:check": "bun scripts/abuse-check.ts",
     "build": "bunx --bun vite build",
     "start": "bun run db:migrate && bun ./build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

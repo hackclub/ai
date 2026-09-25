@@ -19,10 +19,11 @@ import {
 } from "../../providers/replicate/resources";
 import { meterJsonResponse } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
-import { assertNotBlockedClient } from "../abuse";
+import { screenRequest } from "../abuse-screen";
 import { HttpError } from "../http-error";
 import {
   authorizeProviderRequest,
+  clientIp,
   defaultRateLimiter,
   type MeteredRouteDependencies,
   parseJsonObject,
@@ -287,7 +288,14 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     raw: string,
     body: Record<string, unknown>,
   ) => {
-    assertNotBlockedClient(request.headers, raw);
+    // The headers were screened when the request was authorized.
+    await screenRequest(deps.sql, principal, {
+      headers: request.headers,
+      endpoint: new URL(request.url).pathname,
+      ip: clientIp(request.headers),
+      body: raw,
+      screenHeaders: false,
+    });
     // Replicate would POST results to any URL named here, from its own
     // network, under the shared account token; and the URL (often carrying
     // the caller's secret) would be stored as request_body. Not supported.
