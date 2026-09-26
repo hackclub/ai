@@ -260,8 +260,6 @@ export function lockLimitHolds(tx: Tx, requestId: string) {
   `;
 }
 
-// Row → planner input conversions.
-
 export const toLimitWindows = (rows: LimitWindowRow[]): LimitWindow[] =>
   rows.map((row) => ({
     id: row.id,

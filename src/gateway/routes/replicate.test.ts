@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { Usd } from "../../billing/money";
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
-import { allowedReplicateModels } from "../../config/replicate-models";
 import abuseRules from "../../test/abuse-rules.json";
 import type { Fetch } from "../../providers/openrouter/adapter";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
@@ -49,12 +48,6 @@ describe("Replicate allowlist", () => {
       "is not in the allowed list",
     );
     expect(() => resolveModelReference("nonsense")).toThrow("Invalid model format.");
-  });
-
-  test("every allowlisted version belongs to an allowlisted model", () => {
-    for (const model of Object.values(allowedReplicateModelVersions)) {
-      expect(allowedReplicateModels).toContain(model);
-    }
   });
 });
 

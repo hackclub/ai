@@ -1,4 +1,3 @@
-// Generated from the previous gateway's allowed-replicate-model-versions.json.
 // Maps a Replicate version hash to the owner/name it belongs to.
 export const allowedReplicateModelVersions: Record<string, string> = {
   "2119e338ca5c0dacd3def83158d6c80d431f2ac1024146d8cca9220b74385599": "zsxkib/dia",

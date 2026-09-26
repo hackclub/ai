@@ -344,7 +344,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
     .derive(async ({ request }) => ({
       principal: await authorizeProviderRequest(deps, rateLimiter, request, ""),
     }))
-    // Files
     .post("/files", async ({ request, principal }) => {
       // Checked before the body is parsed, so a user over quota never makes
       // the gateway buffer a full-size upload.
@@ -409,7 +408,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       await assertOwner("file", params.id, principal.userId);
       return forward(request, `/v1/files/${encodeURIComponent(params.id)}`, { method: "DELETE" });
     })
-    // Models
     .post("/models/:owner/:model/predictions", async ({ request, params, principal }) => {
       const fullModelId = validateModelAccess(params.owner, params.model);
       const pathVersion = versionFromModelName(params.model);
@@ -444,7 +442,6 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       if (!VERSION_ID.test(params.id)) throw new HttpError(400, "Invalid version ID");
       return forward(request, `/v1/models/${fullId}/versions/${params.id}`);
     })
-    // Predictions
     .post("/predictions", async ({ request, principal }) => {
       const { raw, body } = await readJson(request);
       const version = typeof body.version === "string" ? body.version : undefined;

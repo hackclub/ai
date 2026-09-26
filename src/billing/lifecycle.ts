@@ -72,7 +72,6 @@ const OPERATION_NAMES: Record<Operation, string> = {
   markPendingReconciliation: "mark pending reconciliation",
 };
 
-/** Looks up `operation` for a reservation in `state`, or throws. */
 export function transition(
   requestId: string,
   operation: Operation,

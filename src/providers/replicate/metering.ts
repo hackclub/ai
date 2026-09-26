@@ -14,7 +14,6 @@ const MAX_CONSECUTIVE_LOOKUP_FAILURES = 5;
 
 export type PredictionSettlement = {
   pricing: ReplicatePricing;
-  /** Fetches the current state of a prediction by id. */
   lookup: (id: string) => Promise<PredictionSnapshot | null>;
   timeoutMs: number;
   sleep?: (ms: number) => Promise<void>;

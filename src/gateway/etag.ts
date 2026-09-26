@@ -1,7 +1,6 @@
 /**
  * Serialises `value` as JSON with a strong ETag over the body, answering 304
- * when the request's `If-None-Match` already names it. Matches the Hono
- * `etag()` middleware the previous gateway used on its model listings.
+ * when the request's `If-None-Match` already names it.
  */
 export const jsonWithEtag = (request: Request, value: unknown): Response => {
   const body = JSON.stringify(value);

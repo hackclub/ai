@@ -130,7 +130,7 @@ describe("meterStreamed", () => {
   });
 
   test("a read still pending when the client cancels is dropped; the cancel decides", async () => {
-    // Today's Replicate metering lost the prediction id here: the pending
+    // Replicate metering once lost the prediction id here: the pending
     // read resolved `done`, closing the cancelled controller threw, and the
     // error path settled first without the id.
     const first = '{"id":"p9","status":"starting"}';

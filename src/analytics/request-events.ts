@@ -25,7 +25,6 @@ export type DrainOptions = {
   clickhouse: ClickHouseClient;
   /** Receives the base64 blobs lifted out of bodies (`compactBodies`). */
   blobStore: S3Client;
-  /** Rows taken per pass. */
   batchSize?: number;
 };
 

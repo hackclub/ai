@@ -25,7 +25,6 @@ export type HackClubAuthOptions = {
   baseUrl: string;
   /** Selects the `__Host-` name and `Secure` attribute of the `oauth_state` cookie. */
   secureCookies: boolean;
-  /** Starts and ends the dashboard session. */
   sessions: Sessions;
   fetch?: typeof fetch;
   onSignedIn?: (userId: string, identity: HackClubIdentity) => void;
