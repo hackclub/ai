@@ -11,7 +11,7 @@ import { Usd } from "../billing/money";
 import { ModelCatalog } from "../models/catalog";
 import { createReplicateCatalog } from "../providers/replicate/catalog";
 import { testClickHouse, testDatabase } from "../test/database";
-import { type DashboardEnv, DashboardReadModel, parseActivityCursor } from "./read-model";
+import { type DashboardEnv, DashboardReadModel, parseActivityCursor, parseActivityFilters } from "./read-model";
 
 const { sql } = await testDatabase();
 const { clickhouse } = await testClickHouse();
@@ -209,8 +209,12 @@ describe("activity", () => {
     expect(oldestRow).toEqual({
       requestId: oldest.request_id,
       occurredAt: expect.any(String),
+      provider: "",
+      endpoint: "",
       model: "openai/gpt-x",
       modelName: "GPT X",
+      variant: null,
+      modelHref: "/models/openai/gpt-x",
       inputTokens: 10,
       outputTokens: 5,
       billedCostUsd: "0.001",
@@ -221,8 +225,100 @@ describe("activity", () => {
     });
     expect(new Date(oldestRow?.occurredAt ?? "").getTime()).toBe(Date.parse(`${oldest.occurred_at.replace(" ", "T")}Z`));
     expect(unnamedRow).toMatchObject({ modelName: "acme/unnamed", apiKeyName: "revoked key", error: "upstream error", ip: "" });
-    expect(unlistedRow).toMatchObject({ modelName: "nobody/unlisted", apiKeyName: "revoked key", error: "rate_limited" });
+    expect(unlistedRow).toMatchObject({ modelName: "nobody/unlisted", modelHref: null, apiKeyName: "revoked key", error: "rate_limited" });
     expect(embeddingRow).toMatchObject({ modelName: "Emb Endpoint", apiKeyName: "Active key", error: null });
+  });
+
+  test("names routing variants after their base model and links other providers to their page", async () => {
+    const user = await signedIn();
+    const nitro = event(user.billingAccountId, { provider: "openrouter", model: "openai/gpt-x:nitro" });
+    const unlistedVariant = event(user.billingAccountId, { provider: "openrouter", model: "nobody/unlisted:free" });
+    const jev = event(user.billingAccountId, { provider: "typesafe", model: "jev/jev-latest" });
+    const ocr = event(user.billingAccountId, { provider: "mistral", model: "mistral-ocr-latest" });
+    await insertEvents([nitro, unlistedVariant, jev, ocr]);
+
+    const rows = (await readModel().activity(user)).rows;
+    expect(rows.map(({ modelName, variant, modelHref }) => ({ modelName, variant, modelHref }))).toEqual([
+      { modelName: "mistral-ocr-latest", variant: null, modelHref: "/ocr" },
+      { modelName: "jev/jev-latest", variant: null, modelHref: "/jev" },
+      { modelName: "nobody/unlisted", variant: "free", modelHref: null },
+      { modelName: "GPT X", variant: "nitro", modelHref: "/models/openai/gpt-x" },
+    ]);
+  });
+
+  test("filters by result, key, model and search, and pages within the filter", async () => {
+    const user = await signedIn();
+    const key = await issueApiKey(sql, user.id, "Filtered key");
+    const matching = Array.from({ length: 51 }, () =>
+      event(user.billingAccountId, { api_key_id: key.id, model: "acme/unnamed" }),
+    );
+    const failed = event(user.billingAccountId, { outcome: "provider_error", error_code: "http_400", model: "emb/endpoint" });
+    const otherKey = event(user.billingAccountId);
+    await insertEvents([...matching, failed, otherKey]);
+    const model = readModel();
+    const ids = async (filters: Record<string, string>) =>
+      (await model.activity(user, { filters: parseActivityFilters(new URLSearchParams(filters)) })).rows.map(
+        (row) => row.requestId,
+      );
+
+    expect(await ids({ status: "error" })).toEqual([failed.request_id]);
+    expect(await ids({ model: "emb/endpoint" })).toEqual([failed.request_id]);
+    expect(await ids({ q: "HTTP_400" })).toEqual([failed.request_id]);
+    expect(await ids({ q: failed.request_id.slice(0, 8) })).toEqual([failed.request_id]);
+    expect(await ids({ q: "UNNAMED", status: "ok", key: "not-a-uuid" })).toHaveLength(50);
+
+    const filters = parseActivityFilters(new URLSearchParams({ q: "unnamed" }));
+    const first = await model.activity(user, { filters });
+    expect(first.rows).toHaveLength(50);
+    const rest = await model.activity(user, { filters, cursor: first.next ?? undefined });
+    expect(rest.rows.map((row) => row.requestId)).toEqual([matching[0]?.request_id]);
+    expect(rest.next).toBeNull();
+  });
+
+  test("offers the account's models and keys as filters", async () => {
+    const user = await signedIn();
+    const key = await issueApiKey(sql, user.id, "Laptop");
+    await insertEvents([
+      event(user.billingAccountId, { model: "openai/gpt-x:nitro" }),
+      event(user.billingAccountId, { model: "nobody/unlisted" }),
+      event(user.billingAccountId, { model: "nobody/unlisted" }),
+      event((await signedIn()).billingAccountId, { model: "emb/endpoint" }),
+    ]);
+    expect(await readModel().activityFilterOptions(user)).toEqual({
+      models: [
+        { id: "nobody/unlisted", name: "nobody/unlisted" },
+        { id: "openai/gpt-x:nitro", name: "GPT X (nitro)" },
+      ],
+      keys: [{ id: key.id, name: "Laptop" }],
+    });
+  });
+
+  test("shows one request's details only to its owner", async () => {
+    const user = await signedIn();
+    const other = await signedIn();
+    const request = event(user.billingAccountId, {
+      provider: "openrouter",
+      streamed: true,
+      time_to_first_byte_ms: 120,
+      duration_ms: 620,
+      http_status: 200,
+      request_headers: { "user-agent": "curl/8.7.1" },
+    });
+    await insertEvents([request]);
+    const model = readModel();
+
+    expect(await model.activityRequest(user, request.request_id)).toMatchObject({
+      requestId: request.request_id,
+      modelName: "GPT X",
+      provider: "openrouter",
+      httpStatus: 200,
+      streamed: true,
+      timeToFirstByteMs: 120,
+      durationMs: 620,
+      userAgent: "curl/8.7.1",
+    });
+    expect(await model.activityRequest(other, request.request_id)).toBeNull();
+    expect(await model.activityRequest(user, "not-a-uuid")).toBeNull();
   });
 
   test("renders model ids when the catalog listing fails", async () => {
@@ -245,7 +341,7 @@ describe("activity", () => {
     // The page sends the cursor back as query parameters.
     const cursor = parseActivityCursor(new URLSearchParams(first.next ?? {}));
     expect(cursor).not.toBeNull();
-    const rest = await model.activity(user, cursor ?? undefined);
+    const rest = await model.activity(user, { cursor: cursor ?? undefined });
     expect(rest.rows.map((row) => row.requestId)).toEqual([events[0]?.request_id]);
     expect(rest.next).toBeNull();
   });
