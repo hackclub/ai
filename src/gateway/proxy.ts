@@ -29,7 +29,7 @@ export type ProxyDependencies = {
   reservationFallbackOutputTokens: number;
   /**
    * Hold placed when OpenRouter's listing has no usable pricing for the
-   * requested model (unlisted or dynamically priced). The real cost replaces
+   * requested model (dynamically priced, or the listing is unavailable). The real cost replaces
    * it on finalization. Defaults to 0.05 USD.
    */
   unknownModelReservationUsd?: string;
@@ -202,9 +202,10 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
 
     const body = parseBody(rawBody);
-    // Any model OpenRouter serves is allowed; the listing is only consulted
-    // for the reservation estimate. OpenRouter rejects ids it does not know.
-    const model = await deps.catalog.find(kind, body.model).catch(() => null);
+    // Unknown ids are refused before anything is reserved or recorded. When
+    // the listing itself is unavailable, OpenRouter decides.
+    const model = await deps.catalog.find(kind, body.model).catch(() => undefined);
+    if (model === null) throw new HttpError(400, `${body.model} is not a valid model ID`);
 
     // Attribution for abuse handling and authoritative usage in streams. No
     // sampling parameter is touched; see the architecture doc.
@@ -219,7 +220,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         provider: OPENROUTER,
         endpoint,
         model: body.model,
-        estimatedCostUsd: estimateFor(kind, model, body),
+        estimatedCostUsd: estimateFor(kind, model ?? null, body),
         reservationTtlMs,
         // Request shape, for the behavioural abuse scan that reads metadata only.
         attributes: {

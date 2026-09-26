@@ -6,6 +6,7 @@ export type ModelKind = "language" | "embedding";
 /** The subset of OpenRouter's model listing the gateway relies on. */
 export type OpenRouterModel = {
   id: string;
+  canonical_slug?: string;
   name?: string;
   context_length?: number;
   pricing?: {
@@ -95,9 +96,20 @@ export class ModelCatalog {
     return this.memo.get(kind);
   }
 
+  /**
+   * The listed model an id resolves to: its own listing, a dated canonical
+   * slug, or the base model of a routing variant such as `:nitro`, which
+   * OpenRouter does not list separately.
+   */
   async find(kind: ModelKind, id: string): Promise<OpenRouterModel | null> {
     const models = await this.list(kind);
-    return models.find((model) => model.id === id) ?? null;
+    const base = id.split(":")[0];
+    return (
+      models.find((model) => model.id === id) ??
+      models.find((model) => model.canonical_slug === id) ??
+      models.find((model) => model.id === base) ??
+      null
+    );
   }
 
   private async refresh(kind: ModelKind): Promise<OpenRouterModel[]> {
