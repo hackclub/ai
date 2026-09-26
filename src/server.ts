@@ -55,6 +55,15 @@ export const createBackend = (env: Env): Backend => {
     username: env.clickhouseUser,
     password: env.clickhousePassword,
     database: env.clickhouseDatabase,
+    // ClickHouse shares its host with PostgreSQL. Body scans use memory in
+    // proportion to threads, so cap both, and spill large GROUP BY/ORDER BY
+    // to disk rather than fail.
+    clickhouse_settings: {
+      max_memory_usage: "16000000000",
+      max_threads: 16,
+      max_bytes_before_external_group_by: "4000000000",
+      max_bytes_before_external_sort: "4000000000",
+    },
   });
   const settlements = new SettlementTracker();
   const billing = new BillingEngine(sql);
