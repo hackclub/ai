@@ -181,3 +181,18 @@
 .dark .code-block .shiki span {
   color: var(--shiki-dark);
 }
+
+/* The vendored sidebar eases linearly over 200 ms, which feels sluggish. */
+[data-slot="sidebar-gap"],
+[data-slot="sidebar-container"],
+[data-slot="sidebar-group-label"] {
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-slot="sidebar-group-label"] {
+    transition: none;
+  }
+}
