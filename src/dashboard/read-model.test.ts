@@ -278,13 +278,13 @@ describe("parseActivityCursor", () => {
 });
 
 describe("usage", () => {
-  test("totals the user's requests and the global and per-model stats", async () => {
+  test("totals the user's requests", async () => {
     const user = await signedIn();
     const other = await signedIn();
     await insertEvents([
       event(user.billingAccountId, { input_tokens: 10, output_tokens: 5 }),
       event(user.billingAccountId, { input_tokens: 20, output_tokens: 7 }),
-      event(other.billingAccountId, { model: "zero/model", input_tokens: 0, output_tokens: 0, billed_cost_usd: "0" }),
+      event(other.billingAccountId, { input_tokens: 1, output_tokens: 1 }),
     ]);
 
     expect(await readModel().usage(user)).toEqual({
@@ -293,12 +293,48 @@ describe("usage", () => {
       totalPromptTokens: 30,
       totalCompletionTokens: 12,
     });
-    expect(await readModel().globalUsage()).toEqual({
-      globalStats: { totalRequests: 3, totalTokens: 42, totalPromptTokens: 30, totalCompletionTokens: 12 },
-      modelStats: [
-        { model: "openai/gpt-x", totalRequests: 2, totalTokens: 42, totalPromptTokens: 30, totalCompletionTokens: 12 },
-      ],
-    });
+  });
+
+  test("ranks global usage by model and author, folding routing variants into their base model", async () => {
+    const user = await signedIn();
+    const other = await signedIn();
+    const now = new Date();
+    const at = (daysAgo: number) => new Date(now.getTime() - daysAgo * 86_400_000).toISOString();
+    await insertEvents([
+      event(user.billingAccountId, { occurred_at: at(0), provider: "openrouter", model: "openai/gpt-x", input_tokens: 60, output_tokens: 20 }),
+      event(other.billingAccountId, { occurred_at: at(0), provider: "openrouter", model: "openai/gpt-x:nitro", input_tokens: 10, output_tokens: 10 }),
+      event(other.billingAccountId, { occurred_at: at(3), provider: "openrouter", model: "acme/unnamed", input_tokens: 50, output_tokens: 0 }),
+      event(user.billingAccountId, { occurred_at: at(3), provider: "typesafe", model: "jev-latest", input_tokens: 5, output_tokens: 0 }),
+      event(user.billingAccountId, { occurred_at: at(3), provider: "exa", model: "exa/search", input_tokens: 0, output_tokens: 0 }),
+      event(user.billingAccountId, { occurred_at: at(40), provider: "openrouter", model: "openai/gpt-x", input_tokens: 1000, output_tokens: 0 }),
+    ]);
+    const model = readModel();
+
+    const day = await model.globalUsage("day", now);
+    expect(day.totals).toEqual({ requests: 2, tokens: 100, users: 2 });
+    expect(day.models).toEqual([
+      { model: "openai/gpt-x", name: "GPT X", href: "/models/openai/gpt-x", requests: 2, tokens: 100, share: 1 },
+    ]);
+
+    const month = await model.globalUsage("month", now);
+    expect(month.totals).toEqual({ requests: 5, tokens: 155, users: 2 });
+    expect(month.models.map((row) => [row.model, row.tokens, row.href])).toEqual([
+      ["openai/gpt-x", 100, "/models/openai/gpt-x"],
+      ["acme/unnamed", 50, "/models/acme/unnamed"],
+      ["jev-latest", 5, null],
+    ]);
+    expect(month.authors.map((row) => [row.author, row.tokens])).toEqual([
+      ["openai", 100],
+      ["acme", 50],
+      ["typesafe", 5],
+    ]);
+    expect(month.series.map((series) => series.model)).toEqual(["openai/gpt-x", "acme/unnamed", "jev-latest"]);
+    expect(month.days).toHaveLength(30);
+    expect(month.days.at(-1)).toMatchObject({ day: now.toISOString().slice(0, 10), total: 100, tokens: { "openai/gpt-x": 100 } });
+    expect(month.days.at(-4)?.total).toBe(55);
+    expect(month.days.reduce((sum, day) => sum + day.total, 0)).toBe(155);
+
+    expect((await model.globalUsage("all", now)).totals.tokens).toBe(1155);
   });
 
   test("one read model caches each account's totals separately", async () => {

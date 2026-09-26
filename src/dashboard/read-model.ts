@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 
-import type { AnalyticsQueries, ModelUsageStats, UsageStats } from "../analytics/queries";
+import type { AnalyticsQueries, GlobalRange, UsageStats } from "../analytics/queries";
 import { listApiKeys } from "../auth/api-keys";
 import type { SessionUser } from "../auth/sessions";
 import type { Env } from "../env";
@@ -77,6 +77,22 @@ export type ReplicateCard = {
 };
 
 export type ReplicateCardCategory = { name: string; models: ReplicateCard[] };
+
+export type GlobalPage = {
+  range: GlobalRange;
+  totals: { requests: number; tokens: number; users: number };
+  models: { model: string; name: string; href: string | null; requests: number; tokens: number; share: number }[];
+  authors: { author: string; tokens: number; share: number }[];
+  /** Chart series in legend order; `model: ""` is everything outside the top models. */
+  series: { model: string; name: string }[];
+  /** The last 30 UTC days, oldest first, with tokens per series. */
+  days: { day: string; total: number; tokens: Record<string, number> }[];
+};
+
+const GLOBAL_RANGES: GlobalRange[] = ["day", "week", "month", "all"];
+
+export const parseGlobalRange = (value: string | null): GlobalRange =>
+  GLOBAL_RANGES.find((range) => range === value) ?? "week";
 
 export type GroupedModels = {
   languageModels: CatalogModel[];
@@ -216,12 +232,49 @@ export class DashboardReadModel {
     };
   }
 
-  async globalUsage(): Promise<{ globalStats: UsageStats; modelStats: ModelUsageStats[] }> {
-    const [globalStats, modelStats] = await Promise.all([
-      this.deps.analytics.globalStats(),
-      this.deps.analytics.modelStats(),
-    ]);
-    return { globalStats, modelStats };
+  /** Rankings and daily usage across every account, for the global stats page. */
+  async globalUsage(range: GlobalRange, now = new Date()): Promise<GlobalPage> {
+    const [overview, listings] = await Promise.all([this.deps.analytics.globalOverview(range), this.listings()]);
+    const names = new Map(
+      [...listings.language, ...listings.embedding].map((model) => [model.id, model.name || model.id]),
+    );
+    const nameOf = (model: string) => (model ? (names.get(model) ?? model) : "Other");
+    const share = (tokens: number, total: number) => (total > 0 ? tokens / total : 0);
+    const authorTotal = overview.authors.reduce((sum, row) => sum + row.tokens, 0);
+
+    const seriesTokens = new Map<string, number>();
+    for (const row of overview.daily) seriesTokens.set(row.model, (seriesTokens.get(row.model) ?? 0) + row.tokens);
+    const series = [...seriesTokens]
+      .sort(([a, tokensA], [b, tokensB]) => (a === "" ? 1 : b === "" ? -1 : tokensB - tokensA))
+      .map(([model]) => ({ model, name: nameOf(model) }));
+
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const days = Array.from({ length: 30 }, (_, index) => ({
+      day: new Date(today - (29 - index) * 86_400_000).toISOString().slice(0, 10),
+      total: 0,
+      tokens: {} as Record<string, number>,
+    }));
+    const byDay = new Map(days.map((day) => [day.day, day]));
+    for (const row of overview.daily) {
+      const day = byDay.get(row.day);
+      if (!day) continue;
+      day.tokens[row.model] = row.tokens;
+      day.total += row.tokens;
+    }
+
+    return {
+      range,
+      totals: overview.totals,
+      models: overview.models.map((row) => ({
+        ...row,
+        name: nameOf(row.model),
+        href: names.has(row.model) ? `/models/${row.model}` : null,
+        share: share(row.tokens, overview.totals.tokens),
+      })),
+      authors: overview.authors.map((row) => ({ ...row, share: share(row.tokens, authorTotal) })),
+      series,
+      days,
+    };
   }
 
   /** The `/models` cards: only the fields a card renders. */

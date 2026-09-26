@@ -9,7 +9,29 @@ export type UsageStats = {
   totalCompletionTokens: number;
 };
 
-export type ModelUsageStats = UsageStats & { model: string };
+export type GlobalRange = "day" | "week" | "month" | "all";
+
+export type GlobalOverview = {
+  totals: { requests: number; tokens: number; users: number };
+  /** Top models by tokens, routing variants folded into their base model. */
+  models: { model: string; requests: number; tokens: number }[];
+  /** Tokens per model author (the part of the id before the slash). */
+  authors: { author: string; tokens: number }[];
+  /** Tokens per UTC day over the last 30 days for the top models; the rest are `model: ""`. */
+  daily: { day: string; model: string; tokens: number }[];
+};
+
+const RANGE_FILTER: Record<GlobalRange, string> = {
+  day: "occurred_at >= now() - INTERVAL 1 DAY",
+  week: "occurred_at >= now() - INTERVAL 7 DAY",
+  month: "occurred_at >= now() - INTERVAL 30 DAY",
+  all: "1",
+};
+
+/** `openai/gpt-4o:nitro` → `openai/gpt-4o`. */
+const BASE_MODEL = "splitByChar(':', model)[1]";
+/** `openai/gpt-4o` → `openai`; ids without an author fall back to the provider. */
+const AUTHOR = "if(position(model, '/') > 0, trimLeft(splitByChar('/', model)[1], '~'), provider)";
 
 export type RecentRequest = {
   requestId: string;
@@ -81,8 +103,8 @@ export class AnalyticsQueries {
   }
 
   private load(key: string): Promise<unknown> {
-    if (key === "globalStats") return this.loadGlobalStats();
-    if (key === "modelStats") return this.loadModelStats();
+    const range = key.startsWith("globalOverview:") ? key.slice("globalOverview:".length) : undefined;
+    if (range !== undefined) return this.loadGlobalOverview(range as GlobalRange);
     const accountId = key.startsWith("userStats:") ? key.slice("userStats:".length) : undefined;
     if (accountId !== undefined) return this.loadUserStats(accountId);
     throw new Error(`Unknown analytics memo key: ${key}`);
@@ -118,46 +140,70 @@ export class AnalyticsQueries {
     return toStats(row);
   }
 
-  globalStats(): Promise<UsageStats> {
-    return this.memo.get("globalStats") as Promise<UsageStats>;
+  /** Usage across every account over `range`, served from memory for a minute. */
+  globalOverview(range: GlobalRange): Promise<GlobalOverview> {
+    return this.memo.get(`globalOverview:${range}`) as Promise<GlobalOverview>;
   }
 
-  modelStats(): Promise<ModelUsageStats[]> {
-    return this.memo.get("modelStats") as Promise<ModelUsageStats[]>;
-  }
-
-  private async loadGlobalStats(): Promise<UsageStats> {
-    const result = await this.clickhouse.query({
-      query: `
-        SELECT
-          count() AS total_requests,
-          sum(input_tokens) AS total_prompt,
-          sum(output_tokens) AS total_completion
+  private async loadGlobalOverview(range: GlobalRange): Promise<GlobalOverview> {
+    const where = RANGE_FILTER[range];
+    const rows = async <T>(query: string) =>
+      (await this.clickhouse.query({ query, format: "JSONEachRow" })).json<T>();
+    const [[totals], models, authors, daily] = await Promise.all([
+      rows<{ requests: string; tokens: string; users: string }>(`
+        SELECT count() AS requests, sum(input_tokens + output_tokens) AS tokens, uniqExact(account_id) AS users
         FROM request_events FINAL
-      `,
-      format: "JSONEachRow",
-    });
-    const [row] = await result.json<StatsRow>();
-    return toStats(row);
-  }
-
-  private async loadModelStats(): Promise<ModelUsageStats[]> {
-    const result = await this.clickhouse.query({
-      query: `
-        SELECT
-          model,
-          count() AS total_requests,
-          sum(input_tokens) AS total_prompt,
-          sum(output_tokens) AS total_completion
+        WHERE ${where}
+      `),
+      rows<{ base: string; requests: string; tokens: string }>(`
+        SELECT ${BASE_MODEL} AS base, count() AS requests, sum(input_tokens + output_tokens) AS tokens
         FROM request_events FINAL
-        GROUP BY model
-        HAVING total_prompt + total_completion > 0 OR sum(billed_cost_usd) > 0
-        ORDER BY total_prompt + total_completion DESC
-      `,
-      format: "JSONEachRow",
-    });
-    const rows = await result.json<StatsRow & { model: string }>();
-    return rows.map((row) => ({ model: row.model, ...toStats(row) }));
+        WHERE ${where} AND model != ''
+        GROUP BY base
+        HAVING tokens > 0
+        ORDER BY tokens DESC
+        LIMIT 20
+      `),
+      rows<{ author: string; tokens: string }>(`
+        SELECT ${AUTHOR} AS author, sum(input_tokens + output_tokens) AS tokens
+        FROM request_events FINAL
+        WHERE ${where} AND model != ''
+        GROUP BY author
+        HAVING tokens > 0
+        ORDER BY tokens DESC
+        LIMIT 10
+      `),
+      rows<{ day: string; series: string; tokens: string }>(`
+        WITH top AS (
+          SELECT ${BASE_MODEL} AS base
+          FROM request_events FINAL
+          WHERE occurred_at >= today() - 29
+          GROUP BY base
+          HAVING sum(input_tokens + output_tokens) > 0
+          ORDER BY sum(input_tokens + output_tokens) DESC
+          LIMIT 8
+        )
+        SELECT
+          toString(toDate(occurred_at, 'UTC')) AS day,
+          if(${BASE_MODEL} IN (SELECT base FROM top), ${BASE_MODEL}, '') AS series,
+          sum(input_tokens + output_tokens) AS tokens
+        FROM request_events FINAL
+        WHERE occurred_at >= today() - 29
+        GROUP BY day, series
+        HAVING tokens > 0
+        ORDER BY day, tokens DESC
+      `),
+    ]);
+    return {
+      totals: {
+        requests: Number(totals?.requests ?? 0),
+        tokens: Number(totals?.tokens ?? 0),
+        users: Number(totals?.users ?? 0),
+      },
+      models: models.map((row) => ({ model: row.base, requests: Number(row.requests), tokens: Number(row.tokens) })),
+      authors: authors.map((row) => ({ author: row.author, tokens: Number(row.tokens) })),
+      daily: daily.map((row) => ({ day: row.day, model: row.series, tokens: Number(row.tokens) })),
+    };
   }
 
   async recentRequests(
