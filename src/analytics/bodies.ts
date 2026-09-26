@@ -124,22 +124,37 @@ const FINAL_RESPONSE_EVENTS = new Set(["response.completed", "response.failed", 
 
 /**
  * The message a captured event stream adds up to, as JSON, or null when the
- * body is not a stream this knows how to read (it is then stored as is).
+ * body is not a stream this knows how to read (it is then stored as is). The
+ * chunks say which API they came from; rows without an endpoint rely on that.
  */
-export const assembleStream = (endpoint: string, body: string): string | null => {
+export const assembleStream = (body: string): string | null => {
   const parsed = events(body);
   if (parsed.length === 0) return null;
-  if (endpoint === "chat/completions") return JSON.stringify(assembleChatCompletion(parsed));
-  if (endpoint === "responses") {
-    const final = parsed.findLast((event) => FINAL_RESPONSE_EVENTS.has(event.type as string));
-    return final && isRecord(final.response) ? JSON.stringify(final.response) : null;
+  if (parsed.some((event) => Array.isArray(event.choices))) {
+    return JSON.stringify(assembleChatCompletion(parsed));
   }
-  return null;
+  const final = parsed.findLast((event) => FINAL_RESPONSE_EVENTS.has(event.type as string));
+  return final && isRecord(final.response) ? JSON.stringify(final.response) : null;
+};
+
+/** Some stored rows wrap the captured stream as `{"stream":true,"content":"<event stream>"}`. */
+export const WRAPPED_STREAM_PREFIX = '{"stream":true,"content":';
+
+const streamOf = (row: { streamed: boolean; response_body: string }) => {
+  if (row.response_body.startsWith(WRAPPED_STREAM_PREFIX)) {
+    try {
+      const wrapped: unknown = JSON.parse(row.response_body);
+      if (isRecord(wrapped) && typeof wrapped.content === "string") return wrapped.content;
+    } catch {
+      // A truncated capture; left as is.
+    }
+    return null;
+  }
+  return row.streamed ? row.response_body : null;
 };
 
 type BodyColumns = {
   occurred_at: string;
-  endpoint: string;
   streamed: boolean;
   attributes: Record<string, string>;
   request_body: string;
@@ -153,8 +168,9 @@ export const compactRows = <T extends BodyColumns>(rows: T[]) => {
     const day = row.occurred_at.slice(0, 10);
     const attributes = { ...row.attributes };
     let response = row.response_body;
-    if (row.streamed && attributes.response_body_format !== ASSEMBLED_STREAM) {
-      const assembled = assembleStream(row.endpoint, response);
+    const stream = attributes.response_body_format === ASSEMBLED_STREAM ? null : streamOf(row);
+    if (stream !== null) {
+      const assembled = assembleStream(stream);
       if (assembled !== null) {
         response = assembled;
         attributes.response_body_format = ASSEMBLED_STREAM;

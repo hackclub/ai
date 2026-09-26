@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { assembleStream, extractBlobs } from "./bodies";
+import { assembleStream, compactRows, extractBlobs } from "./bodies";
 
 const sse = (...events: (object | string)[]) =>
   `: OPENROUTER PROCESSING\n\n${events.map((event) => `data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`).join("")}`;
@@ -33,7 +33,7 @@ describe("assembleStream", () => {
       "[DONE]",
     );
 
-    expect(JSON.parse(assembleStream("chat/completions", body) ?? "null")).toEqual({
+    expect(JSON.parse(assembleStream(body) ?? "null")).toEqual({
       object: "chat.completion",
       id: "gen-1",
       created: 1790351038,
@@ -59,7 +59,7 @@ describe("assembleStream", () => {
 
   test("keeps an error the provider sent mid-stream", () => {
     const body = sse(chunk({ role: "assistant", content: "Hel" }), { ...chunk({}), choices: [], error: { code: 502, message: "Upstream error" } });
-    expect(JSON.parse(assembleStream("chat/completions", body) ?? "null")).toMatchObject({
+    expect(JSON.parse(assembleStream(body) ?? "null")).toMatchObject({
       error: { code: 502, message: "Upstream error" },
       choices: [{ message: { content: "Hel" } }],
     });
@@ -72,12 +72,27 @@ describe("assembleStream", () => {
       { type: "response.output_text.delta", delta: "hi" },
       { type: "response.completed", response },
     )}`;
-    expect(JSON.parse(assembleStream("responses", body) ?? "null")).toEqual(response);
+    expect(JSON.parse(assembleStream(body) ?? "null")).toEqual(response);
   });
 
   test("leaves a stream it cannot read alone", () => {
-    expect(assembleStream("responses", sse({ type: "response.output_text.delta", delta: "cut off" }))).toBeNull();
-    expect(assembleStream("chat/completions", '{"not":"a stream"}')).toBeNull();
+    expect(assembleStream(sse({ type: "response.output_text.delta", delta: "cut off" }))).toBeNull();
+    expect(assembleStream('{"not":"a stream"}')).toBeNull();
+  });
+});
+
+describe("compactRows", () => {
+  test("assembles a stream stored wrapped in a JSON object, which is not flagged as streamed", () => {
+    const row = {
+      occurred_at: "2026-09-10 12:00:00.000",
+      streamed: false,
+      attributes: {},
+      request_body: "{}",
+      response_body: JSON.stringify({ stream: true, content: sse(chunk({ role: "assistant", content: "six" }), chunk({ content: " seven" }), "[DONE]") }),
+    };
+    const [compacted] = compactRows([row]).rows;
+    expect(compacted!.attributes).toEqual({ response_body_format: "assembled_stream" });
+    expect(JSON.parse(compacted!.response_body).choices[0].message.content).toBe("six seven");
   });
 });
 

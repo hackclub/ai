@@ -1,6 +1,6 @@
 /**
  * One-off rewrite of bodies stored before the drainer compacted them
- * (src/analytics/bodies.ts): raw SSE responses are assembled and base64 data
+ * (src/analytics/bodies.ts): raw SSE responses (bare or wrapped) are assembled and base64 data
  * URLs in either body move to the blob store. Each changed row is reinserted
  * with event_version + 1, which ReplacingMergeTree keeps over the old version.
  *
@@ -13,7 +13,7 @@
 import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import type { S3Client } from "bun";
 
-import { ASSEMBLED_STREAM, compactRows, createBlobStore, uploadBlobs } from "../src/analytics/bodies";
+import { ASSEMBLED_STREAM, compactRows, createBlobStore, uploadBlobs, WRAPPED_STREAM_PREFIX } from "../src/analytics/bodies";
 
 type Row = {
   event_id: string;
@@ -39,6 +39,7 @@ const SETTINGS = {
 
 const PENDING = `(
   (streamed AND attributes['response_body_format'] != '${ASSEMBLED_STREAM}' AND response_body != '')
+  OR startsWith(response_body, '${WRAPPED_STREAM_PREFIX}')
   OR position(request_body, ';base64,') > 0
   OR position(response_body, ';base64,') > 0
 )`;
