@@ -4,6 +4,7 @@ import { AnalyticsQueries } from "../analytics/queries";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import abuseRules from "../test/abuse-rules.json";
+import { BANNED_MESSAGE } from "../auth/users";
 import { BLOCKED_MESSAGE } from "./abuse";
 import { proxyRoutes, withKeepAlive } from "./proxy";
 import { testClickHouse, testDatabase } from "../test/database";
@@ -102,9 +103,11 @@ const setup = async (catalogEntry: unknown = null) => {
   const abuseEvents = () => sql<{ kind: string; rule: string; enforced: boolean; endpoint: string; user_agent: string }[]>`
     SELECT kind, rule, enforced, endpoint, user_agent FROM abuse_events WHERE user_id = ${account.userId}::uuid ORDER BY id
   `;
+  const banned = async () => (await sql<{ is_banned: boolean }[]>`SELECT is_banned FROM users WHERE id = ${account.userId}::uuid`)[0]!.is_banned;
   return {
     chat,
     abuseEvents,
+    banned,
     settled,
     records,
     record: () => onlyBillingRecord(sql, account.accountId),
@@ -146,6 +149,45 @@ describe("proxyRoutes", () => {
     await settled();
     expect((await record()).state).toBe("finalized");
     expect([...(await abuseEvents())]).toMatchObject([{ kind: "app", rule: "shadow-test-app", enforced: false }]);
+  });
+
+  test("bans the account on its first request from a blocked IP and answers like an outage", async () => {
+    const { chat, abuseEvents, banned, dispatches, records } = await setup();
+    const response = await chat({ messages: [{ role: "user", content: "hi" }] }, { "cf-connecting-ip": "198.51.100.7", "user-agent": "python-requests/2.34.2" });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Internal server error" });
+    expect(dispatches()).toBe(0);
+    expect(await records()).toEqual([]);
+    expect(await banned()).toBeTrue();
+    expect([...(await abuseEvents())]).toEqual([
+      { kind: "ip", rule: "198.51.100.7", enforced: true, endpoint: "/proxy/v1/chat/completions", user_agent: "python-requests/2.34.2" },
+    ]);
+
+    // The account stays banned from any other address.
+    const next = await chat({ messages: [{ role: "user", content: "hi" }] }, { "cf-connecting-ip": "203.0.113.50" });
+    expect(next.status).toBe(403);
+    expect(await next.json()).toEqual({ error: BANNED_MESSAGE });
+  });
+
+  test("an IP rule ending in a separator matches the whole prefix", async () => {
+    const { chat, banned } = await setup();
+    // Mobile carriers hand out a fresh address in the same /64 on every connection.
+    const response = await chat({ messages: [{ role: "user", content: "hi" }] }, { "cf-connecting-ip": "2001:db8:77:1:9f2:44ab:1c0:e3" });
+    expect(response.status).toBe(500);
+    expect(await banned()).toBeTrue();
+  });
+
+  test("an IP rule without a separator matches only that address, and a shadow IP only records", async () => {
+    const { chat, abuseEvents, banned, settled } = await setup();
+    const neighbour = await chat({ messages: [{ role: "user", content: "hi" }] }, { "cf-connecting-ip": "198.51.100.70" });
+    expect(neighbour.status).toBe(200);
+    await neighbour.text();
+    const shadowed = await chat({ messages: [{ role: "user", content: "hi" }] }, { "cf-connecting-ip": "198.51.100.8" });
+    expect(shadowed.status).toBe(200);
+    await shadowed.text();
+    await settled();
+    expect(await banned()).toBeFalse();
+    expect([...(await abuseEvents())]).toMatchObject([{ kind: "ip", rule: "198.51.100.8", enforced: false }]);
   });
 
   test("records the request shape for the behavioural scan", async () => {

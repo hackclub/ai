@@ -15,8 +15,10 @@
       "minMatches": 4
     }
   ],
+  "ips": ["198.51.100.7", "2001:db8:77:1:"],
   "shadow": {
-    "apps": ["shadow-test-app"]
+    "apps": ["shadow-test-app"],
+    "ips": ["198.51.100.8"]
   },
   "detectors": {
     "learnedToolsets": "enforce"

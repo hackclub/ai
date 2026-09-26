@@ -21,6 +21,12 @@ export type AbuseRuleSet = {
   prompts: Record<string, string[]>;
   /** A request offering at least `minMatches` of an agent's tools is that agent. */
   toolsets: Toolset[];
+  /**
+   * Client addresses. An entry ending in `.` or `:` is a prefix, for carriers
+   * that hand out a fresh address in the same range on every connection. An
+   * enforced match bans the account, not just the request.
+   */
+  ips: string[];
 };
 
 export type DetectorMode = "enforce" | "shadow" | "off";
@@ -48,7 +54,8 @@ export type AbuseMatchKind =
   | "toolset"
   | "similar_prompt"
   | "user_prompt"
-  | "learned_toolset";
+  | "learned_toolset"
+  | "ip";
 
 /** `rule` is the app, User-Agent, agent, toolset or fingerprint that matched. */
 export type AbuseMatch = { kind: AbuseMatchKind; rule: string; enforced: boolean };
@@ -59,7 +66,7 @@ export type AbuseVerdict = {
   fingerprint: string | null;
 };
 
-const EMPTY_SET: AbuseRuleSet = { apps: [], userAgents: [], prompts: {}, toolsets: [] };
+const EMPTY_SET: AbuseRuleSet = { apps: [], userAgents: [], prompts: {}, toolsets: [], ips: [] };
 const DEFAULT_DETECTORS: Detectors = { similarPrompts: "shadow", firstUserMessage: "shadow", learnedToolsets: "shadow" };
 
 export const NO_RULES: AbuseRules = {
@@ -208,6 +215,16 @@ const searchForms = (text: string) => {
   return words(folded.replace(INVISIBLE, "")) + words(folded.replace(INVISIBLE, " "));
 };
 
+/** The first rule matching the client address, or null. */
+export const matchIp = (rules: readonly string[], ip: string): string | null => {
+  const address = ip.toLowerCase();
+  if (address === "") return null;
+  return rules.find((rule) => {
+    const entry = rule.toLowerCase();
+    return address === entry || (/[.:]$/.test(entry) && address.startsWith(entry));
+  }) ?? null;
+};
+
 /** The first agent whose tools the request offers, or null. */
 export const matchToolset = (names: ReadonlySet<string>, toolsets: readonly Toolset[]): Toolset | null =>
   toolsets.find(
@@ -236,6 +253,7 @@ const ruleSet = (value: Partial<AbuseRuleSet> = {}): AbuseRuleSet => ({
   userAgents: value.userAgents ?? [],
   prompts: value.prompts ?? {},
   toolsets: value.toolsets ?? [],
+  ips: value.ips ?? [],
 });
 
 /**
