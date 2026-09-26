@@ -110,10 +110,6 @@ export type ActivityDetail = ActivityRow &
     | "timeToFirstByteMs"
     | "providerCostUsd"
     | "userAgent"
-    | "requestBody"
-    | "responseBody"
-    | "requestBodyTruncated"
-    | "responseBodyTruncated"
   >;
 
 export type ActivityFilterOptions = {
@@ -279,10 +275,6 @@ export class DashboardReadModel {
       timeToFirstByteMs: request.timeToFirstByteMs,
       providerCostUsd: request.providerCostUsd,
       userAgent: request.userAgent,
-      requestBody: request.requestBody,
-      responseBody: request.responseBody,
-      requestBodyTruncated: request.requestBodyTruncated,
-      responseBodyTruncated: request.responseBodyTruncated,
     };
   }
 

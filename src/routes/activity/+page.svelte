@@ -87,7 +87,7 @@
         <SearchIcon class="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2" />
         <Input
           type="search"
-          placeholder="Search models, prompts, responses or request IDs"
+          placeholder="Search models, errors or request IDs"
           aria-label="Search requests"
           class="ps-8"
           bind:value={search}

@@ -25,14 +25,6 @@
     return () => controller.abort();
   });
 
-  const pretty = (body: string) => {
-    try {
-      return JSON.stringify(JSON.parse(body), null, 2);
-    } catch {
-      return body;
-    }
-  };
-
   const throughput = (request: ActivityDetail) => {
     const generating = request.durationMs - (request.timeToFirstByteMs ?? 0);
     if (request.outputTokens === 0 || generating <= 0) return null;
@@ -59,7 +51,7 @@
 </script>
 
 <Sheet.Root open={requestId !== null} onOpenChange={(open) => !open && (requestId = null)}>
-  <Sheet.Content class="w-full gap-0 overflow-y-auto sm:max-w-xl">
+  <Sheet.Content class="w-full gap-0 overflow-y-auto sm:max-w-md">
     <Sheet.Header class="border-b">
       <Sheet.Title class="pe-8">
         {#if detail}
@@ -80,7 +72,6 @@
             <Skeleton class="h-10" />
           {/each}
         </div>
-        <Skeleton class="h-48" />
       {:else}
         <div class="min-w-0">
           <p class="text-muted-foreground text-xs">Request ID</p>
@@ -96,22 +87,6 @@
           {/each}
         </dl>
 
-        {#each [["Request", detail.requestBody, detail.requestBodyTruncated], ["Response", detail.responseBody, detail.responseBodyTruncated]] as const as [label, body, truncated] (label)}
-          <section class="min-w-0">
-            <div class="mb-2 flex items-center justify-between">
-              <h3 class="text-sm font-medium">{label}</h3>
-              {#if body}<CopyButton text={pretty(body)} label="Copy" variant="ghost" size="xs"/>{/if}
-            </div>
-            {#if body}
-              <pre class="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{pretty(body)}</pre>
-              {#if truncated}
-                <p class="text-muted-foreground mt-1 text-xs">Truncated to the first 100,000 characters.</p>
-              {/if}
-            {:else}
-              <p class="text-muted-foreground text-sm">Not recorded.</p>
-            {/if}
-          </section>
-        {/each}
       {/if}
     </div>
   </Sheet.Content>

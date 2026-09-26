@@ -250,10 +250,10 @@ describe("activity", () => {
     const user = await signedIn();
     const key = await issueApiKey(sql, user.id, "Filtered key");
     const matching = Array.from({ length: 51 }, () =>
-      event(user.billingAccountId, { api_key_id: key.id, request_body: '{"messages":[{"content":"Tell me about Orpheus the dinosaur"}]}' }),
+      event(user.billingAccountId, { api_key_id: key.id, model: "acme/unnamed" }),
     );
     const failed = event(user.billingAccountId, { outcome: "provider_error", error_code: "http_400", model: "emb/endpoint" });
-    const otherKey = event(user.billingAccountId, { request_body: '{"messages":[{"content":"orpheus"}]}' });
+    const otherKey = event(user.billingAccountId);
     await insertEvents([...matching, failed, otherKey]);
     const model = readModel();
     const ids = async (filters: Record<string, string>) =>
@@ -265,9 +265,9 @@ describe("activity", () => {
     expect(await ids({ model: "emb/endpoint" })).toEqual([failed.request_id]);
     expect(await ids({ q: "HTTP_400" })).toEqual([failed.request_id]);
     expect(await ids({ q: failed.request_id.slice(0, 8) })).toEqual([failed.request_id]);
-    expect(await ids({ q: "ORPHEUS", status: "ok", key: "not-a-uuid" })).toHaveLength(50);
+    expect(await ids({ q: "UNNAMED", status: "ok", key: "not-a-uuid" })).toHaveLength(50);
 
-    const filters = parseActivityFilters(new URLSearchParams({ q: "orpheus", key: key.id }));
+    const filters = parseActivityFilters(new URLSearchParams({ q: "unnamed" }));
     const first = await model.activity(user, { filters });
     expect(first.rows).toHaveLength(50);
     const rest = await model.activity(user, { filters, cursor: first.next ?? undefined });
@@ -293,10 +293,9 @@ describe("activity", () => {
     });
   });
 
-  test("shows one request in full only to its owner", async () => {
+  test("shows one request's details only to its owner", async () => {
     const user = await signedIn();
     const other = await signedIn();
-    const long = "x".repeat(100_001);
     const request = event(user.billingAccountId, {
       provider: "openrouter",
       streamed: true,
@@ -304,8 +303,6 @@ describe("activity", () => {
       duration_ms: 620,
       http_status: 200,
       request_headers: { "user-agent": "curl/8.7.1" },
-      request_body: '{"model":"openai/gpt-x"}',
-      response_body: long,
     });
     await insertEvents([request]);
     const model = readModel();
@@ -319,10 +316,6 @@ describe("activity", () => {
       timeToFirstByteMs: 120,
       durationMs: 620,
       userAgent: "curl/8.7.1",
-      requestBody: '{"model":"openai/gpt-x"}',
-      requestBodyTruncated: false,
-      responseBody: long.slice(0, 100_000),
-      responseBodyTruncated: true,
     });
     expect(await model.activityRequest(other, request.request_id)).toBeNull();
     expect(await model.activityRequest(user, "not-a-uuid")).toBeNull();

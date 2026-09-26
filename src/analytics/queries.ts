@@ -51,7 +51,7 @@ export type RecentRequest = {
 };
 
 export type RecentRequestFilters = {
-  /** Matched against the model, request id, error code and both bodies. */
+  /** Matched against the model, request id and error code. */
   search?: string;
   status?: "ok" | "error";
   apiKeyId?: string;
@@ -63,11 +63,6 @@ export type RequestDetail = RecentRequest & {
   timeToFirstByteMs: number | null;
   providerCostUsd: string | null;
   userAgent: string;
-  requestBody: string;
-  responseBody: string;
-  /** Bodies longer than the returned prefix. */
-  requestBodyTruncated: boolean;
-  responseBodyTruncated: boolean;
 };
 
 export type RecentRequestsPage = {
@@ -251,8 +246,6 @@ export class AnalyticsQueries {
             positionCaseInsensitiveUTF8(model, {search:String}) > 0
             OR startsWith(toString(request_id), lower({search:String}))
             OR positionCaseInsensitiveUTF8(error_code, {search:String}) > 0
-            OR positionCaseInsensitiveUTF8(request_body, {search:String}) > 0
-            OR positionCaseInsensitiveUTF8(response_body, {search:String}) > 0
           )`
         : "",
     ].filter(Boolean);
@@ -286,7 +279,7 @@ export class AnalyticsQueries {
     };
   }
 
-  /** One of the account's requests with its bodies, or null when it is not theirs. */
+  /** One of the account's requests, or null when it is not theirs. */
   async requestDetail(accountId: string, requestId: string): Promise<RequestDetail | null> {
     const result = await this.clickhouse.query({
       query: `
@@ -295,16 +288,12 @@ export class AnalyticsQueries {
           streamed,
           time_to_first_byte_ms,
           if(isNull(provider_cost_usd), NULL, toString(provider_cost_usd)) AS provider_cost_usd,
-          request_headers['user-agent'] AS user_agent,
-          substringUTF8(request_body, 1, {body_chars:UInt32}) AS request_body_prefix,
-          substringUTF8(response_body, 1, {body_chars:UInt32}) AS response_body_prefix,
-          lengthUTF8(request_body) > {body_chars:UInt32} AS request_body_truncated,
-          lengthUTF8(response_body) > {body_chars:UInt32} AS response_body_truncated
+          request_headers['user-agent'] AS user_agent
         FROM request_events FINAL
         WHERE account_id = {account_id:UUID} AND request_id = {request_id:UUID}
         LIMIT 1
       `,
-      query_params: { account_id: accountId, request_id: requestId, body_chars: DETAIL_BODY_CHARS },
+      query_params: { account_id: accountId, request_id: requestId },
       format: "JSONEachRow",
     });
     const [row] = await result.json<
@@ -313,10 +302,6 @@ export class AnalyticsQueries {
         time_to_first_byte_ms: string | number | null;
         provider_cost_usd: string | null;
         user_agent: string;
-        request_body_prefix: string;
-        response_body_prefix: string;
-        request_body_truncated: boolean | number;
-        response_body_truncated: boolean | number;
       }
     >();
     if (!row) return null;
@@ -326,10 +311,6 @@ export class AnalyticsQueries {
       timeToFirstByteMs: row.time_to_first_byte_ms === null ? null : Number(row.time_to_first_byte_ms),
       providerCostUsd: row.provider_cost_usd,
       userAgent: row.user_agent,
-      requestBody: row.request_body_prefix,
-      responseBody: row.response_body_prefix,
-      requestBodyTruncated: Boolean(row.request_body_truncated),
-      responseBodyTruncated: Boolean(row.response_body_truncated),
     };
   }
 
@@ -350,9 +331,6 @@ export class AnalyticsQueries {
     return (await result.json<{ model: string }>()).map((row) => row.model);
   }
 }
-
-/** The body prefix the request detail returns; the rest stays in ClickHouse. */
-const DETAIL_BODY_CHARS = 100_000;
 
 const REQUEST_COLUMNS = `
   request_id,
