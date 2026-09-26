@@ -39,14 +39,24 @@ export class ServerSentEventParser {
     this.dispatch();
   }
 
+  /**
+   * Walks the buffer with an offset and trims it once: slicing after every
+   * line copies the rest of the buffer each time, which is quadratic when a
+   * whole stored stream is pushed at once.
+   */
   private processCompleteLines() {
+    let start = 0;
+    // The next "\r" at or after `start`; -1 once there are none left.
+    let carriageReturn = this.buffer.indexOf("\r");
     while (true) {
-      const lineFeed = this.buffer.indexOf("\n");
-      const carriageReturn = this.buffer.indexOf("\r");
+      if (carriageReturn !== -1 && carriageReturn < start) {
+        carriageReturn = this.buffer.indexOf("\r", start);
+      }
+      const lineFeed = this.buffer.indexOf("\n", start);
       const candidates = [lineFeed, carriageReturn].filter(
         (position) => position >= 0,
       );
-      if (candidates.length === 0) return;
+      if (candidates.length === 0) break;
 
       const lineEnd = Math.min(...candidates);
       const terminator = this.buffer[lineEnd];
@@ -55,15 +65,16 @@ export class ServerSentEventParser {
         lineEnd === this.buffer.length - 1
       ) {
         // CRLF may be split across chunks. Wait for one more byte.
-        return;
+        break;
       }
 
-      const line = this.buffer.slice(0, lineEnd);
+      const line = this.buffer.slice(start, lineEnd);
       const terminatorLength =
         terminator === "\r" && this.buffer[lineEnd + 1] === "\n" ? 2 : 1;
-      this.buffer = this.buffer.slice(lineEnd + terminatorLength);
+      start = lineEnd + terminatorLength;
       this.processLine(line);
     }
+    if (start > 0) this.buffer = this.buffer.slice(start);
   }
 
   private processLine(rawLine: string) {

@@ -109,3 +109,11 @@ describe("extractBlobs", () => {
     expect([...blobs.keys()]).toEqual([key]);
   });
 });
+
+test("assembles a stored stream of hundreds of thousands of lines in linear time", () => {
+  const lines = Array.from({ length: 200_000 }, (_, i) => `data: ${JSON.stringify(chunk({ content: i % 2 ? "a" : "b" }))}\n\n`);
+  const started = performance.now();
+  const assembled = JSON.parse(assembleStream(`: OPENROUTER PROCESSING\n\n${lines.join("")}`) ?? "null");
+  expect(assembled.choices[0].message.content).toHaveLength(200_000);
+  expect(performance.now() - started).toBeLessThan(5_000);
+});
