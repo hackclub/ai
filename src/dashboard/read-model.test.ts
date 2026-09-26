@@ -44,15 +44,28 @@ const openRouterFetch = (status = 200) =>
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
 
-const replicateFetch = (async (input: string | URL | Request) => {
-  if (String(input) === "https://replicate.test/v1/models/minimax/speech-02-turbo") {
-    return Response.json({ owner: "minimax", name: "speech-02-turbo", url: "", description: "TTS", visibility: "public" });
-  }
-  return new Response("not found", { status: 404 });
-}) as typeof fetch;
+// A 1×1 PNG.
+const COVER_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+const replicateFetch = (coverResponse: () => Response) =>
+  (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url === "https://replicate.test/v1/models/minimax/speech-02-turbo") {
+      return Response.json({
+        owner: "minimax",
+        name: "speech-02-turbo",
+        url: "",
+        description: "TTS",
+        visibility: "public",
+        cover_image_url: "https://replicate.test/cover.png",
+      });
+    }
+    if (url === "https://replicate.test/cover.png") return coverResponse();
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
 
 /** A real read model over the test datastores; AnalyticsQueries is rebuilt per call since it memoizes. */
-const readModel = (options: { env?: DashboardEnv; catalogStatus?: number } = {}) =>
+const readModel = (options: { env?: DashboardEnv; catalogStatus?: number; coverResponse?: () => Response } = {}) =>
   new DashboardReadModel({
     sql,
     analytics: new AnalyticsQueries(clickhouse),
@@ -65,7 +78,7 @@ const readModel = (options: { env?: DashboardEnv; catalogStatus?: number } = {})
       apiKey: "k",
       baseUrl: "https://replicate.test",
       pricing: { get: async () => null },
-      fetch: replicateFetch,
+      fetch: replicateFetch(options.coverResponse ?? (() => new Response("not found", { status: 404 }))),
     }),
     env: options.env ?? env,
   });
@@ -328,10 +341,26 @@ describe("models", () => {
 });
 
 describe("replicateCategories", () => {
-  test("returns the configured models Replicate answers for", async () => {
+  test("returns card fields for the configured models Replicate answers for", async () => {
     const categories = await readModel().replicateCategories();
-    expect(categories.flatMap((category) => category.models.map((model) => `${model.owner}/${model.name}`))).toEqual([
-      "minimax/speech-02-turbo",
+    expect(categories.flatMap((category) => category.models)).toEqual([
+      { owner: "minimax", name: "speech-02-turbo", description: "TTS", pricing: null, cover: "/replicate/covers/minimax/speech-02-turbo" },
     ]);
+  });
+
+  test("serves covers as card-sized WebP, and the original when it cannot be re-encoded", async () => {
+    const png = await new Bun.Image(Uint8Array.fromBase64(COVER_PNG)).resize(1600, 900, { fit: "fill" }).png().blob();
+    let cover: Response = new Response(png);
+    const model = readModel({ coverResponse: () => cover.clone() });
+
+    const thumbnail = await model.replicateCover("minimax", "speech-02-turbo");
+    if (!thumbnail || !("image" in thumbnail)) throw new Error("expected a thumbnail");
+    expect(thumbnail.image.type).toBe("image/webp");
+    expect(await new Bun.Image(await thumbnail.image.arrayBuffer()).metadata()).toMatchObject({ width: 640, height: 360 });
+
+    cover = new Response("GIF89a");
+    const gif = readModel({ coverResponse: () => cover.clone() });
+    expect(await gif.replicateCover("minimax", "speech-02-turbo")).toEqual({ redirect: "https://replicate.test/cover.png" });
+    expect(await gif.replicateCover("minimax", "unlisted")).toBeNull();
   });
 });
