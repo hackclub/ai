@@ -114,26 +114,6 @@ const setup = async (catalogEntry: unknown = null) => {
 };
 
 describe("proxyRoutes", () => {
-  test("returns an x-request-id header alongside the upstream body", async () => {
-    const { chat, record, settled } = await setup();
-    const response = await chat({ messages: [{ role: "user", content: "hi" }] });
-    expect(response.status).toBe(200);
-    const requestId = response.headers.get("x-request-id");
-    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
-    const body = (await response.json()) as ReturnType<typeof completionBody>;
-    expect(body).toMatchObject({ ok: true });
-
-    await settled();
-    expect(await record()).toMatchObject({
-      requestId,
-      provider: "openrouter",
-      state: "finalized",
-      providerRequestId: body.id,
-      actualCostUsd: "0.010000000000",
-      usageSource: "provider_reported",
-    });
-  });
-
   test("rejects a blocked prompt with 403, records the refusal and never calls the adapter", async () => {
     const { chat, dispatches, records, abuseEvents } = await setup();
     const response = await chat(

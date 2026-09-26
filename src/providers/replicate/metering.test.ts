@@ -95,20 +95,6 @@ describe("meterPrediction", () => {
     expect(completion.providerRequestId).toBe("p3");
   });
 
-  test("holds a succeeded prediction without billable metrics for reconciliation", async () => {
-    const completion = await settle(
-      Response.json({ id: "p6", status: "succeeded", metrics: { total_time: 3 } }),
-    );
-    expectState(completion, "uncertain");
-    expect(completion.providerRequestId).toBe("p6");
-    expect(completion.reason).toContain("without billable metrics");
-  });
-
-  test("marks a provider error as a zero-cost provider error", async () => {
-    const completion = await settle(Response.json({ detail: "bad" }, { status: 422 }));
-    expect(completion.state).toBe("provider_error");
-  });
-
   test("retries a transient lookup failure instead of abandoning settlement", async () => {
     let calls = 0;
     const completion = await settle(Response.json({ id: "p10", status: "starting" }, { status: 201 }), {

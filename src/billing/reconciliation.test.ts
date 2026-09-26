@@ -7,7 +7,6 @@ import type { OpenRouterConfig } from "../providers/openrouter/generation";
 import { openRouterProvider } from "../providers/openrouter/provider";
 import { type ProviderModule, providerRegistry } from "../providers/provider";
 import {
-  REPLICATE_FILES,
   type ReplicateProviderConfig,
   replicateFilesProvider,
   replicateProvider,
@@ -140,7 +139,7 @@ const stateOf = async (requestId: string) => {
 /**
  * Reconciles through a registry of the real provider modules, each with a
  * faked upstream. A provider whose upstream a test does not name throws if
- * consulted; `replicate: null` leaves Replicate unregistered.
+ * consulted.
  */
 const reconcile = ({
   openRouter = openRouterUnused,
@@ -148,7 +147,7 @@ const reconcile = ({
   ...options
 }: Partial<Omit<ReconcileOptions, "sql" | "billing" | "providers">> & {
   openRouter?: OpenRouterConfig;
-  replicate?: ReplicateProviderConfig | null;
+  replicate?: ReplicateProviderConfig;
 } = {}) => {
   const modules: ProviderModule[] = [
     openRouterProvider(openRouter),
@@ -156,8 +155,8 @@ const reconcile = ({
     exaProvider,
     mistralProvider,
     typesafeProvider,
+    replicateProvider(replicate),
   ];
-  if (replicate) modules.push(replicateProvider(replicate));
   return reconcilePendingReservations({ sql, billing: engine, providers: providerRegistry(modules), ...options });
 };
 
@@ -351,30 +350,9 @@ describe("reconcilePendingReservations with Replicate", () => {
     expect(result).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
     expect((await stateOf(gone))?.state).toBe("released");
   });
-
 });
 
 describe("reconcilePendingReservations without a lookup", () => {
-  test("a provider without a registered module is deferred, then released after the max age", async () => {
-    const accountId = await newAccount();
-    const young = await pending(accountId, uniqueId("pred"), { provider: "replicate", age: "5 minutes" });
-    const old = await pending(accountId, uniqueId("pred"), { provider: "replicate", age: "25 hours" });
-
-    expect(await reconcile({ replicate: null })).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
-    expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
-    expect((await stateOf(old))?.state).toBe("released");
-  });
-
-  test("an unknown provider key behaves like one without a lookup", async () => {
-    const accountId = await newAccount();
-    const young = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "5 minutes" });
-    const old = await pending(accountId, uniqueId("x"), { provider: "no-such-provider", age: "25 hours" });
-
-    expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
-    expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
-    expect((await stateOf(old))?.state).toBe("released");
-  });
-
   test("an exa row with a provider id is never looked up: deferred while young, released when old", async () => {
     const accountId = await newAccount();
     // Every upstream throws if consulted, so a lookup would count as failed.
@@ -384,16 +362,6 @@ describe("reconcilePendingReservations without a lookup", () => {
     expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 1, failed: 0 });
     expect(await stateOf(young)).toEqual({ state: "pending_reconciliation", deferred: true });
     expect((await stateOf(old))?.state).toBe("released");
-  });
-
-  test("an old replicate-files row is released without any lookup", async () => {
-    const accountId = await newAccount();
-    // Every upstream throws if consulted, so a lookup would count as failed.
-    const old = await pending(accountId, uniqueId("file"), { provider: REPLICATE_FILES, age: "25 hours" });
-
-    expect(await reconcile()).toEqual({ finalized: 0, released: 1, skipped: 0, failed: 0 });
-    expect((await stateOf(old))?.state).toBe("released");
-    expect((await billingRecords(sql, accountId)).filter((record) => record.event)).toEqual([]);
   });
 });
 

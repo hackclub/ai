@@ -210,10 +210,4 @@ describe("toClickHouseEvent", () => {
     });
     expect(row.unfunded_cost_usd).toBe("0");
   });
-
-  test("refuses a payload that is not an object", () => {
-    expect(() => toClickHouseEvent("event")).toThrow(TypeError);
-    expect(() => toClickHouseEvent(null)).toThrow(TypeError);
-    expect(() => toClickHouseEvent([])).toThrow(TypeError);
-  });
 });

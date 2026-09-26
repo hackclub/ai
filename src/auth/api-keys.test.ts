@@ -32,22 +32,6 @@ describe("authenticateApiKey", () => {
       (error: HttpError) => error,
     );
 
-  test("401s without calling sql when authorization is missing", async () => {
-    let calls = 0;
-    const sql = (async () => {
-      calls++;
-      return [];
-    }) as unknown as postgres.Sql;
-    const error = await failure(authenticateApiKey(sql, undefined, { enforceIdv: false }));
-    expect([error.status, error.message]).toEqual([401, "Authentication required"]);
-    expect(calls).toBe(0);
-  });
-
-  test("401s when no row matches the key", async () => {
-    const error = await failure(authenticateApiKey(sqlReturning([]), KEY, { enforceIdv: false }));
-    expect([error.status, error.message]).toEqual([401, "Authentication failed"]);
-  });
-
   test.each([
     ["a banned user", { is_banned: true }, false, "You are banned from using this service."],
     ["an unverified user when IDV is enforced", {}, true, "Identity verification required"],

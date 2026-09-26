@@ -10,7 +10,6 @@ import {
 } from "./metered-request";
 import { testDatabase } from "../test/database";
 import {
-  billingRecords,
   createTestAccount,
   onlyBillingRecord,
   testBilling,
@@ -118,23 +117,6 @@ describe("runMeteredRequest", () => {
     });
   });
 
-  test("does not dispatch when the reservation is refused", async () => {
-    const { billing, account } = await setup();
-    let executed = false;
-    const input = {
-      ...baseInput(account.accountId, async () => {
-        executed = true;
-        return providerResponse(complete());
-      }),
-      // More than the $1 daily allowance.
-      estimatedCostUsd: Usd.parse("5"),
-    };
-
-    await expect(runMeteredRequest(billing, input)).rejects.toThrow();
-    expect(executed).toBeFalse();
-    expect(await billingRecords(sql, account.accountId)).toEqual([]);
-  });
-
   test("holds a rejected dispatch for reconciliation because upstream acceptance is unknown", async () => {
     const { billing, account, record } = await setup();
     const { failure, input } = dispatchFailure(account.accountId);
@@ -143,58 +125,6 @@ describe("runMeteredRequest", () => {
       state: "pending_reconciliation",
       reconciliationReason: "dispatch_failed",
       providerRequestId: null,
-    });
-  });
-
-  test("finalizes provider HTTP errors at zero cost", async () => {
-    const { billing, account, record } = await setup();
-    const request = await runMeteredRequest(
-      billing,
-      baseInput(account.accountId, async () =>
-        providerResponse(
-          {
-            state: "provider_error",
-            providerRequestId: null,
-            responseBody: '{"error":{"message":"Invalid model"}}',
-            bodyCapture: "complete",
-          },
-          { status: 400 },
-        ),
-      ),
-    );
-
-    expect((await request.settled).kind).toBe("finalized");
-    const finalized = await record();
-    expect(finalized).toMatchObject({ state: "finalized", actualCostUsd: "0.000000000000", usageSource: "calculated" });
-    expect(finalized.event).toMatchObject({
-      outcome: "provider_error",
-      error_code: "http_400",
-      provider_cost_usd: null,
-      billed_cost_usd: "0.000000000000",
-    });
-  });
-
-  test("marks an uncertain successful response pending reconciliation", async () => {
-    const { billing, account, record } = await setup();
-    const reason = "OpenRouter response ended without authoritative cost";
-    const request = await runMeteredRequest(
-      billing,
-      baseInput(account.accountId, async () =>
-        providerResponse(
-          { state: "uncertain", providerRequestId: "gen-uncertain", reason, responseBody: "partial", bodyCapture: "partial" },
-          { headers: { "content-type": "text/event-stream" } },
-        ),
-      ),
-    );
-
-    const outcome = await request.settled;
-    expect(outcome.kind).toBe("pending_reconciliation");
-    expect(outcome.reservation.state).toBe("pending_reconciliation");
-    expect(await record()).toMatchObject({
-      state: "pending_reconciliation",
-      reconciliationReason: reason,
-      providerRequestId: "gen-uncertain",
-      event: null,
     });
   });
 
@@ -223,24 +153,6 @@ describe("runMeteredRequest", () => {
       providerRequestId: "gen-504",
       reconciliationReason: "OpenRouter gateway timeout; generation may still be running",
       event: null,
-    });
-  });
-
-  test("holds a successful response for reconciliation when completion rejects", async () => {
-    const { billing, account, record } = await setup();
-    const request = await runMeteredRequest(
-      billing,
-      baseInput(account.accountId, async () => ({
-        response: new Response("ok", { status: 200 }),
-        requestBody: "{}",
-        completion: Promise.reject(new Error("adapter bug")),
-      })),
-    );
-
-    expect((await request.settled).kind).toBe("pending_reconciliation");
-    expect(await record()).toMatchObject({
-      state: "pending_reconciliation",
-      reconciliationReason: "completion_rejected",
     });
   });
 

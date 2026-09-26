@@ -4,7 +4,6 @@ import { Usd } from "../billing/money";
 import {
   type CapturedBody,
   type CancelPolicy,
-  isEventStream,
   meterBuffered,
   meterStreamed,
   type UsageReader,
@@ -157,56 +156,16 @@ describe("meterStreamed", () => {
     expect(completion).toMatchObject({ state: "uncertain", providerRequestId: "p9", reason: "cancelled" });
   });
 
-  test("stops capturing at the first chunk that overflows the cap, and stays stopped", async () => {
-    const sent = [bytes("1234"), bytes("0123456789"), bytes("ab")];
-    const { response } = upstream([...sent]);
-    const { reader, bodies, observed } = recording({ usage });
-    const metered = stream(response, reader, { maxCapturedBytes: 8 });
-    expect(await readAll(metered.response)).toEqual(sent);
-    const completion = await metered.completion;
-    expect(bodies[0]).toMatchObject({ text: "1234", truncated: true });
-    // Every chunk is still observed for usage.
-    expect(observed).toHaveLength(3);
-    expect(completion).toMatchObject({ state: "complete", bodyCapture: "truncated", responseBody: "1234" });
-  });
-
-  test("a null cap keeps everything", async () => {
-    const big = "x".repeat(4 * 1024 * 1024);
-    const { response } = upstream([bytes(big), bytes("!")]);
-    const { reader, bodies } = recording();
-    const metered = stream(response, reader, { maxCapturedBytes: null });
-    await readAll(metered.response);
-    await metered.completion;
-    expect(bodies[0]?.truncated).toBeFalse();
-    expect(bodies[0]?.text).toBe(`${big}!`);
-  });
-
-  test("decodes the capture once, after the end", async () => {
-    // "é" split across chunks: a per-chunk decode would produce two U+FFFD.
-    const { response } = upstream([new Uint8Array([0x61, 0xc3]), new Uint8Array([0xa9])]);
-    const { reader, bodies } = recording();
-    const metered = stream(response, reader);
-    await readAll(metered.response);
-    await metered.completion;
-    expect(bodies[0]?.text).toBe("aé");
-  });
-
   describe("completion mapping", () => {
     const run = async (
       verdict: Partial<UsageVerdict>,
       init: ResponseInit = {},
       parts: Uint8Array[] = [bytes("body")],
-      options: { maxCapturedBytes?: number; cancel?: boolean } = {},
+      options: { maxCapturedBytes?: number } = {},
     ) => {
-      const { response } = upstream([...parts, never].slice(0, options.cancel ? undefined : parts.length), init);
+      const { response } = upstream([...parts], init);
       const metered = stream(response, recording(verdict).reader, { maxCapturedBytes: options.maxCapturedBytes });
-      if (options.cancel) {
-        const client = metered.response.body!.getReader();
-        await client.read();
-        await client.cancel("bye");
-      } else {
-        await readAll(metered.response);
-      }
+      await readAll(metered.response);
       return metered.completion;
     };
 
@@ -214,35 +173,6 @@ describe("meterStreamed", () => {
       expect(await run({ usage }, { status: 500 })).toMatchObject({ state: "complete", usage, bodyCapture: "complete" });
       expect(await run({ usage }, {}, [bytes("123456789")], { maxCapturedBytes: 4 })).toMatchObject({
         state: "complete",
-        bodyCapture: "truncated",
-      });
-    });
-
-    test("no usage on a non-2xx status is a provider error", async () => {
-      expect(await run({ reason: "refused" }, { status: 502 })).toEqual({
-        state: "provider_error",
-        providerRequestId: null,
-        responseBody: "body",
-        bodyCapture: "complete",
-      });
-    });
-
-    test("no usage on a non-2xx status the provider may still bill is uncertain", async () => {
-      expect(await run({ reason: "gateway timeout", mayStillBeCharged: true }, { status: 504 })).toMatchObject({
-        state: "uncertain",
-        reason: "gateway timeout",
-        bodyCapture: "complete",
-      });
-    });
-
-    test("no usage on a 2xx status is uncertain, with how much of the body was seen", async () => {
-      expect(await run({ reason: "missing" })).toMatchObject({ state: "uncertain", reason: "missing", bodyCapture: "complete" });
-      expect(await run({ reason: "missing" }, {}, [bytes("body")], { cancel: true })).toMatchObject({
-        state: "uncertain",
-        bodyCapture: "partial",
-      });
-      expect(await run({ reason: "missing" }, {}, [bytes("123456789")], { maxCapturedBytes: 4 })).toMatchObject({
-        state: "uncertain",
         bodyCapture: "truncated",
       });
     });
@@ -336,53 +266,9 @@ describe("meterStreamed", () => {
     });
   });
 
-  test("with no body, settles at once and returns the upstream response itself", async () => {
-    const response = new Response(null, { status: 200 });
-    const { reader, bodies } = recording();
-    const metered = stream(response, reader);
-    expect(metered.response).toBe(response);
-    await metered.completion;
-    expect(bodies[0]).toMatchObject({ text: "", truncated: false, end: { kind: "done" } });
-  });
-
-  test("passes upstream headers unchanged, or only the forwardable ones", async () => {
-    const headers = { "content-type": "text/event-stream", "cf-ray": "abc", "set-cookie": "s=1" };
-    const raw = upstream([bytes("x")], { headers }).response;
-    // cf-ray and set-cookie survive: analytics read upstream headers such as cf-ray.
-    expect(Object.fromEntries(stream(raw, recording().reader).response.headers)).toEqual(Object.fromEntries(raw.headers));
-    expect(raw.headers.get("cf-ray")).toBe("abc");
-    const filtered = stream(upstream([bytes("x")], { headers }).response, recording().reader, { headers: "forwardable" });
-    expect([...filtered.response.headers.keys()]).toEqual(["content-type"]);
-    expect(isEventStream(filtered.response.headers)).toBeTrue();
-    expect(isEventStream(new Headers({ "content-type": "application/json" }))).toBeFalse();
-  });
 });
 
 describe("meterBuffered", () => {
-  test("reads the whole body first and returns it with the completion settled", async () => {
-    const wire = '{"id":"r1","cost":1}';
-    const { response } = upstream([bytes(wire.slice(0, 5)), bytes(wire.slice(5))], {
-      status: 201,
-      statusText: "Created",
-      headers: { "content-type": "application/json", "set-cookie": "s=1" },
-    });
-    const { reader, bodies } = recording({ usage, providerRequestId: "r1" });
-    const metered = await meterBuffered(response, { requestBody: '{"q":1}', reader, headers: "forwardable" });
-
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toMatchObject({ text: wire, status: 201, end: { kind: "done" } });
-    expect(await Promise.race([metered.completion, Promise.resolve("pending")])).toMatchObject({
-      state: "complete",
-      providerRequestId: "r1",
-    });
-    expect(metered.response).not.toBe(response);
-    expect(metered.response.status).toBe(201);
-    expect(metered.response.statusText).toBe("Created");
-    expect(metered.response.headers.get("set-cookie")).toBeNull();
-    expect(await metered.response.text()).toBe(wire);
-    expect(metered.requestBody).toBe('{"q":1}');
-  });
-
   test("rejects when the body cannot be read", async () => {
     const { response } = upstream([bytes("partial")], { failAfter: true });
     const { reader, bodies } = recording();

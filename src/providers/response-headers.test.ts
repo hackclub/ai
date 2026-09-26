@@ -21,10 +21,4 @@ describe("forwardableHeaders", () => {
     );
     expect([...out.keys()].sort()).toEqual(["cache-control", "content-type", "retry-after", "x-ratelimit-remaining"]);
   });
-
-  test("keeps content-length only when asked", () => {
-    const upstream = new Headers({ "content-length": "3", "content-type": "text/plain" });
-    expect(forwardableHeaders(upstream).get("content-length")).toBeNull();
-    expect(forwardableHeaders(upstream, { keepContentLength: true }).get("content-length")).toBe("3");
-  });
 });

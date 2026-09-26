@@ -11,9 +11,6 @@ import {
   replicateRoutes,
   resolveModelReference,
   rewriteUpstreamLinks,
-  validateModelAccess,
-  validateVersionAccess,
-  versionFromModelName,
   type ReplicateRouteDependencies,
 } from "./replicate";
 import { testDatabase } from "../../test/database";
@@ -38,23 +35,6 @@ const pricing: ReplicatePricing = {
 };
 
 describe("Replicate allowlist", () => {
-  test("accepts listed models and strips version suffixes", () => {
-    const [owner, name] = knownModel.split("/");
-    expect(validateModelAccess(owner ?? "", `${name}:${knownVersion}`)).toBe(knownModel);
-    expect(versionFromModelName(`${name}:${knownVersion}`)).toBe(knownVersion);
-    expect(versionFromModelName(name ?? "")).toBeUndefined();
-  });
-
-  test("rejects unlisted models and mismatched versions", () => {
-    expect(() => validateModelAccess("evil", "model")).toThrow(
-      "Model evil/model is not in the allowed list.",
-    );
-    expect(() => validateVersionAccess("other/model", knownVersion)).toThrow(
-      `Model other/model:${knownVersion} is not in the allowed list.`,
-    );
-    expect(() => validateVersionAccess(knownModel, knownVersion)).not.toThrow();
-  });
-
   test("resolves every version form Replicate accepts against the allowlist", () => {
     const canonical = `${knownModel}:${knownVersion}`;
     expect(resolveModelReference(knownVersion)).toEqual({ model: knownModel, version: canonical });

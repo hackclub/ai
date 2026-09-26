@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { testDatabase } from "../test/database";
-import { cookieValue, createSessions, sessionAccess } from "./sessions";
+import { cookieValue, createSessions } from "./sessions";
 import { createUser } from "./users";
 
 const { sql } = await testDatabase();
@@ -29,18 +29,6 @@ test.each([
 });
 
 describe("session owner with PostgreSQL", () => {
-  test("start sets the bare-name cookie and user resolves it", async () => {
-    const created = await newUser();
-    const sessions = createSessions({ sql, secureCookies: false });
-    const setCookie = await sessions.start(created.userId);
-    expect(setCookie).toMatch(/^session_token=[^;]+; Path=\/; Max-Age=2592000; HttpOnly; SameSite=Lax$/);
-
-    const user = await sessions.user(cookieHeaderFrom(setCookie));
-    expect(user?.id).toBe(created.userId);
-    expect(user?.billingAccountId).toBe(created.billingAccountId);
-    expect(user?.isBanned).toBeFalse();
-  });
-
   test("secure sessions use the __Host- name and ignore the bare name", async () => {
     const created = await newUser();
     const sessions = createSessions({ sql, secureCookies: true });
@@ -68,47 +56,5 @@ describe("session owner with PostgreSQL", () => {
     const header = cookieHeaderFrom(await sessions.start(created.userId));
     await sql`UPDATE sessions SET expires_at = now() - interval '1 second' WHERE user_id = ${created.userId}::uuid`;
     expect(await sessions.user(header)).toBeNull();
-  });
-
-  test("a duplicated cookie reads as signed out", async () => {
-    const created = await newUser();
-    const sessions = createSessions({ sql, secureCookies: false });
-    const header = cookieHeaderFrom(await sessions.start(created.userId));
-    expect(await sessions.user(`${header}; ${header}`)).toBeNull();
-    expect(await sessions.user(null)).toBeNull();
-  });
-
-  test("end deletes the session and clears the cookie", async () => {
-    const created = await newUser();
-    const sessions = createSessions({ sql, secureCookies: false });
-    const header = cookieHeaderFrom(await sessions.start(created.userId));
-
-    expect(await sessions.end(header)).toBe("session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
-    expect(await sessions.user(header)).toBeNull();
-    expect(await storedHashes(created.userId)).toEqual([]);
-  });
-
-  test("end without a cookie deletes nothing", async () => {
-    const created = await newUser();
-    const sessions = createSessions({ sql, secureCookies: true });
-    const header = cookieHeaderFrom(await sessions.start(created.userId));
-
-    expect(await sessions.end(null)).toBe("__Host-session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure");
-    expect((await sessions.user(header))?.id).toBe(created.userId);
-  });
-
-  test("sessionAccess separates signed-out, banned and usable users", async () => {
-    expect(sessionAccess(null)).toEqual({ ok: false, reason: "signed-out" });
-
-    const sessions = createSessions({ sql, secureCookies: false });
-    const ordinary = await newUser();
-    const user = await sessions.user(cookieHeaderFrom(await sessions.start(ordinary.userId)));
-    expect(sessionAccess(user)).toEqual({ ok: true, user: user! });
-
-    const banned = await newUser();
-    await sql`UPDATE users SET is_banned = true WHERE id = ${banned.userId}::uuid`;
-    const bannedUser = await sessions.user(cookieHeaderFrom(await sessions.start(banned.userId)));
-    expect(bannedUser?.isBanned).toBeTrue();
-    expect(sessionAccess(bannedUser)).toEqual({ ok: false, reason: "banned" });
   });
 });

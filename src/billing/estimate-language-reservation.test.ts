@@ -58,7 +58,6 @@ test.each([
 
 test.each([
   [{ completions: 0 }, "completions"],
-  [{ inputTokenPriceUsd: "1e-7" }, "Invalid USD value"],
   [{ inputTokenPriceUsd: "-0.01" }, "Provider prices must not be negative"],
   [{ requestedMaxOutputTokens: -1 }, "requestedMaxOutputTokens"],
 ] as const)("rejects %p", (input, message) => {

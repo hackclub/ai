@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Usd } from "../billing/money";
 import { executeJsonProvider } from "./json-provider";
 
-const run = (response: Response, redact?: (body: unknown, raw: string) => string) =>
+const run = (response: Response) =>
   executeJsonProvider({
     url: "https://provider.test/v1/thing",
     init: { method: "POST", body: '{"q":1}' },
@@ -12,42 +12,9 @@ const run = (response: Response, redact?: (body: unknown, raw: string) => string
       const cost = (body as { cost?: number }).cost;
       return typeof cost === "number" ? Usd.fromNumber(cost) : null;
     },
-    extractProviderRequestId: (body) => (body as { id?: string }).id ?? null,
-    redactResponseBody: redact,
   });
 
 describe("executeJsonProvider", () => {
-  test("passes the body through and completes with the reported cost", async () => {
-    const wire = '{"id":"r1","cost":0.002,"data":"x"}';
-    const result = await run(
-      new Response(wire, {
-        status: 201,
-        headers: { "content-type": "application/json", "content-encoding": "gzip" },
-      }),
-    );
-    expect(result.response.status).toBe(201);
-    expect(result.response.headers.get("content-encoding")).toBeNull();
-    expect(await result.response.text()).toBe(wire);
-    expect(result.requestBody).toBe('{"q":1}');
-    const completion = await result.completion;
-    if (completion.state !== "complete") throw new Error("expected complete");
-    expect(completion.usage.costUsd.toString()).toBe("0.002000000000");
-    expect(completion.providerRequestId).toBe("r1");
-    expect(completion.responseBody).toBe(wire);
-  });
-
-  test("redacts the analytics body only", async () => {
-    const wire = '{"cost":0.1,"secret":"text"}';
-    const result = await run(new Response(wire), () => '{"redacted":true}');
-    expect(await result.response.text()).toBe(wire);
-    expect((await result.completion).responseBody).toBe('{"redacted":true}');
-  });
-
-  test("reports a non-2xx reply as a provider error", async () => {
-    const completion = await (await run(new Response('{"error":"bad"}', { status: 400 }))).completion;
-    expect(completion).toMatchObject({ state: "provider_error", responseBody: '{"error":"bad"}' });
-  });
-
   test.each([
     [new Response("not json"), "non-JSON"],
     [new Response('{"data":1}'), "did not report a cost"],

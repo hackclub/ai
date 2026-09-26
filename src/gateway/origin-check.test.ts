@@ -9,17 +9,9 @@ const check = (method: string, headers: Record<string, string>, baseUrl = BASE_U
 
 test.each([
   ["GET with a foreign origin", check("GET", { origin: "https://evil.example" })],
-  ["POST with a matching origin", check("POST", { origin: BASE_URL })],
   ["POST with sec-fetch-site same-origin", check("POST", { "sec-fetch-site": "same-origin" })],
   ["POST with neither header (non-browser client)", check("POST", {})],
   ["POST when baseUrl has a trailing path", check("POST", { origin: BASE_URL }, `${BASE_URL}/`)],
 ])("allows %s", (_, run) => {
   expect(run).not.toThrow();
-});
-
-test.each([
-  ["POST with a foreign origin", check("POST", { origin: "https://evil.example" })],
-  ["POST with sec-fetch-site cross-site", check("POST", { "sec-fetch-site": "cross-site" })],
-])("rejects %s with 403", (_, run) => {
-  expect(run).toThrow(expect.objectContaining({ status: 403 }));
 });

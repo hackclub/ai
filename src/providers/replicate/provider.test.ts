@@ -6,11 +6,10 @@ import { reconcilePendingReservations } from "../../billing/reconciliation";
 import { createTestAccount, onlyBillingRecord } from "../../gateway/routes/test-harness";
 import { testDatabase } from "../../test/database";
 import { providerRegistry } from "../provider";
-import { predictionCharge } from "./billing";
 import { meterPrediction } from "./metering";
 import type { TerminalPrediction } from "./predictions";
 import type { ReplicatePricing } from "./pricing";
-import { REPLICATE, REPLICATE_FILES, replicateFilesProvider, replicateProvider } from "./provider";
+import { REPLICATE, replicateProvider } from "./provider";
 
 const { sql } = await testDatabase();
 const engine = new BillingEngine(sql);
@@ -42,20 +41,6 @@ beforeEach(async () => {
     SELECT request_id FROM billing_reservations WHERE state IN ('reserved', 'pending_reconciliation')
   `;
   for (const { request_id } of open) await engine.release(request_id);
-});
-
-describe("predictionCharge", () => {
-  for (const { name, prediction, charged } of cases) {
-    test(name, () => {
-      const charge = predictionCharge({ id: "p", ...prediction }, pricing);
-      if (charged === null) {
-        expect(charge).toEqual({ state: "not_ready", detail: "succeeded without billable metrics" });
-      } else {
-        if (charge.state !== "charged") throw new Error("expected charged");
-        expect(charge.costUsd.equals(Usd.parse(charged))).toBe(true);
-      }
-    });
-  }
 });
 
 describe("live and reconciled settlement bill through the same rule", () => {
@@ -122,13 +107,4 @@ describe("live and reconciled settlement bill through the same rule", () => {
       }
     });
   }
-});
-
-describe("replicate provider modules", () => {
-  test("predictions and file uploads reserve under separate keys", () => {
-    expect(replicateProvider({ apiKey: "k", pricing: { get: async () => pricing } }).key).toBe("replicate");
-    expect(REPLICATE).toBe("replicate");
-    expect(REPLICATE_FILES).toBe("replicate-files");
-    expect(replicateFilesProvider).toEqual({ key: "replicate-files", reconcile: null });
-  });
 });

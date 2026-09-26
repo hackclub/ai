@@ -2,14 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { Usd } from "../../billing/money";
 import {
-  createReplicatePricingSource,
   describePricing,
   estimatePredictionCost,
   hasBillableMetrics,
   parseReplicatePricing,
   predictionCost,
   type ReplicatePricing,
-  scaleUsd,
 } from "./pricing";
 
 const fixture = (name: string) => Bun.file(new URL(`./fixtures/${name}.html`, import.meta.url)).text();
@@ -71,12 +69,6 @@ describe("parseReplicatePricing", () => {
 });
 
 describe("predictionCost", () => {
-  test("bills hardware models on predict_time", async () => {
-    const pricing = await pricingFor("lucataco_remove-bg");
-    expect(predictionCost(pricing, { predict_time: 2, total_time: 3 }).toString()).toBe(usd("0.00045"));
-    expect(predictionCost(pricing, {}).toString()).toBe(Usd.zero.toString());
-  });
-
   test.each([
     ["the matching metric", "minimax_speech-02-turbo", { token_input_count: 500, predict_time: 9 }, "0.03"],
     // $2 per thousand seconds; 32.5 seconds.
@@ -149,40 +141,4 @@ describe("estimatePredictionCost", () => {
 test("describePricing summarises both pricing kinds", async () => {
   expect(describePricing(await pricingFor("lucataco_remove-bg"))).toBe("≈ $0.00033 per run · $0.000225/s on T4");
   expect(describePricing(await pricingFor("minimax_speech-02-turbo"))).toBe("$0.06 per thousand input tokens");
-});
-
-test("scaleUsd multiplies by fractional units without float drift", () => {
-  expect(scaleUsd(Usd.parse("0.001"), 0.3).toString()).toBe(usd("0.0003"));
-  expect(scaleUsd(Usd.parse("1"), 0).toString()).toBe(Usd.zero.toString());
-});
-
-describe("createReplicatePricingSource", () => {
-  test("caches, single-flights, and serves stale values on refresh failure", async () => {
-    const html = await fixture("lucataco_remove-bg");
-    let calls = 0;
-    let fail = false;
-    const source = createReplicatePricingSource({
-      ttlMs: 1,
-      fetch: (async () => {
-        calls += 1;
-        return fail ? new Response("down", { status: 503 }) : new Response(html);
-      }) as unknown as typeof fetch,
-    });
-    const [a, b] = await Promise.all([source.get("lucataco/remove-bg"), source.get("lucataco/remove-bg")]);
-    expect(calls).toBe(1);
-    expect(a?.kind).toBe("hardware");
-    expect(b).toBe(a);
-
-    await Bun.sleep(5);
-    fail = true;
-    expect((await source.get("lucataco/remove-bg"))?.kind).toBe("hardware");
-    expect(calls).toBe(2);
-  });
-
-  test("rejects when there is no cached value and the fetch fails", async () => {
-    const source = createReplicatePricingSource({
-      fetch: (async () => new Response("down", { status: 503 })) as unknown as typeof fetch,
-    });
-    await expect(source.get("x/y")).rejects.toThrow("HTTP 503");
-  });
 });

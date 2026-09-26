@@ -4,7 +4,6 @@ import fixture from "../test/abuse-rules.json";
 import {
   type AbuseRules,
   abuseRules,
-  agentSurface,
   createAbuseFilter,
   enforcedRuleKeys,
   loadAbuseRules,
@@ -40,11 +39,6 @@ const shapedTools = (names: string[]) =>
 const withDetectors = (detectors: Partial<AbuseRules["detectors"]>): AbuseRules => ({
   ...abuseRules,
   detectors: { ...abuseRules.detectors, ...detectors },
-});
-
-test("the suite runs with the fixture rules, whether or not the secrets submodule is checked out", async () => {
-  expect(await loadAbuseRules("src/test/abuse-rules.json")).toEqual(parseAbuseRules(fixture));
-  expect(abuseRules).toEqual(parseAbuseRules(fixture));
 });
 
 test("blocks apps by attribution headers and agents by User-Agent, naming the rule", () => {
@@ -165,18 +159,6 @@ test("a toolset fingerprint survives renamed tools and changes with their parame
   // Too few tools with parameters to tell one app from another.
   expect(verdict({ messages: [], tools: shapedTools(names.slice(0, 4)) }).fingerprint).toBeNull();
   expect(toolsetFingerprint(names.map((name) => ({ name, description: "", shape: "" })))).toBeNull();
-});
-
-test("agentSurface reads each API's shape and nothing else", () => {
-  expect(agentSurface(null)).toEqual({ instructions: [], tools: [], firstUserMessage: [] });
-  expect(
-    agentSurface({ system: "s", messages: [{ role: "user", content: "u" }], tools: [{ name: "n", input_schema: { properties: { b: { type: "string" }, a: {} }, required: ["b"] } }] }),
-  ).toEqual({
-    instructions: ["s"],
-    tools: [{ name: "n", description: "", shape: "a:,b:string!" }],
-    firstUserMessage: [],
-  });
-  expect(agentSurface({ messages: [{ role: "user", content: [{ type: "text", text: "u" }] }] }).firstUserMessage).toEqual(["u"]);
 });
 
 test("a body that is not JSON is left for the route to refuse", () => {

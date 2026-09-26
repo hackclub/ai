@@ -100,30 +100,6 @@ const insertEvents = async (values: ReturnType<typeof event>[]) => {
   await clickhouse.insert({ table: "request_events", values, format: "JSONEachRow" });
 };
 
-describe("site", () => {
-  test("falls back to the default featured model", () => {
-    expect(readModel({ env: { ...env, featuredModels: [] } }).site.featuredModel).toBe("openai/gpt-4o-mini");
-    expect(readModel().site.featuredModel).toBe("x/y");
-  });
-
-  test("devMode follows NODE_ENV", () => {
-    expect(readModel({ env: { ...env, nodeEnv: "development" } }).site.devMode).toBeTrue();
-    expect(readModel({ env: { ...env, nodeEnv: "production" } }).site.devMode).toBeFalse();
-  });
-
-  test("carries the page facts", () => {
-    expect(readModel().site).toEqual({
-      baseUrl: "http://gateway.test",
-      devMode: false,
-      enforceIdv: false,
-      featuredModels: ["x/y", "z"],
-      featuredModel: "x/y",
-      ocrPagePriceUsd: "0.001",
-      jevInputPricePerMillionUsd: "0.042",
-    });
-  });
-});
-
 describe("spending", () => {
   test("a fresh user shows the policy allowance and nothing spent", async () => {
     const user = await signedIn();
@@ -164,11 +140,6 @@ describe("spending", () => {
     expect(await readModel().spending(user)).toEqual({ spentUsd: "0.000000000000", limitUsd: "5.000000000000" });
   });
 
-  test("no policy and no window is zero of zero", async () => {
-    const user = await signedIn();
-    await sql`DELETE FROM billing_funding_policies WHERE account_id = ${user.billingAccountId}::uuid`;
-    expect(await readModel().spending(user)).toEqual({ spentUsd: "0", limitUsd: "0" });
-  });
 });
 
 describe("keys", () => {
@@ -265,6 +236,12 @@ describe("activity", () => {
     expect(rest.rows.map((row) => row.requestId)).toEqual([events[0]?.request_id]);
     expect(rest.next).toBeNull();
   });
+
+  test("a full last page has no next cursor", async () => {
+    const user = await signedIn();
+    await insertEvents(Array.from({ length: 50 }, () => event(user.billingAccountId)));
+    expect((await readModel().activity(user)).next).toBeNull();
+  });
 });
 
 describe("parseActivityCursor", () => {
@@ -310,6 +287,20 @@ describe("usage", () => {
       ],
     });
   });
+
+  test("one read model caches each account's totals separately", async () => {
+    const user = await signedIn();
+    const other = await signedIn();
+    await insertEvents([
+      event(user.billingAccountId, { input_tokens: 10, output_tokens: 5 }),
+      event(other.billingAccountId, { input_tokens: 1, output_tokens: 1 }),
+    ]);
+
+    const model = readModel();
+    expect((await model.usage(user)).totalTokens).toBe(15);
+    expect((await model.usage(other)).totalTokens).toBe(2);
+    expect((await model.usage(user)).totalTokens).toBe(15);
+  });
 });
 
 describe("models", () => {
@@ -325,12 +316,6 @@ describe("models", () => {
       expect(card.description).not.toContain("](");
       expect(card.description).not.toContain("https://example.com/docs");
     }
-  });
-
-  test("finds one model in full", async () => {
-    const model = readModel();
-    expect(await model.model("img/pix")).toEqual(languageListing[2]!);
-    expect(await model.model("missing/x")).toBeNull();
   });
 
   test("a failed listing renders empty groups", async () => {

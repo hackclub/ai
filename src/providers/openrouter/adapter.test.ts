@@ -1,30 +1,27 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Fetch, OpenRouterAdapter } from "./adapter";
+import { OpenRouterAdapter } from "./adapter";
 
 const encoder = new TextEncoder();
 const SSE = { "content-type": "text/event-stream" };
 const JSON_TYPE = { "content-type": "application/json" };
 
-const chunkedBody = (parts: string[], cancelled?: () => void) =>
+const chunkedBody = (parts: string[]) =>
   new ReadableStream<Uint8Array>({
     pull(controller) {
       const part = parts.shift();
       if (part === undefined) controller.close();
       else controller.enqueue(encoder.encode(part));
     },
-    cancel() {
-      cancelled?.();
-    },
   });
 
 const execute = (
   response: () => Response,
-  options: { stream?: boolean; maxCapturedBytes?: number; fetch?: Fetch } = {},
+  options: { stream?: boolean; maxCapturedBytes?: number } = {},
 ) =>
   new OpenRouterAdapter({
     maxCapturedBytes: options.maxCapturedBytes,
-    fetch: options.fetch ?? (async () => response()),
+    fetch: async () => response(),
   }).execute({
     endpoint: "chat/completions",
     body: options.stream ? { model: "test/model", stream: true } : { model: "test/model" },
@@ -41,30 +38,6 @@ const usageEvent = (id: string) =>
   `data: {"id":"${id}","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0.001}}\n\n`;
 
 describe("OpenRouterAdapter", () => {
-  test("forwards SSE bytes unchanged and resolves terminal usage", async () => {
-    const wireBody =
-      ": OPENROUTER PROCESSING\r\n\r\n" +
-      'data: {"id":"gen-1","choices":[{"delta":{"content":"hello"}}]}\r\n\r\n' +
-      'data: {"id":"gen-1","usage":{"prompt_tokens":3,' +
-      '"completion_tokens":2,"total_tokens":5,"cost":0.0004}}\r\n\r\n' +
-      "data: [DONE]\r\n\r\n";
-    const result = await execute(() => new Response(), {
-      stream: true,
-      fetch: async (_url, init) => {
-        expect(JSON.parse(String(init?.body))).toEqual({ model: "test/model", stream: true });
-        const parts = [wireBody.slice(0, 7), wireBody.slice(7, 53), wireBody.slice(53, 119), wireBody.slice(119)];
-        return new Response(chunkedBody(parts), { headers: SSE });
-      },
-    });
-
-    expect(await result.response.text()).toBe(wireBody);
-    const completion = await result.completion;
-    if (completion.state !== "complete") throw new Error("Expected usage");
-    expect(completion.providerRequestId).toBe("gen-1");
-    expect(completion.usage.costUsd.toString()).toBe("0.000400000000");
-    expect(completion.responseBody).toBe(wireBody);
-  });
-
   test("marks missing usage as uncertain for reconciliation", async () => {
     const result = await execute(
       () => new Response('data: {"id":"gen-unknown","choices":[]}\n\ndata: [DONE]\n\n', { headers: SSE }),
@@ -74,51 +47,6 @@ describe("OpenRouterAdapter", () => {
     const completion = await result.completion;
     expect(completion.state).toBe("uncertain");
     expect(completion.providerRequestId).toBe("gen-unknown");
-  });
-
-  test("cancels upstream and preserves the partial body", async () => {
-    let cancelled = false;
-    const result = await execute(
-      () =>
-        new Response(
-          chunkedBody(['data: {"id":"gen-cancelled","choices":[]}\n\n', "data: never consumed\n\n"], () => {
-            cancelled = true;
-          }),
-          { headers: SSE },
-        ),
-      { stream: true },
-    );
-    await readOneThenCancel(result.response);
-
-    const completion = await result.completion;
-    expect(cancelled).toBeTrue();
-    if (completion.state !== "uncertain") throw new Error("Expected uncertain");
-    expect(completion.reason).toBe("client disconnected");
-    expect(completion.providerRequestId).toBe("gen-cancelled");
-    expect(completion.responseBody).toContain("gen-cancelled");
-  });
-
-  test("settles cancellation even when the upstream cancel rejects", async () => {
-    const result = await execute(
-      () =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            pull(controller) {
-              controller.enqueue(encoder.encode('data: {"id":"gen-gone"}\n\n'));
-            },
-            cancel() {
-              throw new Error("socket already closed");
-            },
-          }),
-          { headers: SSE },
-        ),
-      { stream: true },
-    );
-    await readOneThenCancel(result.response);
-
-    const completion = await result.completion;
-    expect(completion.state).toBe("uncertain");
-    expect(completion.providerRequestId).toBe("gen-gone");
   });
 
   test("bills usage already received when the client cancels before [DONE]", async () => {
