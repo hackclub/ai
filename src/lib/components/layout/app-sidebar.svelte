@@ -7,7 +7,7 @@
   import BookIcon from "remixicon-svelte/icons/book-open-line";
   import FlaskIcon from "remixicon-svelte/icons/flask-line";
   import BrainIcon from "remixicon-svelte/icons/brain-line";
-  import ScanIcon from "remixicon-svelte/icons/scan-line";
+  import OcrIcon from "remixicon-svelte/icons/character-recognition-line";
   import SearchIcon from "remixicon-svelte/icons/search-line";
   import { page } from "$app/state";
   import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
@@ -23,7 +23,7 @@
     { title: "Activity", url: "/activity", icon: PulseIcon },
     { title: "Replicate", url: "/replicate", icon: FlaskIcon },
     { title: "Jev", url: "/jev", icon: BrainIcon },
-    { title: "OCR", url: "/ocr", icon: ScanIcon },
+    { title: "OCR", url: "/ocr", icon: OcrIcon },
     { title: "Exa", url: "/exa", icon: SearchIcon },
     { title: "Global stats", url: "/global", icon: GlobeIcon },
   ];
