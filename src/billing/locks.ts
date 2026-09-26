@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 
+import type { Tables } from "../db-types";
 import {
   BillingAccountNotFoundError,
   ReservationNotFoundError,
@@ -27,22 +28,21 @@ type Tx = postgres.TransactionSql;
 /** A statement queued for one pipelined round trip. */
 export type Statement = postgres.PendingQuery<postgres.Row[]>;
 
-export type ReservationRow = {
-  id: string;
-  request_id: string;
-  account_id: string;
-  provider: string;
-  provider_request_id: string | null;
-  state: ReservationState;
-  estimated_cost_usd: string;
-  actual_cost_usd: string | null;
-  unfunded_cost_usd: string;
-  expires_at: Date;
-  /** Recorded at reserve for the analytics event; null before migration 0008. */
-  user_id: string | null;
-  api_key_id: string | null;
-  endpoint: string | null;
-};
+export type ReservationRow = Pick<
+  Tables["billing_reservations"],
+  | "id"
+  | "request_id"
+  | "account_id"
+  | "provider"
+  | "provider_request_id"
+  | "estimated_cost_usd"
+  | "actual_cost_usd"
+  | "unfunded_cost_usd"
+  | "expires_at"
+  | "user_id"
+  | "api_key_id"
+  | "endpoint"
+> & { state: ReservationState };
 
 /** The column list every reservation read and write returns. */
 export const reservationColumns = (tx: Tx) => tx`
@@ -68,14 +68,9 @@ type AvailableSourceRow = {
   available_usd: string;
   expires_at: Date | null;
 };
-type HoldRow = {
-  id: string;
-  priority: number;
-  reserved_usd: string;
-  committed_usd: string;
-  expires_at: Date | null;
-};
-type LimitHoldRow = { id: string; reserved_usd: string; committed_usd: string };
+type HeldAmounts = Pick<Tables["billing_reservation_funding_holds"], "reserved_usd" | "committed_usd">;
+type HoldRow = HeldAmounts & { id: string; priority: number; expires_at: Date | null };
+type LimitHoldRow = Pick<Tables["billing_reservation_limit_holds"], "reserved_usd" | "committed_usd"> & { id: string };
 
 /**
  * Every timestamp comparison and write in the engine uses SQL `now()`,

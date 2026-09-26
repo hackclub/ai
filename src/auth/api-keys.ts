@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 
+import type { Tables } from "../db-types";
 import { HttpError } from "../gateway/http-error";
 import { BANNED_MESSAGE } from "./users";
 
@@ -17,14 +18,12 @@ export type ApiKeyAuthOptions = {
   enforceIdv: boolean;
 };
 
-type PrincipalRow = {
+type PrincipalRow = Pick<Tables["users"], "is_banned" | "is_idv_verified" | "skip_idv"> & {
   user_id: string;
   api_key_id: string;
+  /** Null when the user has no billing account (a LEFT JOIN). */
   billing_account_id: string | null;
-  billing_account_status: string | null;
-  is_banned: boolean;
-  is_idv_verified: boolean;
-  skip_idv: boolean;
+  billing_account_status: Tables["billing_accounts"]["status"] | null;
 };
 
 const SUSPENDED_MESSAGE = "This billing account is suspended.";

@@ -1,5 +1,7 @@
 import type postgres from "postgres";
 
+import type { Tables } from "../db-types";
+
 type Sql = postgres.Sql;
 
 const SESSION_COOKIE = "session_token";
@@ -18,18 +20,18 @@ export type SessionUser = {
   billingAccountId: string;
 };
 
-type SessionRow = {
-  id: string;
-  slack_id: string;
-  email: string | null;
-  name: string | null;
-  avatar: string | null;
-  is_banned: boolean;
-  is_idv_verified: boolean;
-  skip_idv: boolean;
-  agent_banner_dismissed_at: Date | null;
-  billing_account_id: string;
-};
+type SessionRow = Pick<
+  Tables["users"],
+  | "id"
+  | "slack_id"
+  | "email"
+  | "name"
+  | "avatar"
+  | "is_banned"
+  | "is_idv_verified"
+  | "skip_idv"
+  | "agent_banner_dismissed_at"
+> & { billing_account_id: string };
 
 /** SHA-256 of the token. Byte-identical to `hashApiKey`, so stored sessions keep matching. */
 const hashToken = (token: string): Uint8Array =>

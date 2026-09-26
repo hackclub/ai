@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 
 import { reconciledObservation } from "../analytics/request-event";
+import type { Tables } from "../db-types";
 import type { BillingEngine } from "./engine";
 import type { Usd } from "./money";
 
@@ -29,12 +30,10 @@ export type ReconcileResult = {
   failed: number;
 };
 
-type PendingRow = {
-  request_id: string;
-  provider: string;
-  provider_request_id: string | null;
-  reconciliation_reason: string | null;
-  endpoint: string | null;
+type PendingRow = Pick<
+  Tables["billing_reservations"],
+  "request_id" | "provider" | "provider_request_id" | "reconciliation_reason" | "endpoint"
+> & {
   expired: boolean;
   record_overdue: boolean;
   age_ms: number | string;

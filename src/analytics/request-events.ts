@@ -2,6 +2,7 @@ import { type ClickHouseClient, ClickHouseError } from "@clickhouse/client";
 import type { S3Client } from "bun";
 import type postgres from "postgres";
 
+import type { Tables } from "../db-types";
 import { compactBodies } from "./bodies";
 import { toClickHouseEvent } from "./request-event";
 
@@ -28,7 +29,7 @@ export type DrainOptions = {
   batchSize?: number;
 };
 
-type OutboxRow = { id: string; payload: unknown };
+type OutboxRow = Pick<Tables["request_event_outbox"], "id" | "payload">;
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
