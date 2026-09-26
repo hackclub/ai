@@ -126,6 +126,96 @@ describe("request event delivery with PostgreSQL and ClickHouse", () => {
     expect((await blob.stat()).type).toBe("image/png");
   });
 
+  test("drops reasoning signatures, encrypted reasoning and embedding vectors from stored bodies", async () => {
+    const chatEventId = crypto.randomUUID();
+    const embeddingEventId = crypto.randomUUID();
+    const opaque = Buffer.from(crypto.getRandomValues(new Uint8Array(49_152))).toString("base64").repeat(64);
+    const reasoningDetails = [
+      { type: "reasoning.text", text: "six seven", signature: opaque, format: "google-gemini-v1", index: 0 },
+      { type: "reasoning.encrypted", data: `${opaque}.eyJlbmRwb2ludCI6InhhaSJ9`, format: "xai-responses-v1", id: "rs_1", index: 1 },
+    ];
+    const request = {
+      model: "google/gemini-3.1-flash-lite-image",
+      messages: [
+        { role: "user", content: "draw a mango" },
+        { role: "assistant", content: "mango", reasoning_details: reasoningDetails },
+        { role: "user", content: [{ type: "text", text: "again" }, { type: "thinking", thinking: "hm", signature: opaque }] },
+      ],
+    };
+    const response = {
+      id: "gen-1",
+      object: "chat.completion",
+      choices: [{ index: 0, message: { role: "assistant", content: "six seven mango", reasoning_details: reasoningDetails } }],
+      usage: { prompt_tokens: 3, completion_tokens: 3 },
+    };
+    const vector = Array.from({ length: 1536 }, (_, i) => Math.sin(i) / 10);
+    await sql`
+      INSERT INTO request_event_outbox (payload)
+      VALUES
+        (${sql.json(
+          payload(chatEventId, {
+            request_body: JSON.stringify(request, null, 1),
+            response_body: `\n         \n${JSON.stringify(response)}`,
+          }),
+        )}::jsonb),
+        (${sql.json(
+          payload(embeddingEventId, {
+            endpoint: "embeddings",
+            request_body: JSON.stringify({ model: "openai/text-embedding-3-small", input: ["six", "seven"] }),
+            response_body: JSON.stringify({
+              object: "list",
+              data: [
+                { object: "embedding", embedding: vector, index: 0 },
+                { object: "embedding", embedding: opaque, index: 1 },
+              ],
+              usage: { prompt_tokens: 2, total_tokens: 2 },
+            }),
+          }),
+        )}::jsonb)
+    `;
+
+    await drainRequestEvents({ sql, clickhouse, blobStore, batchSize: 1_000 });
+
+    const result = await clickhouse.query({
+      query: `
+        SELECT event_id, request_body, response_body FROM request_events
+        WHERE event_id IN {ids:Array(UUID)} AND hasAllTokens(request_body, 'six seven') ORDER BY endpoint
+      `,
+      query_params: { ids: [chatEventId, embeddingEventId] },
+      format: "JSONEachRow",
+    });
+    const rows = await result.json<{ event_id: string; request_body: string; response_body: string }>();
+    expect(rows.map((row) => row.event_id)).toEqual([chatEventId, embeddingEventId]);
+    const [chat, embedding] = rows;
+    for (const body of [chat!.request_body, chat!.response_body, embedding!.response_body]) {
+      expect(body.includes(opaque.slice(0, 64))).toBe(false);
+    }
+    const strippedDetails = [
+      { ...reasoningDetails[0], signature: "omitted" },
+      { ...reasoningDetails[1], data: "omitted" },
+    ];
+    expect(JSON.parse(chat!.request_body)).toEqual({
+      ...request,
+      messages: [
+        request.messages[0],
+        { ...request.messages[1], reasoning_details: strippedDetails },
+        { role: "user", content: [{ type: "text", text: "again" }, { type: "thinking", thinking: "hm", signature: "omitted" }] },
+      ],
+    });
+    expect(JSON.parse(chat!.response_body)).toEqual({
+      ...response,
+      choices: [{ index: 0, message: { ...response.choices[0]!.message, reasoning_details: strippedDetails } }],
+    });
+    expect(JSON.parse(embedding!.response_body)).toEqual({
+      object: "list",
+      data: [
+        { object: "embedding", embedding: "omitted", index: 0 },
+        { object: "embedding", embedding: "omitted", index: 1 },
+      ],
+      usage: { prompt_tokens: 2, total_tokens: 2 },
+    });
+  });
+
   test("releases the claim and counts an attempt when the ClickHouse insert fails", async () => {
     const failingEventId = crypto.randomUUID();
     await sql`INSERT INTO request_event_outbox (payload) VALUES (${sql.json(payload(failingEventId))}::jsonb)`;

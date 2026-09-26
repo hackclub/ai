@@ -7,7 +7,8 @@ import { ServerSentEventParser } from "../providers/sse-parser";
  * Request and response bodies are compacted before they reach ClickHouse:
  * a streamed response is stored as the one message its chunks add up to, and
  * every base64 `data:` URL (images, audio, files) is moved to the blob store
- * and replaced by `blob:<mime>;<key>`.
+ * and replaced by `blob:<mime>;<key>`, and payloads no one can read or search
+ * (reasoning signatures, encrypted reasoning, embedding vectors) are dropped.
  */
 
 export const createBlobStore = (config: BlobStoreConfig) =>
@@ -43,6 +44,20 @@ export const extractBlobs = (body: string, day: string, blobs: Map<string, BodyB
     if (!blobs.has(key)) blobs.set(key, { key, type, bytes });
     return `blob:${type};${key}`;
   });
+
+const OMITTED = '"omitted"';
+const JSON_STRING = String.raw`"[^"\\]*(?:\\.[^"\\]*)*"`;
+const SIGNATURE = new RegExp(String.raw`("(?:signature|thoughtSignature|encrypted_content)"\s*:\s*)${JSON_STRING}`, "g");
+const ENCRYPTED_REASONING = /\{[^{}]*"type"\s*:\s*"reasoning\.encrypted"[^{}]*\}/g;
+const ENCRYPTED_DATA = new RegExp(String.raw`("data"\s*:\s*)${JSON_STRING}`);
+const EMBEDDING = new RegExp(String.raw`("embedding"\s*:\s*)(?:\[[^\]]*\]|${JSON_STRING})`, "g");
+
+/** Works on the raw text, so a capture cut mid-body is stripped too. */
+const stripOpaquePayloads = (body: string) =>
+  body
+    .replace(SIGNATURE, `$1${OMITTED}`)
+    .replace(ENCRYPTED_REASONING, (object) => object.replace(ENCRYPTED_DATA, `$1${OMITTED}`))
+    .replace(EMBEDDING, `$1${OMITTED}`);
 
 type Json = Record<string, unknown>;
 
@@ -179,8 +194,8 @@ export const compactRows = <T extends BodyColumns>(rows: T[]) => {
     return {
       ...row,
       attributes,
-      request_body: extractBlobs(row.request_body, day, blobs),
-      response_body: extractBlobs(response, day, blobs),
+      request_body: extractBlobs(stripOpaquePayloads(row.request_body), day, blobs),
+      response_body: extractBlobs(stripOpaquePayloads(response), day, blobs),
     };
   });
   return { rows: compacted, blobs: [...blobs.values()] };
