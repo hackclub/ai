@@ -10,7 +10,7 @@ export type CreateUserInput = {
   email?: string | null;
   name?: string | null;
   avatar?: string | null;
-  /** Recurring daily allowance in USD. Defaults to the previous gateway's $3. */
+  /** Recurring daily allowance in USD. Defaults to $3. */
   dailyAllowanceUsd?: string;
 };
 

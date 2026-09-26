@@ -8,8 +8,8 @@ export type RateLimitOptions = {
 
 /**
  * Fixed-window counter keyed by caller. Process-local: with more than one
- * replica each replica applies the limit independently, as the previous
- * gateway did. Swap the store for Redis or PostgreSQL if that changes.
+ * replica each replica applies the limit independently. Swap the store
+ * for Redis or PostgreSQL if that changes.
  */
 export class RateLimiter {
   private readonly windows = new Map<string, { start: number; count: number }>();
@@ -33,10 +33,9 @@ export class RateLimiter {
         1,
         Math.ceil((window.start + this.options.windowMs - now) / 1_000),
       );
-      // Retry-After is what SDK backoff reads; the RateLimit-* set (IETF
-      // draft-6) matches what the previous gateway's limiter sent. OpenAI's
-      // Node SDK ignores a Retry-After over 60s and retries anyway, so waits
-      // that long also say not to retry.
+      // Retry-After is what SDK backoff reads; the RateLimit-* set follows IETF
+      // draft-6. OpenAI's Node SDK ignores a Retry-After over 60s and
+      // retries anyway, so waits that long also say not to retry.
       throw new HttpError(429, `Rate limit exceeded. Retry in ${retryAfter}s.`, {
         ...(retryAfter > 60 ? { "x-should-retry": "false" } : {}),
         "retry-after": String(retryAfter),

@@ -30,7 +30,7 @@ export type ProxyDependencies = {
   /**
    * Hold placed when OpenRouter's listing has no usable pricing for the
    * requested model (unlisted or dynamically priced). The real cost replaces
-   * it on finalization. Defaults to 0.05 USD, as in the previous gateway.
+   * it on finalization. Defaults to 0.05 USD.
    */
   unknownModelReservationUsd?: string;
   /** Attribution headers OpenRouter shows in its app rankings. */

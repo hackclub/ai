@@ -29,9 +29,7 @@ export type CapturedBody = {
   /** Decoded once, after the end; the chunks are released. */
   text: string;
   truncated: boolean;
-  /** Upstream HTTP status. */
   status: number;
-  /** Upstream headers. */
   headers: Headers;
   end: BodyEnd;
 };

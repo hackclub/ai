@@ -1,5 +1,3 @@
-/** Display helpers shared by dashboard pages. Ported from the old gateway. */
-
 export function formatPrice(price: string | number): string {
   const str = String(price).trim();
   const num = Number.parseFloat(str);

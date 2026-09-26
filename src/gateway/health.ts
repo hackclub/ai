@@ -6,8 +6,8 @@ export type HealthOptions = {
   clickhouse: ClickHouseClient;
   openRouter: { apiKey: string; baseUrl: string; fetch?: typeof fetch };
   /**
-   * Replicate's unused-credit scrape, as the previous gateway did it. Needs a
-   * browser session cookie; skipped when either value is missing.
+   * Replicate's unused-credit scrape. Needs a browser session cookie; skipped
+   * when either value is missing.
    */
   replicate?: { username: string; sessionId: string } | null;
   /** Mistral (OCR). */
@@ -24,9 +24,9 @@ export type HealthReport = {
   openRouter: boolean;
   mistral: boolean;
   exa: boolean;
-  /** OpenRouter credits purchased minus used, as the previous gateway reported. */
+  /** OpenRouter credits purchased minus used. */
   balanceRemaining?: number;
-  /** Remaining spend allowed on the shared key; the previous gateway's name. */
+  /** Remaining spend allowed on the shared key. */
   dailyKeyUsageRemaining?: number;
   keyLimitRemaining?: number;
   keyUsage?: number;
@@ -34,7 +34,7 @@ export type HealthReport = {
   timestamp: number;
 };
 
-/** Replicate credit below this makes the service report down, as before. */
+/** Replicate credit below this makes the service report down. */
 const REPLICATE_MIN_CREDIT = 0.6;
 
 const numberOrUndefined = (value: unknown) =>
@@ -43,7 +43,7 @@ const numberOrUndefined = (value: unknown) =>
 /**
  * GET /up. Checks PostgreSQL, ClickHouse, OpenRouter, Mistral, Exa, and
  * (when its browser session is set) Replicate's credit, and caches the verdict so a probe storm
- * cannot amplify load. The previous gateway's balance and Replicate credit
+ * cannot amplify load. The balance and Replicate credit
  * fields are kept for monitors that read them.
  */
 export const createHealthCheck = (options: HealthOptions) => {

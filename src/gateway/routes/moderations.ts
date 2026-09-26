@@ -16,7 +16,7 @@ export type ModerationRouteDependencies = {
 
 /**
  * `POST /proxy/v1/moderations`: OpenAI's free moderation endpoint through the
- * shared account. Not billed and not logged, as before.
+ * shared account. Not billed and not logged.
  */
 export const moderationRoutes = (deps: ModerationRouteDependencies) => {
   const rateLimiter = deps.rateLimiter ?? defaultRateLimiter();

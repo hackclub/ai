@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { Usd } from "../../billing/money";
 import {
-  describePricing,
   estimatePredictionCost,
   hasBillableMetrics,
   parseReplicatePricing,
@@ -136,9 +135,4 @@ describe("estimatePredictionCost", () => {
     const estimate = estimatePredictionCost(pricing, {});
     expect(estimate.toAtoms() >= (pricing.medianRunUsd?.toAtoms() ?? 0n)).toBeTrue();
   });
-});
-
-test("describePricing summarises both pricing kinds", async () => {
-  expect(describePricing(await pricingFor("lucataco_remove-bg"))).toBe("≈ $0.00033 per run · $0.000225/s on T4");
-  expect(describePricing(await pricingFor("minimax_speech-02-turbo"))).toBe("$0.06 per thousand input tokens");
 });

@@ -46,10 +46,7 @@ export const bearerToken = (authorization: string | undefined) => {
   return match?.[1] ?? null;
 };
 
-/**
- * Resolves the bearer key to its user and billing account. Failures are
- * reported with the previous gateway's status codes and messages.
- */
+/** Resolves the bearer key to its user and billing account. */
 export async function authenticateApiKey(
   sql: Sql,
   authorization: string | undefined,

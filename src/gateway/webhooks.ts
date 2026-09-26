@@ -85,8 +85,8 @@ const parseSecretMatches = (raw: string): SecretMatch[] | null => {
 
 /**
  * Inbound webhooks that revoke leaked keys: GitHub secret scanning at
- * `/api/ghss` and `/internal/revoke`. Neither carries a secret, as in the
- * previous gateway: revoking a key needs the key itself.
+ * `/api/ghss` and `/internal/revoke`. Neither carries a secret: revoking a key
+ * needs the key itself.
  */
 export const webhookRoutes = (options: WebhookOptions) => {
   const fetchImplementation = options.fetch ?? fetch;
