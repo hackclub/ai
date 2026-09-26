@@ -391,7 +391,7 @@ describe("usage", () => {
     });
   });
 
-  test("ranks global usage by model and author, folding routing variants into their base model", async () => {
+  test("ranks global usage by model and author, folding routing variants into their base model, and charts the selected range", async () => {
     const user = await signedIn();
     const other = await signedIn();
     const now = new Date();
@@ -411,6 +411,10 @@ describe("usage", () => {
     expect(day.models).toEqual([
       { model: "openai/gpt-x", name: "GPT X", href: "/models/openai/gpt-x", requests: 2, tokens: 100, share: 1 },
     ]);
+    const hour = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000);
+    expect(day.series.map((series) => series.model)).toEqual(["openai/gpt-x"]);
+    expect(day.bars).toHaveLength(24);
+    expect(day.bars.at(-1)).toMatchObject({ start: hour.toISOString().replace(".000Z", "Z"), total: 100 });
 
     const month = await model.globalUsage("month", now);
     expect(month.totals).toEqual({ requests: 5, tokens: 155, users: 2 });
@@ -425,12 +429,20 @@ describe("usage", () => {
       ["typesafe", 5],
     ]);
     expect(month.series.map((series) => series.model)).toEqual(["openai/gpt-x", "acme/unnamed", "jev-latest"]);
-    expect(month.days).toHaveLength(30);
-    expect(month.days.at(-1)).toMatchObject({ day: now.toISOString().slice(0, 10), total: 100, tokens: { "openai/gpt-x": 100 } });
-    expect(month.days.at(-4)?.total).toBe(55);
-    expect(month.days.reduce((sum, day) => sum + day.total, 0)).toBe(155);
+    expect(month.bars).toHaveLength(30);
+    expect(month.bars.at(-1)).toMatchObject({
+      start: `${now.toISOString().slice(0, 10)}T00:00:00Z`,
+      total: 100,
+      tokens: { "openai/gpt-x": 100 },
+    });
+    expect(month.bars.at(-4)?.total).toBe(55);
+    expect(month.bars.reduce((sum, bar) => sum + bar.total, 0)).toBe(155);
 
-    expect((await model.globalUsage("all", now)).totals.tokens).toBe(1155);
+    const all = await model.globalUsage("all", now);
+    expect(all.totals.tokens).toBe(1155);
+    expect(all.bars[0]?.start).toBe(`${at(40).slice(0, 7)}-01T00:00:00Z`);
+    expect(all.bars.at(-1)?.start).toBe(`${now.toISOString().slice(0, 7)}-01T00:00:00Z`);
+    expect(all.bars.reduce((sum, bar) => sum + bar.total, 0)).toBe(1155);
   });
 
   test("one read model caches each account's totals separately", async () => {

@@ -22,9 +22,26 @@
   const colorOf = $derived(
     new Map(data.series.map((series, index) => [series.model, series.model ? `var(--series-${index + 1})` : "var(--series-other)"])),
   );
-  const peak = $derived(Math.max(1, ...data.days.map((day) => day.total)));
+  const chart = $derived(
+    {
+      day: { unit: "hour", period: "Last 24 hours" },
+      week: { unit: "day", period: "Last 7 days" },
+      month: { unit: "day", period: "Last 30 days" },
+      all: { unit: "month", period: "All time" },
+    }[data.range],
+  );
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const barLabel = (start: string) => {
+    const date = new Date(start);
+    if (chart.unit === "hour") return `${formatDate(date)}, ${String(date.getUTCHours()).padStart(2, "0")}:00`;
+    if (chart.unit === "month") return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+    return formatDate(date);
+  };
+  const peak = $derived(Math.max(1, ...data.bars.map((bar) => bar.total)));
   let hovered = $state<number | null>(null);
-  const hoveredDay = $derived(hovered === null ? null : data.days[hovered]);
+  let chartWidth = $state(0);
+  let anchor = $state({ left: 0, right: 0 });
+  const hoveredBar = $derived(hovered === null ? null : data.bars[hovered]);
 
   const percent = (share: number) => (share < 0.001 ? "<0.1%" : `${(share * 100).toFixed(share < 0.1 ? 1 : 0)}%`);
   const cell = "px-4 py-3 text-sm";
@@ -61,27 +78,30 @@
 
   <section class="bg-card mt-6 rounded-lg border p-4 sm:p-5" aria-labelledby="daily-heading">
     <div class="flex items-baseline justify-between gap-4">
-      <h2 id="daily-heading" class="text-sm font-medium">Tokens per day</h2>
-      <p class="text-muted-foreground text-xs">Last 30 days, UTC</p>
+      <h2 id="daily-heading" class="text-sm font-medium">Tokens per {chart.unit}</h2>
+      <p class="text-muted-foreground text-xs">{chart.period}, UTC</p>
     </div>
     {#if data.series.length === 0}
-      <p class="text-muted-foreground py-16 text-center text-sm">No usage in the last 30 days.</p>
+      <p class="text-muted-foreground py-16 text-center text-sm">No usage in this period.</p>
     {:else}
-      <div class="relative mt-4">
+      <div class="relative mt-4" bind:clientWidth={chartWidth}>
         <div class="text-muted-foreground pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 text-xs tabular-nums">
           <span>{formatNumberShort(peak)}</span>
           <span class="border-border flex-1 border-t border-dashed"></span>
         </div>
-        <div class="flex h-48 items-end gap-0.5 pt-5 sm:gap-1" role="img" aria-label="Stacked bar chart of tokens per day by model">
-          {#each data.days as day, index (day.day)}
+        <div class="flex h-48 items-end gap-0.5 pt-5 sm:gap-1" role="img" aria-label="Stacked bar chart of tokens per {chart.unit} by model">
+          {#each data.bars as bar, index (bar.start)}
             <div
               class="flex h-full flex-1 flex-col-reverse gap-[2px] {hovered !== null && hovered !== index ? 'opacity-50' : ''}"
-              onpointerenter={() => (hovered = index)}
+              onpointerenter={(event) => {
+                hovered = index;
+                anchor = { left: event.currentTarget.offsetLeft, right: event.currentTarget.offsetLeft + event.currentTarget.offsetWidth };
+              }}
               onpointerleave={() => (hovered = null)}
               role="presentation"
             >
               {#each data.series as series (series.model)}
-                {@const tokens = day.tokens[series.model] ?? 0}
+                {@const tokens = bar.tokens[series.model] ?? 0}
                 {#if tokens > 0}
                   <div
                     class="min-h-px w-full last:rounded-t-[4px]"
@@ -92,27 +112,27 @@
             </div>
           {/each}
         </div>
-        {#if hoveredDay && hovered !== null}
+        {#if hoveredBar && hovered !== null}
           <div
             class="bg-popover text-popover-foreground pointer-events-none absolute top-0 z-10 w-56 rounded-md border p-3 text-xs shadow-md"
-            style={hovered < 15 ? `left: calc(${((hovered + 1) / 30) * 100}% + 8px)` : `right: calc(${((30 - hovered) / 30) * 100}% + 8px)`}
+            style={anchor.left < chartWidth / 2 ? `left: ${anchor.right + 8}px` : `right: ${chartWidth - anchor.left + 8}px`}
           >
-            <p class="font-medium">{formatDate(hoveredDay.day)}</p>
-            <p class="text-muted-foreground mb-2 tabular-nums">{hoveredDay.total.toLocaleString()} tokens</p>
+            <p class="font-medium">{barLabel(hoveredBar.start)}</p>
+            <p class="text-muted-foreground mb-2 tabular-nums">{hoveredBar.total.toLocaleString()} tokens</p>
             <ul class="space-y-1">
-              {#each data.series.filter((series) => hoveredDay.tokens[series.model]) as series (series.model)}
+              {#each data.series.filter((series) => hoveredBar.tokens[series.model]) as series (series.model)}
                 <li class="flex items-center gap-2">
                   <span class="size-2 shrink-0 rounded-[2px]" style="background: {colorOf.get(series.model)}"></span>
                   <span class="truncate">{displayModelName(series.name)}</span>
-                  <span class="text-muted-foreground ms-auto tabular-nums">{formatNumberShort(hoveredDay.tokens[series.model] ?? 0)}</span>
+                  <span class="text-muted-foreground ms-auto tabular-nums">{formatNumberShort(hoveredBar.tokens[series.model] ?? 0)}</span>
                 </li>
               {/each}
             </ul>
           </div>
         {/if}
         <div class="text-muted-foreground mt-2 flex justify-between text-xs">
-          <span>{formatDate(data.days[0]?.day ?? "")}</span>
-          <span>{formatDate(data.days.at(-1)?.day ?? "")}</span>
+          <span>{data.bars[0] ? barLabel(data.bars[0].start) : ""}</span>
+          <span>{data.bars.at(-1) ? barLabel(data.bars.at(-1)!.start) : ""}</span>
         </div>
       </div>
       <ul class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs" aria-label="Legend">

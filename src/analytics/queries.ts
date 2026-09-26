@@ -17,8 +17,8 @@ export type GlobalOverview = {
   models: { model: string; requests: number; tokens: number }[];
   /** Tokens per model author (the part of the id before the slash). */
   authors: { author: string; tokens: number }[];
-  /** Tokens per UTC day over the last 30 days for the top models; the rest are `model: ""`. */
-  daily: { day: string; model: string; tokens: number }[];
+  /** Tokens per chart bucket (UTC, ISO start) for the range's top models; the rest are `model: ""`. */
+  buckets: { start: string; model: string; tokens: number }[];
 };
 
 const RANGE_FILTER: Record<GlobalRange, string> = {
@@ -26,6 +26,14 @@ const RANGE_FILTER: Record<GlobalRange, string> = {
   week: "occurred_at >= now() - INTERVAL 7 DAY",
   month: "occurred_at >= now() - INTERVAL 30 DAY",
   all: "1",
+};
+
+/** The chart's bars: hours for a day, days for a week or month, months for all time. */
+const CHART: Record<GlobalRange, { bucket: string; where: string }> = {
+  day: { bucket: "toStartOfHour(occurred_at)", where: "occurred_at >= toStartOfHour(now()) - INTERVAL 23 HOUR" },
+  week: { bucket: "toStartOfDay(occurred_at)", where: "occurred_at >= today() - 6" },
+  month: { bucket: "toStartOfDay(occurred_at)", where: "occurred_at >= today() - 29" },
+  all: { bucket: "toStartOfMonth(occurred_at)", where: "1" },
 };
 
 /** `openai/gpt-4o:nitro` → `openai/gpt-4o`. */
@@ -165,7 +173,8 @@ export class AnalyticsQueries {
     const where = RANGE_FILTER[range];
     const rows = async <T>(query: string) =>
       (await this.clickhouse.query({ query, format: "JSONEachRow" })).json<T>();
-    const [[totals], models, authors, daily] = await Promise.all([
+    const chart = CHART[range];
+    const [[totals], models, authors, buckets] = await Promise.all([
       rows<{ requests: string; tokens: string; users: string }>(`
         SELECT count() AS requests, sum(input_tokens + output_tokens) AS tokens, uniqExact(account_id) AS users
         FROM request_events FINAL
@@ -189,25 +198,25 @@ export class AnalyticsQueries {
         ORDER BY tokens DESC
         LIMIT 10
       `),
-      rows<{ day: string; series: string; tokens: string }>(`
+      rows<{ start: string; series: string; tokens: string }>(`
         WITH top AS (
           SELECT ${BASE_MODEL} AS base
           FROM request_events FINAL
-          WHERE occurred_at >= today() - 29
+          WHERE ${chart.where}
           GROUP BY base
           HAVING sum(input_tokens + output_tokens) > 0
           ORDER BY sum(input_tokens + output_tokens) DESC
           LIMIT 8
         )
         SELECT
-          toString(toDate(occurred_at, 'UTC')) AS day,
+          formatDateTime(${chart.bucket}, '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS start,
           if(${BASE_MODEL} IN (SELECT base FROM top), ${BASE_MODEL}, '') AS series,
           sum(input_tokens + output_tokens) AS tokens
         FROM request_events FINAL
-        WHERE occurred_at >= today() - 29
-        GROUP BY day, series
+        WHERE ${chart.where}
+        GROUP BY start, series
         HAVING tokens > 0
-        ORDER BY day, tokens DESC
+        ORDER BY start, tokens DESC
       `),
     ]);
     return {
@@ -218,7 +227,7 @@ export class AnalyticsQueries {
       },
       models: models.map((row) => ({ model: row.base, requests: Number(row.requests), tokens: Number(row.tokens) })),
       authors: authors.map((row) => ({ author: row.author, tokens: Number(row.tokens) })),
-      daily: daily.map((row) => ({ day: row.day, model: row.series, tokens: Number(row.tokens) })),
+      buckets: buckets.map((row) => ({ start: row.start, model: row.series, tokens: Number(row.tokens) })),
     };
   }
 
