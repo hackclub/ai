@@ -211,6 +211,16 @@ export const createBackend = (env: Env): Backend => {
       },
       log: (message) => log.info({ message }, "billing.reconcile"),
     });
+    // The first listing and its cover thumbnails take seconds to build; do
+    // it now instead of on the first /replicate visit.
+    void replicateCatalog
+      .categories()
+      .then((categories) =>
+        Promise.all(
+          categories.flatMap((category) => category.models.map((model) => replicateCatalog.cover(model.owner, model.name))),
+        ),
+      )
+      .catch(() => {});
   };
   return {
     app,

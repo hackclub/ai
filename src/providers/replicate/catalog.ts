@@ -42,6 +42,12 @@ export type ReplicateModel = {
 
 export type ReplicateCategory = { name: string; models: ReplicateModel[] };
 
+/** A model's cover as a card-sized WebP, or the original URL when it cannot be re-encoded (GIF, video). */
+export type ReplicateCover = { image: Blob } | { redirect: string };
+
+/** Twice the widest card, for high-density screens. */
+const COVER_WIDTH = 640;
+
 export type ReplicateCatalogOptions = {
   apiKey: string;
   fetch?: typeof fetch;
@@ -103,9 +109,36 @@ export const createReplicateCatalog = (options: ReplicateCatalogOptions) => {
 
   const memo = memoAsync<"categories", ReplicateCategory[]>(refresh, { ttlMs });
 
+  // Covers are multi-megabyte originals; keyed by URL so a refreshed listing
+  // with the same cover reuses the thumbnail.
+  const covers = memoAsync<string, ReplicateCover>(
+    async (url) => {
+      try {
+        const response = await fetchImplementation(url);
+        if (!response.ok) return { redirect: url };
+        const image = await new Bun.Image(await response.arrayBuffer())
+          .resize(COVER_WIDTH, undefined, { withoutEnlargement: true })
+          .webp({ quality: 75 })
+          .blob();
+        return { image };
+      } catch {
+        return { redirect: url };
+      }
+    },
+    { ttlMs: 24 * 60 * 60 * 1_000, maxEntries: 200 },
+  );
+
   return {
     categories(): Promise<ReplicateCategory[]> {
       return memo.get("categories");
+    },
+    /** The cover of a listed model, or null when it has none or is not listed. */
+    async cover(owner: string, name: string): Promise<ReplicateCover | null> {
+      const categories = await memo.get("categories");
+      const model = categories
+        .flatMap((category) => category.models)
+        .find((candidate) => candidate.owner === owner && candidate.name === name);
+      return model?.cover_image_url ? covers.get(model.cover_image_url) : null;
     },
   };
 };

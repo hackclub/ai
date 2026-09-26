@@ -7,7 +7,7 @@ import type { Env } from "../env";
 // The one lib/ import: the dashboard's model type. Catalog unification removes it.
 import { type CatalogModel, type ModelCardData, modelTypeOf, stripMarkdownLinks } from "../lib/format";
 import type { ModelCatalog } from "../models/catalog";
-import type { ReplicateCatalog, ReplicateCategory } from "../providers/replicate/catalog";
+import type { ReplicateCatalog, ReplicateCover } from "../providers/replicate/catalog";
 
 export type DashboardEnv = Pick<
   Env,
@@ -66,6 +66,17 @@ export type ActivityPage = {
   rows: ActivityRow[];
   next: ActivityCursor | null;
 };
+
+export type ReplicateCard = {
+  owner: string;
+  name: string;
+  description: string;
+  pricing: string | null;
+  /** Same-origin thumbnail URL, or null when the model has no cover. */
+  cover: string | null;
+};
+
+export type ReplicateCardCategory = { name: string; models: ReplicateCard[] };
 
 export type GroupedModels = {
   languageModels: CatalogModel[];
@@ -233,8 +244,23 @@ export class DashboardReadModel {
     );
   }
 
-  replicateCategories(): Promise<ReplicateCategory[]> {
-    return this.deps.replicateCatalog.categories();
+  /** The `/replicate` cards: only the fields a card renders. */
+  async replicateCategories(): Promise<ReplicateCardCategory[]> {
+    const categories = await this.deps.replicateCatalog.categories();
+    return categories.map((category) => ({
+      name: category.name,
+      models: category.models.map((model) => ({
+        owner: model.owner,
+        name: model.name,
+        description: model.description ?? "",
+        pricing: model.pricing ?? null,
+        cover: model.cover_image_url ? `/replicate/covers/${model.owner}/${model.name}` : null,
+      })),
+    }));
+  }
+
+  replicateCover(owner: string, name: string): Promise<ReplicateCover | null> {
+    return this.deps.replicateCatalog.cover(owner, name);
   }
 
   /** Both OpenRouter listings; a listing failure reads as empty rather than a broken page. */

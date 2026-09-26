@@ -26,7 +26,6 @@
         <h2 class="mb-4 text-sm font-medium">{category.name}</h2>
         <ul role="list" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {#each category.models as model (`${model.owner}/${model.name}`)}
-            {@const description = model.description ?? ""}
             <li>
               <a
                 href="https://replicate.com/{model.owner}/{model.name}"
@@ -34,9 +33,9 @@
                 rel="noopener noreferrer"
                 class="group bg-card hover:bg-muted/60 focus-visible:ring-ring/50 flex h-full flex-col overflow-hidden rounded-lg border transition-colors outline-none focus-visible:ring-3"
               >
-                <div class="bg-muted aspect-video">
-                  {#if model.cover_image_url}
-                    <img src={model.cover_image_url} alt="" loading="lazy" class="size-full object-cover" />
+                <div class="bg-muted relative aspect-video">
+                  {#if model.cover}
+                    <img src={model.cover} alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover" />
                   {:else}
                     <div class="text-muted-foreground flex size-full items-center justify-center">
                       <ImageIcon class="size-8" />
@@ -47,8 +46,8 @@
                   <p class="truncate text-sm">
                     <span class="text-muted-foreground">{model.owner}/</span><span class="font-medium">{model.name}</span>
                   </p>
-                  {#if description}
-                    <p class="text-muted-foreground line-clamp-2 text-sm text-pretty">{description}</p>
+                  {#if model.description}
+                    <p class="text-muted-foreground line-clamp-2 text-sm text-pretty">{model.description}</p>
                   {/if}
                   {#if model.pricing}
                     <p class="text-muted-foreground mt-auto pt-2 text-xs tabular-nums">{model.pricing}</p>
