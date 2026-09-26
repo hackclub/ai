@@ -67,13 +67,14 @@ const completionBody = () => ({
 
 /**
  * Proxy routes over the real engine, a fresh account, and the real catalog
- * and adapter talking to a faked OpenRouter. The listing holds
- * `catalogEntry` when given, else nothing.
+ * and adapter talking to a faked OpenRouter. The listing holds only
+ * `catalogEntry`: by default the requested model with no fixed price, so
+ * the unknown-model hold applies.
  */
-const setup = async (catalogEntry: unknown = null) => {
+const setup = async (catalogEntry: unknown = { id: "openai/gpt-4o-mini", pricing: {} }) => {
   const account = await createTestAccount(sql, crypto.randomUUID());
   const { billing, settlements, settled } = testBilling(sql);
-  const listing = fakeFetch(() => Response.json({ data: catalogEntry ? [catalogEntry] : [] }));
+  const listing = fakeFetch(() => Response.json({ data: [catalogEntry] }));
   const upstream = fakeFetch(() => Response.json(completionBody()));
   const app = proxyRoutes({
     sql,
@@ -202,7 +203,7 @@ describe("proxyRoutes", () => {
   });
 
   test("reserves the unknown-model hold when the listing has no usable pricing", async () => {
-    const { chat, estimates, settled } = await setup({ id: "openai/gpt-4o-mini", pricing: {} });
+    const { chat, estimates, settled } = await setup();
     const response = await chat({});
     expect(response.status).toBe(200);
     await response.text();

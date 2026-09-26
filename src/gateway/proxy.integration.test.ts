@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { issueApiKey } from "../auth/api-keys";
 import { createUser } from "../auth/users";
 import { createApp } from "../app";
-import { testBilling } from "./routes/test-harness";
+import { billingRecords, createTestAccount, testBilling } from "./routes/test-harness";
 import { AnalyticsQueries } from "../analytics/queries";
 import { drainRequestEvents } from "../analytics/request-events";
 import { ModelCatalog } from "../models/catalog";
@@ -166,23 +166,44 @@ describe("proxy routes with PostgreSQL", () => {
     expect(await unknown.json()).toEqual({ error: "Authentication failed" });
   });
 
-  test("rejects malformed bodies but forwards unlisted models", async () => {
+  test("rejects malformed bodies and unlisted models before reserving", async () => {
+    const account = await createTestAccount(sql, "unlisted");
     const callsBefore = upstreamCalls.length;
     const notJson = await call("/proxy/v1/chat/completions", {
       method: "POST",
-      headers: { authorization: `Bearer ${apiKey}` },
+      headers: { authorization: `Bearer ${account.apiKey}` },
       body: "nope",
     });
     expect(notJson.status).toBe(400);
-    expect(upstreamCalls.length).toBe(callsBefore);
 
-    // There is no allowlist: a model missing from the listing still reaches
-    // OpenRouter, which is the authority on whether it exists.
-    nextUpstream = () =>
-      Response.json({ error: { message: "no such model" } }, { status: 400 });
-    const unlisted = await chat({ model: "test/missing" });
+    const unlisted = await chat({ model: "test/missing" }, account.apiKey);
     expect(unlisted.status).toBe(400);
-    expect(upstreamCalls.at(-1)?.body.model).toBe("test/missing");
+    expect(await unlisted.json()).toEqual({ error: "test/missing is not a valid model ID" });
+    expect(upstreamCalls.length).toBe(callsBefore);
+    expect(await billingRecords(sql, account.accountId)).toEqual([]);
+  });
+
+  test("forwards routing variants of listed models unchanged", async () => {
+    const account = await createTestAccount(sql, "variant");
+    nextUpstream = () =>
+      Response.json({
+        id: "gen-variant",
+        model: "test/chat",
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 1, cost: 0.000005 },
+      });
+    const response = await chat({ model: "test/chat:nitro", messages: [{ role: "user", content: "hi" }] }, account.apiKey);
+    expect(response.status).toBe(200);
+    await response.text();
+    await billing.settled();
+
+    expect(upstreamCalls.at(-1)?.body.model).toBe("test/chat:nitro");
+    const [record] = await billingRecords(sql, account.accountId);
+    expect(record?.state).toBe("finalized");
+    expect(record?.actualCostUsd).toBe("0.000005000000");
+    expect(record?.event?.model).toBe("test/chat:nitro");
+    // Reserved at the base model's price, not the unknown-model hold.
+    expect(record?.estimatedCostUsd).not.toBe("0.001000000000");
   });
 
   test(
