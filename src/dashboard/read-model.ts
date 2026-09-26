@@ -93,11 +93,35 @@ export type GlobalPage = {
   authors: { author: string; tokens: number; share: number }[];
   /** Chart series in legend order; `model: ""` is everything outside the top models. */
   series: { model: string; name: string }[];
-  /** The last 30 UTC days, oldest first, with tokens per series. */
-  days: { day: string; total: number; tokens: Record<string, number> }[];
+  /** Chart bars, oldest first, with tokens per series: the last 24 hours, 7 or 30 days, or every month. */
+  bars: { start: string; total: number; tokens: Record<string, number> }[];
 };
 
 const GLOBAL_RANGES: GlobalRange[] = ["day", "week", "month", "all"];
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+const isoStart = (ms: number) => new Date(ms).toISOString().replace(".000Z", "Z");
+
+/** UTC start of every chart bar in `range`; all time starts at the first month with usage. */
+const barStarts = (range: GlobalRange, now: Date, first: string | undefined): string[] => {
+  if (range === "day") {
+    const hour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+    return Array.from({ length: 24 }, (_, index) => isoStart(hour - (23 - index) * HOUR_MS));
+  }
+  if (range === "all") {
+    const from = first ? new Date(first) : now;
+    const months: string[] = [];
+    for (let year = from.getUTCFullYear(), month = from.getUTCMonth(); ; month += 1) {
+      const start = Date.UTC(year, month, 1);
+      if (start > now.getTime()) return months;
+      months.push(isoStart(start));
+    }
+  }
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const length = range === "week" ? 7 : 30;
+  return Array.from({ length }, (_, index) => isoStart(today - (length - 1 - index) * DAY_MS));
+};
 
 export const parseGlobalRange = (value: string | null): GlobalRange =>
   GLOBAL_RANGES.find((range) => range === value) ?? "week";
@@ -352,23 +376,22 @@ export class DashboardReadModel {
     const authorTotal = overview.authors.reduce((sum, row) => sum + row.tokens, 0);
 
     const seriesTokens = new Map<string, number>();
-    for (const row of overview.daily) seriesTokens.set(row.model, (seriesTokens.get(row.model) ?? 0) + row.tokens);
+    for (const row of overview.buckets) seriesTokens.set(row.model, (seriesTokens.get(row.model) ?? 0) + row.tokens);
     const series = [...seriesTokens]
       .sort(([a, tokensA], [b, tokensB]) => (a === "" ? 1 : b === "" ? -1 : tokensB - tokensA))
       .map(([model]) => ({ model, name: nameOf(model) }));
 
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const days = Array.from({ length: 30 }, (_, index) => ({
-      day: new Date(today - (29 - index) * 86_400_000).toISOString().slice(0, 10),
+    const bars = barStarts(range, now, overview.buckets[0]?.start).map((start) => ({
+      start,
       total: 0,
       tokens: {} as Record<string, number>,
     }));
-    const byDay = new Map(days.map((day) => [day.day, day]));
-    for (const row of overview.daily) {
-      const day = byDay.get(row.day);
-      if (!day) continue;
-      day.tokens[row.model] = row.tokens;
-      day.total += row.tokens;
+    const byStart = new Map(bars.map((bar) => [bar.start, bar]));
+    for (const row of overview.buckets) {
+      const bar = byStart.get(row.start);
+      if (!bar) continue;
+      bar.tokens[row.model] = row.tokens;
+      bar.total += row.tokens;
     }
 
     return {
@@ -382,7 +405,7 @@ export class DashboardReadModel {
       })),
       authors: overview.authors.map((row) => ({ ...row, share: share(row.tokens, authorTotal) })),
       series,
-      days,
+      bars,
     };
   }
 
