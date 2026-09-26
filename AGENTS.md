@@ -1,6 +1,6 @@
 # Hack Club AI gateway — agent notes
 
-Read this before changing anything. `README.md` covers setup;
+Read this before changing anything. `docs/development.md` covers setup;
 `docs/architecture/storage-and-billing.md` covers the billing invariants;
 `plans/README.md` lists pending improvement plans.
 
