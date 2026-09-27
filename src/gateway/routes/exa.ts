@@ -55,6 +55,7 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
       endpoint: label,
       model: label,
       estimatedCostUsd: reservation,
+      uncertainChargeUsd: reservation,
       execute: () =>
         stream
           ? // No abort signal: Exa bills the whole answer even if the client
@@ -69,7 +70,7 @@ export const exaRoutes = (deps: ExaRouteDependencies) => {
           : executeJsonProvider({
               fetch: deps.fetch,
               url,
-              init: { method: "POST", headers, body: requestBody, signal: request.signal },
+              init: { method: "POST", headers, body: requestBody },
               extractCost: exaCost,
               extractProviderRequestId: exaRequestId,
             }),

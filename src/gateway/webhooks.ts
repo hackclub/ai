@@ -1,3 +1,5 @@
+import { verify } from "node:crypto";
+
 import { Elysia } from "elysia";
 import type postgres from "postgres";
 
@@ -19,18 +21,6 @@ export type WebhookOptions = {
   fetch?: typeof fetch;
 };
 
-/** Base64 to bytes, or null when the input is not base64 at all. */
-const base64Bytes = (value: string): Uint8Array<ArrayBuffer> | null => {
-  try {
-    return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-  } catch {
-    return null;
-  }
-};
-
-const pemToBytes = (pem: string) =>
-  base64Bytes(pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s/g, ""));
-
 export const verifyGitHubSignature = async (
   keys: GitHubPublicKeys,
   payload: string,
@@ -39,24 +29,14 @@ export const verifyGitHubSignature = async (
 ) => {
   const publicKey = keys.public_keys.find((key) => key.key_identifier === keyId);
   if (!publicKey) return false;
+  // GitHub signs in DER, which WebCrypto's ECDSA verify does not read.
   // Unauthenticated input: a malformed signature is a failed verification,
   // not a server error.
-  const signatureBytes = base64Bytes(signature);
-  const keyBytes = pemToBytes(publicKey.key);
-  if (!signatureBytes || !keyBytes) return false;
-  const key = await crypto.subtle.importKey(
-    "spki",
-    keyBytes,
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"],
-  );
-  return crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    key,
-    signatureBytes,
-    new TextEncoder().encode(payload),
-  );
+  try {
+    return verify("sha256", Buffer.from(payload), publicKey.key, Buffer.from(signature, "base64"));
+  } catch {
+    return false;
+  }
 };
 
 /** The secret-scanning payload: an array of matches, each with a string token. */

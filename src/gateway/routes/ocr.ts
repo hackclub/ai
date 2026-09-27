@@ -73,6 +73,7 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
       endpoint: "ocr",
       model,
       estimatedCostUsd: reservation,
+      uncertainChargeUsd: reservation,
       execute: () =>
         executeJsonProvider({
           fetch: deps.fetch,
@@ -84,7 +85,6 @@ export const ocrRoutes = (deps: OcrRouteDependencies) => {
               authorization: `Bearer ${deps.mistralApiKey}`,
             },
             body: requestBody,
-            signal: request.signal,
           },
           extractCost: (response) => ocrCost(response, pagePrice),
           redactResponseBody: redactOcrResponse,

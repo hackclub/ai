@@ -5,12 +5,12 @@ import { testDatabase } from "../../test/database";
 import { exaRoutes } from "./exa";
 import { imagesRoutes } from "./images";
 import { ocrRoutes } from "./ocr";
-import { createTestAccount, post, testBilling } from "./test-harness";
+import { createTestAccount, onlyBillingRecord, post, testBilling } from "./test-harness";
 
 const { sql } = await testDatabase();
 
 describe("provider routes with PostgreSQL", () => {
-  const { billing, settlements } = testBilling(sql);
+  const { billing, settlements, settled } = testBilling(sql);
   let userId: string;
   let accountId: string;
   let apiKey: string;
@@ -94,6 +94,43 @@ describe("provider routes with PostgreSQL", () => {
     expect(job?.payload.billed_cost_usd).toBe("0.006000000000");
     expect(job?.payload.response_body).not.toContain("secret text");
     expect(JSON.parse(job?.payload.response_body ?? "{}").pages[0].markdown_length).toBe(11);
+  });
+
+  const ocrApp = (fetch: Fetch) =>
+    ocrRoutes({ sql, billing, settlements, enforceIdv: false, fetch, mistralApiKey: "mistral-key", perPagePriceUsd: "0.002" });
+  const ocrDocument = { type: "document_url", document_url: "https://x/a.pdf" };
+
+  test("ocr: charges the hold for a success that reports no pages", async () => {
+    const account = await createTestAccount(sql, "ocr-no-pages");
+    const response = await ocrApp(async () => Response.json({ model: "mistral-ocr-latest" })).handle(
+      post("/proxy/v1/ocr", { document: ocrDocument }, { authorization: `Bearer ${account.apiKey}` }),
+    );
+    expect(response.status).toBe(200);
+    await response.text();
+    await settled();
+    const record = await onlyBillingRecord(sql, account.accountId);
+    expect([record.state, record.actualCostUsd, record.usageSource]).toEqual(["finalized", "0.050000000000", "fallback"]);
+  });
+
+  test("ocr: bills a request the client abandons before Mistral answers", async () => {
+    const account = await createTestAccount(sql, "ocr-abandoned");
+    const client = new AbortController();
+    // Like the real fetch: an aborted signal rejects the call.
+    const slowFetch: Fetch = (_input, init) =>
+      new Promise((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        setTimeout(() => resolve(Response.json({ pages: [{ index: 0 }, { index: 1 }] })), 50);
+      });
+    const request = new Request(post("/proxy/v1/ocr", { document: ocrDocument }, { authorization: `Bearer ${account.apiKey}` }), {
+      signal: client.signal,
+    });
+    const pending = ocrApp(slowFetch).handle(request);
+    setTimeout(() => client.abort(), 10);
+    await pending.catch(() => {});
+    await Bun.sleep(100);
+    await settled();
+    const record = await onlyBillingRecord(sql, account.accountId);
+    expect([record.state, record.actualCostUsd]).toEqual(["finalized", "0.004000000000"]);
   });
 
   test("images: translates to chat completions and returns OpenAI shape", async () => {

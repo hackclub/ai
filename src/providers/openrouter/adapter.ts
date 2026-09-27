@@ -9,11 +9,15 @@ import type { MeteredProviderResponse, NormalizedUsage } from "../types";
 import { ServerSentEventParser } from "../sse-parser";
 import { openRouterRequestId, openRouterUsage } from "./usage";
 
+/**
+ * No abort signal: OpenRouter bills a generation even if the client leaves.
+ * Aborting before the response arrives would lose the generation id that
+ * reconciliation needs to charge it.
+ */
 export type OpenRouterRequest = {
   endpoint: string;
   body: Record<string, unknown>;
   apiKey: string;
-  signal?: AbortSignal;
   headers?: HeadersInit;
 };
 
@@ -215,11 +219,10 @@ export class OpenRouterAdapter {
         method: "POST",
         headers,
         body: requestBody,
-        signal: request.signal,
       });
       const delay =
         attempt + 1 < this.maxAttempts ? await retryDelayMs(upstream, attempt) : null;
-      if (delay === null || request.signal?.aborted) {
+      if (delay === null) {
         return meterStreamed(upstream, {
           requestBody,
           reader: new OpenRouterResponseReader(upstream),

@@ -179,8 +179,10 @@ only select dimensions, token counts, latency, and cost.
 
 A reservation can end in `pending_reconciliation` (client cancelled,
 stream truncated, provider returned no usage) or stay `reserved` forever if
-the process died mid-request. The `billing.reconcile` Graphile Worker task
-runs every five minutes (`src/billing/reconciliation.ts`):
+the process died mid-request. A response still being read at half its
+reservation's lifetime is also moved to `pending_reconciliation`, so the
+expiry sweeper cannot release a hold the request still owes. The
+`billing.reconcile` Graphile Worker task runs every five minutes (`src/billing/reconciliation.ts`):
 
 1. Reservations still `reserved` past `expires_at` are released.
 2. Each pending reservation with a provider request ID is looked up by
@@ -191,7 +193,8 @@ runs every five minutes (`src/billing/reconciliation.ts`):
    | `openrouter` | generation metadata endpoint by generation id | finalized with recorded cost, `usage_source = reconciled`, analytics `outcome = reconciled` (no bodies) |
    | `replicate` | prediction by id, billed from terminal metrics and live model pricing | finalized; a running prediction or one without billable metrics is `not_ready` and stays pending (no 24 h release) |
    | `replicate-files` | none | uploads finalize at zero at request time; nothing to reconcile |
-   | `exa`, `mistral`, `typesafe` (declared without a lookup), unknown keys | none | released after 24 hours without a ledger entry |
+   | `exa`, `mistral`, `typesafe` (declared without a lookup) | none | a success without a readable cost is charged its hold at request time (`usage_source = fallback`); only a failed dispatch reaches this table, released after 24 hours without a ledger entry |
+   | unknown keys | none | released after 24 hours without a ledger entry |
 
    Each provider's lookup lives in its module under `src/providers/`
    (`ProviderModule`, registered in `src/server.ts`); reconciliation only

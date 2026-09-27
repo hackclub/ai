@@ -309,6 +309,43 @@ describe("Replicate routes with PostgreSQL", () => {
     expect((await call("/files/nope", { method: "GET" })).status).toBe(404);
   });
 
+  test("holds concurrent uploads to the daily file limit", async () => {
+    const uploader = await createTestAccount(sql, "replicate-uploads");
+    let uploads = 0;
+    const slowUploads = (async () => {
+      const id = `upload${++uploads}`;
+      await Bun.sleep(20);
+      return Response.json({ id, urls: { get: `https://api.replicate.com/v1/files/${id}` } }, { status: 201 });
+    }) as unknown as typeof fetch;
+    const routes = replicateRoutes({
+      sql,
+      ...testBilling(sql),
+      replicateApiKey: "replicate-secret",
+      enforceIdv: false,
+      fetch: slowUploads,
+      pricing: { get: async () => pricing },
+      publicBaseUrl: "https://gateway.test",
+      maxFilesPerDay: 2,
+    });
+    const upload = () => {
+      const form = new FormData();
+      form.append("content", new Blob(["hello"], { type: "text/plain" }), "hello.txt");
+      return routes.handle(
+        new Request("http://gateway.test/proxy/v1/replicate/files", {
+          method: "POST",
+          headers: { authorization: `Bearer ${uploader.apiKey}` },
+          body: form,
+        }),
+      );
+    };
+    const statuses = (await Promise.all(Array.from({ length: 5 }, upload))).map((response) => response.status);
+    expect(statuses.sort()).toEqual([201, 201, 429, 429, 429]);
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM replicate_resources WHERE user_id = ${uploader.userId}::uuid AND kind = 'file'
+    `;
+    expect(row?.n).toBe(2);
+  });
+
   test("finalizes a provider error at zero cost", async () => {
     nextStatus = 422;
     const response = await call("/predictions", {
