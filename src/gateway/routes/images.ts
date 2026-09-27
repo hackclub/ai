@@ -111,7 +111,6 @@ export const imagesRoutes = (deps: ImagesRouteDependencies) => {
           body: chatBody,
           apiKey: deps.openRouterApiKey,
           headers: deps.attributionHeaders,
-          signal: request.signal,
         }),
     });
     set.headers["x-request-id"] = requestId;

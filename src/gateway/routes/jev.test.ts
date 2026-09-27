@@ -46,10 +46,9 @@ describe("jev route", () => {
     expect(record.event?.outcome).toBe("provider_error");
   });
 
-  test("a success without usable usage is held for reconciliation", async () => {
+  test("a success without usable usage is charged the hold", async () => {
     const { response, record } = await call("no-usage", () => Response.json({ model: "jev-1.13.0", output: "hi" }));
     expect(response.status).toBe(200);
-    expect(record.state).toBe("pending_reconciliation");
-    expect(record.event).toBeNull();
+    expect([record.state, record.actualCostUsd, record.usageSource]).toEqual(["finalized", "0.020000000000", "fallback"]);
   });
 });

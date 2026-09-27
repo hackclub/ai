@@ -5,7 +5,11 @@ import type { MeteredProviderResponse } from "./types";
 
 export type JsonProviderOptions = {
   url: string;
-  init: RequestInit & { body: string };
+  /**
+   * No `signal`: the provider bills a request the client abandons, and an
+   * aborted fetch leaves nothing to read the cost from.
+   */
+  init: Omit<RequestInit, "signal"> & { body: string };
   fetch?: Fetch;
   /** Provider-reported cost for a successful response, or null when absent. */
   extractCost: (body: unknown) => Usd | null;

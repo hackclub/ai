@@ -57,6 +57,12 @@ export type MeteredRequestInput = {
   endpoint: string;
   model: string;
   estimatedCostUsd: Usd;
+  /**
+   * For a provider with no record to reconcile against: the charge for a
+   * response that ends without a readable cost. Unset, the hold waits for
+   * reconciliation.
+   */
+  uncertainChargeUsd?: Usd;
   reservationTtlMs?: number;
   analytics?: MeteredRequestAnalytics;
   /** Dispatches the upstream call. Only invoked after the reservation holds. */
@@ -219,6 +225,16 @@ const settleCompletion = async (
       return { kind: "finalized", reservation, completion };
     }
     case "uncertain": {
+      if (input.uncertainChargeUsd) {
+        const reservation = await billing.finalize({
+          requestId: input.requestId,
+          actualCostUsd: input.uncertainChargeUsd,
+          usageSource: "fallback",
+          providerRequestId,
+          request: observation(context, completion, "completed"),
+        });
+        return { kind: "finalized", reservation, completion };
+      }
       // A response that ended without authoritative usage (client
       // cancellation, truncated stream, missing usage block) may still have
       // been charged upstream. The reservation stays held until reconciled.
@@ -301,6 +317,20 @@ export async function runMeteredRequest(
       completion,
     ),
   );
+  // The expiry sweeper releases a hold still `reserved` past its expiry,
+  // meant for a process that died before settling. A response still being
+  // read by then must keep its hold, or the account could spend the same
+  // funds again while this request is still billed.
+  const keepHold = setTimeout(
+    () => {
+      billing
+        .markPendingReconciliation(input.requestId, "response_outlived_reservation")
+        .catch(() => {});
+    },
+    Math.max(0, (reservation.expiresAt.getTime() - Date.now()) / 2),
+  );
+  const stopKeepingHold = () => clearTimeout(keepHold);
+  raw.then(stopKeepingHold, stopKeepingHold);
   const settled = settlements ? settlements.track(raw) : raw;
 
   return { response: metered.response, reservation, settled };

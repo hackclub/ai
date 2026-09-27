@@ -46,5 +46,9 @@ export const jevResponseModel = (raw: string): string | null => {
   }
 };
 
-/** No lookup: a pending Jev hold is released after the max age without a charge. */
+/**
+ * No lookup: the route charges the hold for a success without a readable
+ * cost, and a pending Jev hold (a failed dispatch) is released after the
+ * max age without a charge.
+ */
 export const typesafeProvider: ProviderModule = { key: TYPESAFE, reconcile: null };

@@ -74,11 +74,12 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
       endpoint: "jev/systemone",
       model: jevModelLabel(body.model),
       estimatedCostUsd: reservation,
+      uncertainChargeUsd: reservation,
       execute: async () => {
         const metered = await executeJsonProvider({
           fetch: deps.fetch,
           url: `${baseUrl}/v1/systemone`,
-          init: { method: "POST", headers: upstreamHeaders(), body: requestBody, signal: request.signal },
+          init: { method: "POST", headers: upstreamHeaders(), body: requestBody },
           extractCost: (response) => jevCost(response, inputPrice),
           extractTokens: jevTokens,
         });

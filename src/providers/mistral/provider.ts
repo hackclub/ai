@@ -37,5 +37,9 @@ export const ocrCost = (body: unknown, pagePrice: Usd): Usd | null => {
   return pages === null ? null : pagePrice.multiply(BigInt(pages));
 };
 
-/** No lookup: a pending OCR hold is released after the max age without a charge. */
+/**
+ * No lookup: the route charges the hold for a success without a readable
+ * cost, and a pending OCR hold (a failed dispatch) is released after the
+ * max age without a charge.
+ */
 export const mistralProvider: ProviderModule = { key: MISTRAL, reconcile: null };

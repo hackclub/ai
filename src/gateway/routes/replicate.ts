@@ -166,6 +166,9 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
   const minimumHold = Usd.parse(deps.minimumHoldUsd ?? "0.05");
   const maxUploadBytes = deps.maxUploadBytes ?? 20 * 1024 * 1024;
   const maxFilesPerDay = deps.maxFilesPerDay ?? 200;
+  // Uploads in flight per user. A file's row is written only once Replicate
+  // has stored it, so the quota counts these too or parallel uploads pass it.
+  const uploading = new Map<string, number>();
 
   const resolvePricing = async (model: string) => {
     const pricing = await pricingSource.get(model).catch(() => null);
@@ -345,54 +348,62 @@ export const replicateRoutes = (deps: ReplicateRouteDependencies) => {
       principal: await authorizeProviderRequest(deps, rateLimiter, request, ""),
     }))
     .post("/files", async ({ request, principal }) => {
-      // Checked before the body is parsed, so a user over quota never makes
-      // the gateway buffer a full-size upload.
-      const recent = await countReplicateResources(deps.sql, principal.userId, "file", 24 * 60 * 60 * 1_000);
-      if (recent >= maxFilesPerDay) {
-        throw new HttpError(429, `Upload limit reached: ${maxFilesPerDay} files per 24 hours.`);
-      }
-      const form = await request.formData().catch(() => new FormData());
-      const content = form.get("content");
-      if (!(content instanceof File)) throw new HttpError(400, "File content is required");
-      if (content.size > maxUploadBytes) {
-        throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
-      }
-      const upload = new FormData();
-      upload.append("content", content);
-      // The official SDK sends metadata as a JSON blob part; curl users send a string.
-      const metadata = form.get("metadata");
-      if (typeof metadata === "string" || metadata instanceof Blob) {
-        upload.append("metadata", metadata);
-      }
-      const type = form.get("type");
-      if (typeof type === "string") upload.append("type", type);
-      const filename = form.get("filename");
-      if (typeof filename === "string") upload.append("filename", filename);
-      const route = await runProviderRoute(deps, request, principal, {
-        provider: REPLICATE_FILES,
-        endpoint: "replicate/files",
-        model: "replicate/files",
-        estimatedCostUsd: Usd.zero,
-        attributes: { bytes: String(content.size) },
-        execute: async () =>
-          meterJsonResponse(
-            await fetchImplementation(`${baseUrl}/v1/files`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${deps.replicateApiKey}` },
-              body: upload,
-            }),
-            {
-              // Never the file bytes: analytics would store them.
-              init: {
-                body: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
+      const { userId } = principal;
+      uploading.set(userId, (uploading.get(userId) ?? 0) + 1);
+      try {
+        // Checked before the body is parsed, so a user over quota never makes
+        // the gateway buffer a full-size upload.
+        const recent = await countReplicateResources(deps.sql, userId, "file", 24 * 60 * 60 * 1_000);
+        if (recent + (uploading.get(userId) ?? 0) > maxFilesPerDay) {
+          throw new HttpError(429, `Upload limit reached: ${maxFilesPerDay} files per 24 hours.`);
+        }
+        const form = await request.formData().catch(() => new FormData());
+        const content = form.get("content");
+        if (!(content instanceof File)) throw new HttpError(400, "File content is required");
+        if (content.size > maxUploadBytes) {
+          throw new HttpError(413, `File exceeds the ${Math.floor(maxUploadBytes / 1024 / 1024)} MiB upload limit`);
+        }
+        const upload = new FormData();
+        upload.append("content", content);
+        // The official SDK sends metadata as a JSON blob part; curl users send a string.
+        const metadata = form.get("metadata");
+        if (typeof metadata === "string" || metadata instanceof Blob) {
+          upload.append("metadata", metadata);
+        }
+        const type = form.get("type");
+        if (typeof type === "string") upload.append("type", type);
+        const filename = form.get("filename");
+        if (typeof filename === "string") upload.append("filename", filename);
+        const route = await runProviderRoute(deps, request, principal, {
+          provider: REPLICATE_FILES,
+          endpoint: "replicate/files",
+          model: "replicate/files",
+          estimatedCostUsd: Usd.zero,
+          attributes: { bytes: String(content.size) },
+          execute: async () =>
+            meterJsonResponse(
+              await fetchImplementation(`${baseUrl}/v1/files`, {
+                method: "POST",
+                headers: { authorization: `Bearer ${deps.replicateApiKey}` },
+                body: upload,
+              }),
+              {
+                // Never the file bytes: analytics would store them.
+                init: {
+                  body: JSON.stringify({ filename: typeof filename === "string" ? filename : "", bytes: content.size }),
+                },
+                // Uploads are free.
+                extractCost: () => Usd.zero,
+                extractProviderRequestId: idOf,
               },
-              // Uploads are free.
-              extractCost: () => Usd.zero,
-              extractProviderRequestId: idOf,
-            },
-          ),
-      } satisfies ProviderRouteInput);
-      return respondRecordingOwner(route, principal, "file");
+            ),
+        } satisfies ProviderRouteInput);
+        return await respondRecordingOwner(route, principal, "file");
+      } finally {
+        const count = (uploading.get(userId) ?? 1) - 1;
+        if (count > 0) uploading.set(userId, count);
+        else uploading.delete(userId);
+      }
     })
     .get("/files", notListable("files"))
     .get("/files/:id", async ({ request, params, principal }) => {

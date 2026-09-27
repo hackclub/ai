@@ -16,5 +16,9 @@ export const exaRequestId = (body: unknown) =>
     ? (body as { requestId: string }).requestId
     : null;
 
-/** No lookup: a pending Exa hold is released after the max age without a charge. */
+/**
+ * No lookup: the route charges the hold for a success without a readable
+ * cost, and a pending Exa hold (a failed dispatch) is released after the
+ * max age without a charge.
+ */
 export const exaProvider: ProviderModule = { key: EXA, reconcile: null };

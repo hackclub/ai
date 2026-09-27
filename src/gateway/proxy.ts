@@ -117,10 +117,44 @@ const ENDPOINTS: Record<ProxyEndpoint, ModelKind> = {
   embeddings: "embedding",
 };
 
-const optionalInteger = (value: unknown) =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+const positiveInteger = (value: unknown) =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
     : undefined;
+
+/**
+ * The output cap upstream applies. Responses reads only `max_output_tokens`;
+ * Chat Completions takes either field, so the larger one counts. Zero is no
+ * cap.
+ */
+const requestedMaxOutputTokens = (endpoint: ProxyEndpoint, body: Record<string, unknown>) => {
+  const fields = endpoint === "responses" ? [body.max_output_tokens] : [body.max_tokens, body.max_completion_tokens];
+  const caps = fields.map(positiveInteger).filter((cap) => cap !== undefined);
+  return caps.length > 0 ? Math.max(...caps) : undefined;
+};
+
+/** `model`, then the `models` OpenRouter falls back to when it fails. */
+const requestedModelIds = (body: { model: string; models?: unknown }) => {
+  if (body.models === undefined || body.models === null) return [body.model];
+  if (!Array.isArray(body.models) || !body.models.every((id): id is string => typeof id === "string" && id.length > 0)) {
+    throw new HttpError(400, "models must be an array of model IDs");
+  }
+  return [body.model, ...body.models];
+};
+
+/**
+ * Work OpenRouter bills on top of the model and the listing does not price:
+ * the `:online` variant, plugins (web search, PDF parsing),
+ * `web_search_options`, and server-side tools such as web search.
+ */
+const requestsUnpricedExtras = (ids: string[], body: Record<string, unknown>) =>
+  ids.some((id) => id.endsWith(":online")) ||
+  (Array.isArray(body.plugins) && body.plugins.length > 0) ||
+  (body.web_search_options !== undefined && body.web_search_options !== null) ||
+  (Array.isArray(body.tools) &&
+    body.tools.some(
+      (tool) => tool !== null && typeof tool === "object" && "type" in tool && tool.type !== "function",
+    ));
 
 /** Upper bound on OpenAI's `n`; the hold scales linearly with it. */
 const MAX_COMPLETIONS = 8;
@@ -160,10 +194,11 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
   const unknownModelReservation = Usd.parse(deps.unknownModelReservationUsd ?? "0.05");
 
   const estimateFor = (
-    kind: ModelKind,
+    endpoint: ProxyEndpoint,
     model: Parameters<typeof modelPricing>[0] | null,
     body: Record<string, unknown>,
   ) => {
+    const kind = ENDPOINTS[endpoint];
     const completions = kind === "embedding" ? 1 : requestedCompletions(body);
     const pricing = model ? modelPricing(model) : null;
     if (!pricing) return unknownModelReservation.multiply(BigInt(completions));
@@ -175,10 +210,6 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       billableFields.length > 0
         ? Object.fromEntries(billableFields.map((field) => [field, body[field]]))
         : body;
-    const requestedMaxOutputTokens =
-      optionalInteger(body.max_tokens) ??
-      optionalInteger(body.max_completion_tokens) ??
-      optionalInteger(body.max_output_tokens);
     const modelMaxOutputTokens =
       kind === "embedding"
         ? 0
@@ -189,7 +220,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       inputTokenPriceUsd: pricing.promptUsd.toString(),
       outputTokenPriceUsd: pricing.completionUsd.toString(),
       requestedMaxOutputTokens:
-        kind === "embedding" ? 0 : requestedMaxOutputTokens,
+        kind === "embedding" ? 0 : requestedMaxOutputTokens(endpoint, body),
       modelMaxOutputTokens,
       completions,
       fixedCostUsd: pricing.requestUsd.toString(),
@@ -204,13 +235,21 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     const body = parseBody(rawBody);
     // Unknown ids are refused before anything is reserved or recorded. When
     // the listing itself is unavailable, OpenRouter decides.
-    const model = await deps.catalog.find(kind, body.model).catch(() => undefined);
-    if (model === null) throw new HttpError(400, `${body.model} is not a valid model ID`);
+    const ids = requestedModelIds(body);
+    const models = await Promise.all(ids.map((id) => deps.catalog.find(kind, id).catch(() => undefined)));
+    const unlisted = ids.find((_, index) => models[index] === null);
+    if (unlisted !== undefined) throw new HttpError(400, `${unlisted} is not a valid model ID`);
 
     // Attribution for abuse handling and authoritative usage in streams. No
     // sampling parameter is touched; see the architecture doc.
     body.user = `user_${principal.userId}`;
     body.usage = { include: true };
+
+    // Priced as the dearest model it may run, since any fallback can serve it.
+    const priciest = models
+      .map((model) => estimateFor(endpoint, model ?? null, body))
+      .reduce((max, estimate) => (max.lessThan(estimate) ? estimate : max));
+    const estimate = requestsUnpricedExtras(ids, body) ? priciest.add(unknownModelReservation) : priciest;
 
     const { metered, requestId } = await runProviderRoute(
       deps,
@@ -220,7 +259,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         provider: OPENROUTER,
         endpoint,
         model: body.model,
-        estimatedCostUsd: estimateFor(kind, model ?? null, body),
+        estimatedCostUsd: estimate,
         reservationTtlMs,
         // Request shape, for the behavioural abuse scan that reads metadata only.
         attributes: {
@@ -235,7 +274,6 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
             body,
             apiKey: deps.openRouterApiKey,
             headers: deps.attributionHeaders,
-            signal: request.signal,
           }),
       },
       { rewrapResponse: false },
@@ -243,7 +281,7 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
 
     const headers = forwardableHeaders(metered.response.headers);
     headers.set("x-request-id", requestId);
-    return withKeepAlive(
+    const response = withKeepAlive(
       new Response(metered.response.body, {
         status: metered.response.status,
         statusText: metered.response.statusText,
@@ -251,6 +289,14 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       }),
       keepAliveMs,
     );
+    // The upstream call takes no abort signal, so the generation id always
+    // arrives. A client that has left is cancelled here instead: OpenRouter
+    // stops the generation, and reconciliation bills what it produced. Bun
+    // does not cancel a body it never started sending.
+    const abandon = () => void response.body?.cancel("client disconnected").catch(() => {});
+    if (request.signal.aborted) abandon();
+    else request.signal.addEventListener("abort", abandon, { once: true });
+    return response;
   };
 
   return new Elysia({ prefix: "/proxy/v1" })

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { generateKeyPairSync, sign as signDer } from "node:crypto";
 
 import { issueApiKey } from "../auth/api-keys";
 import { createUser } from "../auth/users";
@@ -9,22 +10,11 @@ const { sql } = await testDatabase();
 
 const KEY_ID = "test-key";
 
-/** A P-256 key pair plus the PEM GitHub's key listing would carry. */
+/** A P-256 key pair plus the PEM GitHub's key listing would carry. Signs as GitHub does: DER, base64. */
 const signingKey = async () => {
-  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-    "sign",
-    "verify",
-  ]);
-  const spki = new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey));
-  const pem = `-----BEGIN PUBLIC KEY-----\n${btoa(String.fromCharCode(...spki))}\n-----END PUBLIC KEY-----`;
-  const sign = async (payload: string) => {
-    const signature = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      pair.privateKey,
-      new TextEncoder().encode(payload),
-    );
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
-  };
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const sign = async (payload: string) => signDer("sha256", Buffer.from(payload), privateKey).toString("base64");
   return { keys: { public_keys: [{ key_identifier: KEY_ID, key: pem, is_current: true }] }, sign };
 };
 
@@ -81,6 +71,23 @@ describe("verifyGitHubSignature", () => {
     const { keys } = await signingKey();
     expect(await verifyGitHubSignature(keys, "[]", "not base64!", KEY_ID)).toBeFalse();
     expect(await verifyGitHubSignature(keys, "[]", "AAAA", "unknown-key")).toBeFalse();
+  });
+
+  test("accepts GitHub's published sample", async () => {
+    // From GitHub's secret scanning partner program docs and its key listing.
+    const keyId = "bcb53661c06b4728e59d897fb6165d5c9cda0fd9cdf9d09ead458168deb7518c";
+    const keys = {
+      public_keys: [
+        {
+          key_identifier: keyId,
+          key: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYAGMWO8XgCamYKMJS6jc/qgvSlAd\nAjPuDPRcXU22YxgBrz+zoN19MzuRyW87qEt9/AmtoNP5GrobzUvQSyJFVw==\n-----END PUBLIC KEY-----\n",
+          is_current: true,
+        },
+      ],
+    };
+    const payload = '[{"source":"commit","token":"some_token","type":"some_type","url":"https://example.com/base-repo-url/"}]';
+    const signature = "MEQCIQDaMKqrGnE27S0kgMrEK0eYBmyG0LeZismAEz/BgZyt7AIfXt9fErtRS4XaeSt/AO1RtBY66YcAdjxji410VQV4xg==";
+    expect(await verifyGitHubSignature(keys, payload, signature, keyId)).toBeTrue();
   });
 
   test("accepts only a signature over the exact payload", async () => {

@@ -6,6 +6,7 @@ import { createApp } from "../app";
 import { billingRecords, createTestAccount, testBilling } from "./routes/test-harness";
 import { AnalyticsQueries } from "../analytics/queries";
 import { drainRequestEvents } from "../analytics/request-events";
+import { expireStaleReservations } from "../billing/reconciliation";
 import { ModelCatalog } from "../models/catalog";
 import { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { testBlobStore, testClickHouse, testDatabase } from "../test/database";
@@ -30,6 +31,11 @@ const modelListing = Response.json({
     {
       id: "test/chat",
       pricing: { prompt: "0.000001", completion: "0.000002", request: "0" },
+      top_provider: { max_completion_tokens: 1000 },
+    },
+    {
+      id: "test/free",
+      pricing: { prompt: "0", completion: "0" },
       top_provider: { max_completion_tokens: 1000 },
     },
     {
@@ -61,7 +67,7 @@ describe("proxy routes with PostgreSQL", () => {
   }) as typeof fetch;
 
   const billing = testBilling(sql);
-  const app = () =>
+  const app = (overrides: { reservationTtlMs?: number; fetch?: typeof fetch } = {}) =>
     createApp({
       proxy: {
         sql,
@@ -74,8 +80,9 @@ describe("proxy routes with PostgreSQL", () => {
         usageStats: (accountId) => analytics.userStats(accountId),
         adapter: new OpenRouterAdapter({
           baseUrl: "https://upstream.test/api",
-          fetch: fakeFetch,
+          fetch: overrides.fetch ?? fakeFetch,
         }),
+        reservationTtlMs: overrides.reservationTtlMs,
         openRouterApiKey: "upstream-key",
         enforceIdv: false,
         reservationFallbackOutputTokens: 8192,
@@ -111,6 +118,7 @@ describe("proxy routes with PostgreSQL", () => {
     const listing = (await response.json()) as { data: Array<{ id: string }> };
     expect(listing.data.map((model) => model.id)).toEqual([
       "test/chat",
+      "test/free",
       "test/pricey",
       "test/embed",
     ]);
@@ -258,6 +266,163 @@ describe("proxy routes with PostgreSQL", () => {
       expect(row?.actual_cost_usd).toBe("0.000003000000");
     },
   );
+
+  const chatAs = (account: { apiKey: string }, endpoint: string, body: unknown) =>
+    call(`/proxy/v1/${endpoint}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const reply = (cost: number) => () =>
+    Response.json({
+      id: `gen-${crypto.randomUUID()}`,
+      choices: [{ message: { role: "assistant", content: "ok" } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, cost },
+    });
+
+  test("reserves for the priciest model a request may fall back to", async () => {
+    const account = await createTestAccount(sql, "fallback-models");
+    const callsBefore = upstreamCalls.length;
+    const messages = [{ role: "user", content: "hi" }];
+
+    const pricey = await chatAs(account, "chat/completions", { model: "test/free", models: ["test/pricey"], max_tokens: 1, messages });
+    expect(pricey.status).toBe(402);
+    const unlisted = await chatAs(account, "chat/completions", { model: "test/free", models: ["test/missing"], messages });
+    expect(unlisted.status).toBe(400);
+    expect(await unlisted.json()).toEqual({ error: "test/missing is not a valid model ID" });
+    expect(upstreamCalls.length).toBe(callsBefore);
+    expect(await billingRecords(sql, account.accountId)).toEqual([]);
+  });
+
+  test("holds for web search, which the listing does not price", async () => {
+    const account = await createTestAccount(sql, "web-search");
+    nextUpstream = reply(0.0004);
+    const messages = [{ role: "user", content: "hi" }];
+    for (const body of [
+      { model: "test/free:online", messages },
+      { model: "test/free", plugins: [{ id: "web" }], messages },
+      { model: "test/free", web_search_options: {}, messages },
+      { model: "test/free", tools: [{ type: "openrouter:web_search" }], messages },
+    ]) {
+      const response = await chatAs(account, "chat/completions", body);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    await billing.settled();
+    const records = await billingRecords(sql, account.accountId);
+    expect(records.map((record) => [record.estimatedCostUsd, record.actualCostUsd])).toEqual(
+      Array(4).fill(["0.001000000000", "0.000400000000"]),
+    );
+  });
+
+  test("reserves the output cap the endpoint honours", async () => {
+    const account = await createTestAccount(sql, "output-cap");
+    nextUpstream = reply(0.000001);
+    const messages = [{ role: "user", content: "hi" }];
+    for (const [endpoint, body] of [
+      // 12 prompt tokens; 500 of test/chat's 1000 output tokens.
+      ["chat/completions", { model: "test/chat", max_tokens: 1, max_completion_tokens: 500, messages }],
+      // A zero cap is no cap: all 1000 output tokens.
+      ["chat/completions", { model: "test/chat", max_tokens: 0, messages }],
+      // Responses honours only max_output_tokens; 4 prompt tokens.
+      ["responses", { model: "test/chat", max_tokens: 1, input: "hi" }],
+    ] as const) {
+      const response = await chatAs(account, endpoint, body);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    await billing.settled();
+    const records = await billingRecords(sql, account.accountId);
+    expect(records.map((record) => record.estimatedCostUsd)).toEqual([
+      "0.001012000000",
+      "0.002012000000",
+      "0.002004000000",
+    ]);
+  });
+
+  test("stops a generation whose client left before OpenRouter answered, and keeps it for reconciliation", async () => {
+    const account = await createTestAccount(sql, "abandoned");
+    const generationId = `gen-${crypto.randomUUID()}`;
+    let upstreamCancelled = false;
+    // Like the real fetch: an aborted signal rejects the call. OpenRouter answers
+    // after 200 ms and then streams until it is cancelled.
+    const slowFetch = ((input: unknown, init?: RequestInit) => {
+      if (String(input).endsWith("/v1/models")) return fakeFetch(input as string, init);
+      return new Promise<Response>((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        setTimeout(() => {
+          const stream = new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await Bun.sleep(20);
+              controller.enqueue(encoder.encode(`data: {"id":"${generationId}","choices":[{"delta":{"content":"tok"}}]}\n\n`));
+            },
+            cancel() {
+              upstreamCancelled = true;
+            },
+          });
+          resolve(new Response(stream, { headers: { "content-type": "text/event-stream", "x-generation-id": generationId } }));
+        }, 200);
+      });
+    }) as typeof fetch;
+    const gateway = app({ fetch: slowFetch });
+    const server = Bun.serve({ port: 0, fetch: (request) => gateway.handle(request) });
+    try {
+      const client = new AbortController();
+      const response = fetch(`http://localhost:${server.port}/proxy/v1/chat/completions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "test/chat", stream: true, messages: [{ role: "user", content: "hi" }] }),
+        signal: client.signal,
+      });
+      setTimeout(() => client.abort(), 50);
+      await response.catch(() => null);
+      await Bun.sleep(400);
+      await billing.settled();
+    } finally {
+      server.stop(true);
+    }
+    expect(upstreamCancelled).toBeTrue();
+    const [record] = await billingRecords(sql, account.accountId);
+    expect([record?.state, record?.providerRequestId]).toEqual(["pending_reconciliation", generationId]);
+  });
+
+  test("keeps the hold of a stream still being read when its reservation expires", async () => {
+    const account = await createTestAccount(sql, "slow-reader");
+    const generationId = `gen-${crypto.randomUUID()}`;
+    const { promise: rest, resolve: sendRest } = Promise.withResolvers<void>();
+    nextUpstream = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(encoder.encode(`data: {"id":"${generationId}","choices":[{"delta":{"content":"hi"}}]}\n\n`));
+            await rest;
+            controller.enqueue(
+              encoder.encode(`data: {"id":"${generationId}","usage":{"prompt_tokens":2,"completion_tokens":1,"cost":0.000003}}\n\ndata: [DONE]\n\n`),
+            );
+            controller.close();
+          },
+        }),
+        { headers: { "content-type": "text/event-stream", "x-generation-id": generationId } },
+      );
+    const response = await app({ reservationTtlMs: 200 }).handle(
+      new Request("http://gateway.test/proxy/v1/chat/completions", {
+        method: "POST",
+        headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "test/chat", stream: true, messages: [{ role: "user", content: "hi" }] }),
+      }),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    await Bun.sleep(300);
+    await expireStaleReservations({ sql, billing: billing.billing });
+    expect((await billingRecords(sql, account.accountId))[0]?.state).toBe("pending_reconciliation");
+
+    sendRest();
+    while (!(await reader.read()).done);
+    await billing.settled();
+    const [record] = await billingRecords(sql, account.accountId);
+    expect([record?.state, record?.actualCostUsd]).toEqual(["finalized", "0.000003000000"]);
+  });
 
   test("refuses requests the allowance cannot cover", async () => {
     const callsBefore = upstreamCalls.length;
