@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
         // src/gateway/origin-check.ts; src/hooks.server.ts covers page routes.
         // Bearer-key and signature-verified routes are intentionally exempt.
         csrf: { trustedOrigins: ["*"] },
+        // No page may be framed: a framed /keys could be clicked into revoking keys.
+        csp: { directives: { "frame-ancestors": ["none"] } },
       }),
     ],
   };
