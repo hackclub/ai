@@ -195,7 +195,7 @@ const PROVIDER_PAGES: Record<string, string> = {
 async function dailySpending(sql: postgres.Sql, accountId: string): Promise<DailySpending> {
   const [row] = await sql<{ spent: string; granted: string }[]>`
     SELECT
-      COALESCE(SUM(funding_window.committed_usd + funding_window.reserved_usd), 0)::text AS spent,
+      COALESCE(SUM(funding_window.committed_usd), 0)::text AS spent,
       COALESCE(SUM(funding_window.granted_usd), 0)::text AS granted
     FROM billing_funding_windows AS funding_window
     JOIN billing_funding_policies AS policy ON policy.id = funding_window.policy_id
