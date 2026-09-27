@@ -10,6 +10,7 @@ import { BillingEngine } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { ModelCatalog } from "../models/catalog";
 import { createReplicateCatalog } from "../providers/replicate/catalog";
+import { testObservation } from "../gateway/routes/test-harness";
 import { testClickHouse, testDatabase } from "../test/database";
 import { type DashboardEnv, DashboardReadModel, parseActivityCursor, parseActivityFilters } from "./read-model";
 
@@ -119,10 +120,12 @@ describe("spending", () => {
     expect(await readModel().spending(user)).toEqual({ spentUsd: "0", limitUsd: "3.000000000000" });
   });
 
-  test("a reservation counts as spent against the window's grant", async () => {
+  test("only the finalized charge counts as spent, not the hold", async () => {
     const user = await signedIn();
-    await new BillingEngine(sql).reserve({
-      requestId: crypto.randomUUID(),
+    const billing = new BillingEngine(sql);
+    const requestId = crypto.randomUUID();
+    await billing.reserve({
+      requestId,
       accountId: user.billingAccountId,
       userId: user.id,
       apiKeyId: null,
@@ -130,7 +133,9 @@ describe("spending", () => {
       provider: "openrouter",
       estimatedCostUsd: Usd.parse("0.25"),
     });
-    expect(await readModel().spending(user)).toEqual({ spentUsd: "0.250000000000", limitUsd: "3.000000000000" });
+    expect(await readModel().spending(user)).toEqual({ spentUsd: "0.000000000000", limitUsd: "3.000000000000" });
+    await billing.finalize({ requestId, actualCostUsd: Usd.parse("0.1"), usageSource: "provider_reported", request: testObservation() });
+    expect(await readModel().spending(user)).toEqual({ spentUsd: "0.100000000000", limitUsd: "3.000000000000" });
   });
 
   test("a window that granted nothing falls back to the policy amount", async () => {
