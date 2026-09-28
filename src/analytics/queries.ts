@@ -71,6 +71,8 @@ export type RequestDetail = RecentRequest & {
   timeToFirstByteMs: number | null;
   providerCostUsd: string | null;
   userAgent: string;
+  /** Cloudflare's `cf-ipcountry`, or empty when the request did not come through Cloudflare. */
+  country: string;
 };
 
 export type RecentRequestsPage = {
@@ -297,7 +299,8 @@ export class AnalyticsQueries {
           streamed,
           time_to_first_byte_ms,
           if(isNull(provider_cost_usd), NULL, toString(provider_cost_usd)) AS provider_cost_usd,
-          request_headers['user-agent'] AS user_agent
+          request_headers['user-agent'] AS user_agent,
+          request_headers['cf-ipcountry'] AS country
         FROM request_events FINAL
         WHERE account_id = {account_id:UUID} AND request_id = {request_id:UUID}
         LIMIT 1
@@ -311,6 +314,7 @@ export class AnalyticsQueries {
         time_to_first_byte_ms: string | number | null;
         provider_cost_usd: string | null;
         user_agent: string;
+        country: string;
       }
     >();
     if (!row) return null;
@@ -320,6 +324,7 @@ export class AnalyticsQueries {
       timeToFirstByteMs: row.time_to_first_byte_ms === null ? null : Number(row.time_to_first_byte_ms),
       providerCostUsd: row.provider_cost_usd,
       userAgent: row.user_agent,
+      country: row.country,
     };
   }
 

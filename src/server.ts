@@ -11,6 +11,7 @@ import { hackClubAuthRoutes } from "./auth/hackclub";
 import { createSessions, type Sessions } from "./auth/sessions";
 import { BillingEngine } from "./billing/engine";
 import { DashboardReadModel } from "./dashboard/read-model";
+import { IpNetworkTable } from "./dashboard/ip-network";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
 import { keysApiRoutes } from "./gateway/keys-api";
@@ -112,7 +113,9 @@ export const createBackend = (env: Env): Backend => {
     apiKey: env.replicateApiKey,
     pricing: replicatePricing,
   });
-  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env });
+  const ipNetworks = new IpNetworkTable();
+  void ipNetworks.refresh();
+  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env, ipNetworks });
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),

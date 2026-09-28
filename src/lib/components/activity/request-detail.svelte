@@ -18,18 +18,35 @@
     const controller = new AbortController();
     fetch(`/activity/requests/${id}`, { signal: controller.signal })
       .then((response) => (response.ok ? (response.json() as Promise<ActivityDetail>) : Promise.reject()))
-      .then((loaded) => (detail = loaded))
+      .then(async (loaded) => {
+        if (loaded.country) await preloadImage(flagUrl(loaded.country));
+        if (!controller.signal.aborted) detail = loaded;
+      })
       .catch(() => {
         if (!controller.signal.aborted) failed = true;
       });
     return () => controller.abort();
   });
 
+  // Swapping the skeleton out before the flag has loaded leaves a blank gap where it pops in.
+  const preloadImage = (src: string) => {
+    const image = new Image();
+    image.src = src;
+    return Promise.race([image.decode(), new Promise((resolve) => setTimeout(resolve, 500))]).catch(() => {});
+  };
+
   const throughput = (request: ActivityDetail) => {
     const generating = request.durationMs - (request.timeToFirstByteMs ?? 0);
     if (request.outputTokens === 0 || generating <= 0) return null;
     return `${Math.round((request.outputTokens / generating) * 1000).toLocaleString()} tokens/s`;
   };
+
+  const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+  const flagUrl = (country: string) =>
+    `https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/${[...country]
+      .map((letter) => (0x1f1e6 + letter.charCodeAt(0) - 65).toString(16))
+      .join("-")}.svg`;
 
   const facts = (request: ActivityDetail): [string, string][] =>
     [
@@ -82,12 +99,39 @@
           {#each facts(detail) as [label, value] (label)}
             <div class="min-w-0">
               <dt class="text-muted-foreground text-xs">{label}</dt>
-              <dd class="truncate tabular-nums {label === 'Result' && detail.error ? 'text-destructive' : ''}" title={value}>{value}</dd>
+              {#if label === "IP address"}
+                <dd class="flex min-w-0 items-center gap-1.5 tabular-nums" title={value}>
+                  {#if detail.country}
+                    <img
+                      src={flagUrl(detail.country)}
+                      alt={detail.country}
+                      title={regionNames.of(detail.country) ?? detail.country}
+                      class="size-4 shrink-0"
+                    />
+                  {/if}
+                  <span class="truncate">{value}</span>
+                </dd>
+                {#if detail.network}
+                  <dd class="text-muted-foreground truncate text-xs" title={detail.network.name}>
+                    AS{detail.network.asn} {#if detail.network.name}({detail.network.name}){/if}
+                  </dd>
+                {/if}
+              {:else}
+                <dd class="truncate tabular-nums {label === 'Result' && detail.error ? 'text-destructive' : ''}" title={value}>{value}</dd>
+              {/if}
             </div>
           {/each}
         </dl>
 
       {/if}
     </div>
+
+    {#if detail?.network}
+      <Sheet.Footer class="text-muted-foreground border-t text-xs">
+        <a href="https://db-ip.com" target="_blank" rel="noreferrer" class="hover:text-foreground w-fit underline-offset-4 hover:underline">
+          IP Geolocation by DB-IP
+        </a>
+      </Sheet.Footer>
+    {/if}
   </Sheet.Content>
 </Sheet.Root>

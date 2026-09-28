@@ -4,6 +4,7 @@ import type { AnalyticsQueries, GlobalRange, RecentRequest, RecentRequestFilters
 import { listApiKeys } from "../auth/api-keys";
 import type { SessionUser } from "../auth/sessions";
 import type { Env } from "../env";
+import type { IpNetworkTable } from "./ip-network";
 // The one lib/ import: the dashboard's model type. Catalog unification removes it.
 import { type CatalogModel, type ModelCardData, modelTypeOf, stripMarkdownLinks } from "../lib/format";
 import type { ModelCatalog } from "../models/catalog";
@@ -20,6 +21,8 @@ export type DashboardDependencies = {
   catalog: ModelCatalog;
   replicateCatalog: ReplicateCatalog;
   env: DashboardEnv;
+  /** Resolves a request's IP to its network; omitted, the detail shows no ASN. */
+  ipNetworks?: IpNetworkTable;
 };
 
 /** Static, non-secret deployment facts pages render. */
@@ -134,7 +137,11 @@ export type ActivityDetail = ActivityRow &
     | "timeToFirstByteMs"
     | "providerCostUsd"
     | "userAgent"
-  >;
+  > & {
+    /** ISO 3166-1 alpha-2 code, or empty when unknown. */
+    country: string;
+    network: { asn: number; name: string } | null;
+  };
 
 export type ActivityFilterOptions = {
   models: { id: string; name: string }[];
@@ -292,6 +299,7 @@ export class DashboardReadModel {
       this.activityDescriber(user),
     ]);
     if (!request) return null;
+    const network = request.ip ? (this.deps.ipNetworks?.lookup(request.ip) ?? null) : null;
     return {
       ...describe(request),
       httpStatus: request.httpStatus,
@@ -299,6 +307,9 @@ export class DashboardReadModel {
       timeToFirstByteMs: request.timeToFirstByteMs,
       providerCostUsd: request.providerCostUsd,
       userAgent: request.userAgent,
+      // XX is unknown and T1 is Tor in Cloudflare's header; neither is a real country.
+      country: /^[A-Z]{2}$/.test(request.country) && request.country !== "XX" ? request.country : "",
+      network,
     };
   }
 
