@@ -60,6 +60,33 @@ const BILLABLE_INPUT_FIELDS = [
   "functions",
 ] as const;
 
+const IMAGE_PART_TYPES = new Set(["image_url", "input_image"]);
+
+/**
+ * The billable input with each image part's payload dropped, and how many
+ * image parts there were: images are reserved by count, since a short link
+ * and a long base64 string can be the same photo.
+ */
+const withoutImages = (value: unknown): { input: unknown; images: number } => {
+  if (Array.isArray(value)) {
+    const parts = value.map(withoutImages);
+    return { input: parts.map((part) => part.input), images: parts.reduce((sum, part) => sum + part.images, 0) };
+  }
+  if (value === null || typeof value !== "object") return { input: value, images: 0 };
+  if ("type" in value && typeof value.type === "string" && IMAGE_PART_TYPES.has(value.type)) {
+    return { input: { type: value.type }, images: 1 };
+  }
+  let images = 0;
+  const input = Object.fromEntries(
+    Object.entries(value).map(([key, field]) => {
+      const part = withoutImages(field);
+      images += part.images;
+      return [key, part.input];
+    }),
+  );
+  return { input, images };
+};
+
 /**
  * Cloudflare closes idle responses after about 100 seconds. A non-streaming
  * completion can take longer to produce its single JSON chunk, so emit a
@@ -215,8 +242,11 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
         ? 0
         : (pricing.maxCompletionTokens ?? deps.reservationFallbackOutputTokens);
 
+    const { input, images } = withoutImages(billable);
+
     return estimateLanguageReservation({
-      serializedBillableInput: JSON.stringify(billable),
+      serializedBillableInput: JSON.stringify(input),
+      images,
       inputTokenPriceUsd: pricing.promptUsd.toString(),
       outputTokenPriceUsd: pricing.completionUsd.toString(),
       requestedMaxOutputTokens:

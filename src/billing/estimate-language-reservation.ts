@@ -2,6 +2,8 @@ import { Usd } from "./money";
 
 export type LanguageReservationInput = {
   serializedBillableInput: string;
+  /** Image inputs, each reserved as `IMAGE_INPUT_TOKENS` prompt tokens. */
+  images?: number;
   inputTokenPriceUsd: string;
   outputTokenPriceUsd: string;
   requestedMaxOutputTokens?: number;
@@ -16,6 +18,12 @@ export type LanguageReservationEstimate = {
   reservedOutputTokens: number;
   amountUsd: Usd;
 };
+
+/**
+ * Prompt tokens held per image. Providers bill an image by its pixels, not
+ * by its URL or base64 length; about 29k tokens a photo has been seen.
+ */
+export const IMAGE_INPUT_TOKENS = 30_000;
 
 const assertTokenLimit = (name: string, value: number) => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -60,9 +68,9 @@ export function estimateLanguageReservation(
   // String.length counts UTF-16 code units. This intentionally overcounts
   // astral characters compared with a code-point count, which is preferable
   // for a conservative reservation.
-  const estimatedInputTokens = Math.ceil(
-    input.serializedBillableInput.length / 4,
-  );
+  const estimatedInputTokens =
+    Math.ceil(input.serializedBillableInput.length / 4) +
+    (input.images ?? 0) * IMAGE_INPUT_TOKENS;
   const desiredOutputTokens =
     input.requestedMaxOutputTokens ?? input.modelMaxOutputTokens;
   // The prompt is billed once; every completion can use the full output.

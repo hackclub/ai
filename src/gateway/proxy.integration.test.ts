@@ -39,6 +39,11 @@ const modelListing = Response.json({
       top_provider: { max_completion_tokens: 1000 },
     },
     {
+      id: "test/vision",
+      pricing: { prompt: "0.00001", completion: "0.00001", request: "0" },
+      top_provider: { max_completion_tokens: 1000 },
+    },
+    {
       id: "test/pricey",
       pricing: { prompt: "1", completion: "1" },
       top_provider: { max_completion_tokens: 1000 },
@@ -119,6 +124,7 @@ describe("proxy routes with PostgreSQL", () => {
     expect(listing.data.map((model) => model.id)).toEqual([
       "test/chat",
       "test/free",
+      "test/vision",
       "test/pricey",
       "test/embed",
     ]);
@@ -338,6 +344,58 @@ describe("proxy routes with PostgreSQL", () => {
       "0.002012000000",
       "0.002004000000",
     ]);
+  });
+
+  test("reserves for images by count, not by the length of their URL", async () => {
+    const account = await createTestAccount(sql, "images");
+    nextUpstream = reply(0.0004);
+    const callsBefore = upstreamCalls.length;
+    const link = "https://images.test/p?key=attachments%2Fsingle";
+
+    // Ten linked photos cost far more than the $1 allowance, though their URLs are short.
+    const linked = await chatAs(account, "chat/completions", {
+      model: "test/vision",
+      max_tokens: 1,
+      messages: [
+        {
+          role: "user",
+          content: [
+            ...Array.from({ length: 10 }, () => ({ type: "image_url", image_url: { url: link } })),
+            { type: "text", text: "check my answers" },
+          ],
+        },
+      ],
+    });
+    expect(linked.status).toBe(402);
+    const responses = await chatAs(account, "responses", {
+      model: "test/vision",
+      max_output_tokens: 1,
+      input: [
+        {
+          role: "user",
+          content: Array.from({ length: 10 }, () => ({ type: "input_image", image_url: link })),
+        },
+      ],
+    });
+    expect(responses.status).toBe(402);
+    expect(upstreamCalls.length).toBe(callsBefore);
+
+    // One embedded photo is still one image, however long its base64.
+    const embedded = await chatAs(account, "chat/completions", {
+      model: "test/vision",
+      max_tokens: 1,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "image_url", image_url: { url: `data:image/jpeg;base64,${"A".repeat(2_000_000)}` } }],
+        },
+      ],
+    });
+    expect(embedded.status).toBe(200);
+    await embedded.text();
+    await billing.settled();
+    const records = await billingRecords(sql, account.accountId);
+    expect(records.map((record) => [record.state, record.actualCostUsd])).toEqual([["finalized", "0.000400000000"]]);
   });
 
   test("stops a generation whose client left before OpenRouter answered, and keeps it for reconciliation", async () => {
