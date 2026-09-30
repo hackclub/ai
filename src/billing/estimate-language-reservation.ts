@@ -2,8 +2,10 @@ import { Usd } from "./money";
 
 export type LanguageReservationInput = {
   serializedBillableInput: string;
-  /** Image inputs, each reserved as `IMAGE_INPUT_TOKENS` prompt tokens. */
+  /** Image inputs, whose payload is left out of `serializedBillableInput`. */
   images?: number;
+  /** Prompt tokens held for each image. */
+  tokensPerImage?: number;
   inputTokenPriceUsd: string;
   outputTokenPriceUsd: string;
   requestedMaxOutputTokens?: number;
@@ -11,6 +13,8 @@ export type LanguageReservationInput = {
   /** Completions generated per request (OpenAI `n`); each has its own output. */
   completions?: number;
   fixedCostUsd?: string;
+  /** Prices that replace the base ones once the prompt reaches `minPromptTokens`. */
+  tiers?: Array<{ minPromptTokens: number; inputTokenPriceUsd: string; outputTokenPriceUsd: string }>;
 };
 
 export type LanguageReservationEstimate = {
@@ -18,12 +22,6 @@ export type LanguageReservationEstimate = {
   reservedOutputTokens: number;
   amountUsd: Usd;
 };
-
-/**
- * Prompt tokens held per image. Providers bill an image by its pixels, not
- * by its URL or base64 length; about 29k tokens a photo has been seen.
- */
-export const IMAGE_INPUT_TOKENS = 30_000;
 
 const assertTokenLimit = (name: string, value: number) => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -53,8 +51,20 @@ export function estimateLanguageReservation(
     );
   }
 
-  const inputPrice = Usd.parse(input.inputTokenPriceUsd);
-  const outputPrice = Usd.parse(input.outputTokenPriceUsd);
+  // String.length counts UTF-16 code units. This intentionally overcounts
+  // astral characters compared with a code-point count, which is preferable
+  // for a conservative reservation.
+  const estimatedInputTokens =
+    Math.ceil(input.serializedBillableInput.length / 4) +
+    (input.images ?? 0) * (input.tokensPerImage ?? 0);
+  assertTokenLimit("estimatedInputTokens", estimatedInputTokens);
+
+  // The highest tier the prompt reaches prices the whole request.
+  const tier = (input.tiers ?? [])
+    .filter((candidate) => estimatedInputTokens >= candidate.minPromptTokens)
+    .sort((a, b) => b.minPromptTokens - a.minPromptTokens)[0];
+  const inputPrice = Usd.parse(tier?.inputTokenPriceUsd ?? input.inputTokenPriceUsd);
+  const outputPrice = Usd.parse(tier?.outputTokenPriceUsd ?? input.outputTokenPriceUsd);
   const fixedCost = Usd.parse(input.fixedCostUsd ?? "0");
 
   if (
@@ -65,12 +75,6 @@ export function estimateLanguageReservation(
     throw new RangeError("Provider prices must not be negative");
   }
 
-  // String.length counts UTF-16 code units. This intentionally overcounts
-  // astral characters compared with a code-point count, which is preferable
-  // for a conservative reservation.
-  const estimatedInputTokens =
-    Math.ceil(input.serializedBillableInput.length / 4) +
-    (input.images ?? 0) * IMAGE_INPUT_TOKENS;
   const desiredOutputTokens =
     input.requestedMaxOutputTokens ?? input.modelMaxOutputTokens;
   // The prompt is billed once; every completion can use the full output.

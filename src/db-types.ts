@@ -169,6 +169,12 @@ export type Tables = {
     endpoint: string | null;
     pending_since: Date | null;
   };
+  model_image_tokens: {
+    model_id: string;
+    tokens_per_image: number;
+    samples: string;
+    updated_at: Date;
+  };
   replicate_resources: {
     kind: string;
     id: string;

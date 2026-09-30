@@ -44,6 +44,15 @@ const modelListing = Response.json({
       top_provider: { max_completion_tokens: 1000 },
     },
     {
+      id: "test/tiered",
+      pricing: {
+        prompt: "0.000001",
+        completion: "0.000001",
+        overrides: [{ min_prompt_tokens: 1000, prompt: "0.001", completion: "0.001" }],
+      },
+      top_provider: { max_completion_tokens: 1000 },
+    },
+    {
       id: "test/pricey",
       pricing: { prompt: "1", completion: "1" },
       top_provider: { max_completion_tokens: 1000 },
@@ -125,6 +134,7 @@ describe("proxy routes with PostgreSQL", () => {
       "test/chat",
       "test/free",
       "test/vision",
+      "test/tiered",
       "test/pricey",
       "test/embed",
     ]);
@@ -346,41 +356,36 @@ describe("proxy routes with PostgreSQL", () => {
     ]);
   });
 
-  test("reserves for images by count, not by the length of their URL", async () => {
+  test("reserves images at what the model was last billed per image", async () => {
     const account = await createTestAccount(sql, "images");
-    nextUpstream = reply(0.0004);
     const callsBefore = upstreamCalls.length;
     const link = "https://images.test/p?key=attachments%2Fsingle";
-
-    // Ten linked photos cost far more than the $1 allowance, though their URLs are short.
-    const linked = await chatAs(account, "chat/completions", {
+    const linkedPhotos = (count: number) => ({
       model: "test/vision",
       max_tokens: 1,
       messages: [
         {
           role: "user",
           content: [
-            ...Array.from({ length: 10 }, () => ({ type: "image_url", image_url: { url: link } })),
+            ...Array.from({ length: count }, () => ({ type: "image_url", image_url: { url: link } })),
             { type: "text", text: "check my answers" },
           ],
         },
       ],
     });
-    expect(linked.status).toBe(402);
-    const responses = await chatAs(account, "responses", {
-      model: "test/vision",
-      max_output_tokens: 1,
-      input: [
-        {
-          role: "user",
-          content: Array.from({ length: 10 }, () => ({ type: "input_image", image_url: link })),
-        },
-      ],
-    });
-    expect(responses.status).toBe(402);
+
+    // Nothing billed for this model yet, so ten short links are held as ten
+    // expensive photos and refused on the $1 allowance.
+    expect((await chatAs(account, "chat/completions", linkedPhotos(10))).status).toBe(402);
     expect(upstreamCalls.length).toBe(callsBefore);
 
-    // One embedded photo is still one image, however long its base64.
+    // One embedded photo, however long its base64, that the provider bills as 2,000 prompt tokens.
+    nextUpstream = () =>
+      Response.json({
+        id: `gen-${crypto.randomUUID()}`,
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: { prompt_tokens: 2_000, completion_tokens: 1, cost: 0.02001 },
+      });
     const embedded = await chatAs(account, "chat/completions", {
       model: "test/vision",
       max_tokens: 1,
@@ -394,8 +399,53 @@ describe("proxy routes with PostgreSQL", () => {
     expect(embedded.status).toBe(200);
     await embedded.text();
     await billing.settled();
+
+    // Now held at about 2,000 tokens a photo: $0.20 for ten.
+    const linked = await chatAs(account, "chat/completions", linkedPhotos(10));
+    expect(linked.status).toBe(200);
+    await linked.text();
+    // Sixty Responses-style photos come to $1.20, past the allowance.
+    const responses = await chatAs(account, "responses", {
+      model: "test/vision",
+      max_output_tokens: 1,
+      input: [{ role: "user", content: Array.from({ length: 60 }, () => ({ type: "input_image", image_url: link })) }],
+    });
+    expect(responses.status).toBe(402);
+    await billing.settled();
+
     const records = await billingRecords(sql, account.accountId);
-    expect(records.map((record) => [record.state, record.actualCostUsd])).toEqual([["finalized", "0.000400000000"]]);
+    expect(records.map((record) => [record.state, record.actualCostUsd])).toEqual([
+      ["finalized", "0.020010000000"],
+      ["finalized", "0.020010000000"],
+    ]);
+    const tenPhotos = Number(records[1]?.estimatedCostUsd);
+    expect(tenPhotos).toBeGreaterThanOrEqual(0.19);
+    expect(tenPhotos).toBeLessThan(0.21);
+  });
+
+  test("reserves a long prompt at the model's long-context price", async () => {
+    const account = await createTestAccount(sql, "tiered");
+    nextUpstream = reply(0.000002);
+    const callsBefore = upstreamCalls.length;
+
+    const short = await chatAs(account, "chat/completions", {
+      model: "test/tiered",
+      max_tokens: 1,
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(short.status).toBe(200);
+    await short.text();
+    // About 2,000 prompt tokens: past the 1,000-token tier, where a token costs $0.001.
+    const long = await chatAs(account, "chat/completions", {
+      model: "test/tiered",
+      max_tokens: 1,
+      messages: [{ role: "user", content: "x".repeat(8_000) }],
+    });
+    expect(long.status).toBe(402);
+    expect(upstreamCalls.length).toBe(callsBefore + 1);
+    await billing.settled();
+    const records = await billingRecords(sql, account.accountId);
+    expect(records.map((record) => [record.state, record.actualCostUsd])).toEqual([["finalized", "0.000002000000"]]);
   });
 
   test("stops a generation whose client left before OpenRouter answered, and keeps it for reconciliation", async () => {

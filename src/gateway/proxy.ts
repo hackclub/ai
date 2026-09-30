@@ -6,11 +6,13 @@ import type { BillingLifecycle, SettlementTracker } from "./metered-request";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
 import { type ModelCatalog, type ModelKind, modelPricing } from "../models/catalog";
+import { log } from "../log";
 import { isEventStream } from "../providers/metered-body";
 import type { OpenRouterAdapter } from "../providers/openrouter/adapter";
 import { OPENROUTER } from "../providers/openrouter/provider";
 import { forwardableHeaders } from "../providers/response-headers";
 import { HttpError } from "./http-error";
+import { ImageTokenRates } from "./image-token-rates";
 import { jsonWithEtag } from "./etag";
 import { RateLimiter } from "./rate-limit";
 import { authorizeProviderRequest, parseJsonObject, runProviderRoute } from "./routes/shared";
@@ -64,8 +66,9 @@ const IMAGE_PART_TYPES = new Set(["image_url", "input_image"]);
 
 /**
  * The billable input with each image part's payload dropped, and how many
- * image parts there were: images are reserved by count, since a short link
- * and a long base64 string can be the same photo.
+ * image parts there were: images are reserved by count at what the model
+ * bills per image, since a short link and a long base64 string can be the
+ * same photo.
  */
 const withoutImages = (value: unknown): { input: unknown; images: number } => {
   if (Array.isArray(value)) {
@@ -220,16 +223,9 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
   const reservationTtlMs = deps.reservationTtlMs ?? 60 * 60 * 1_000;
   const unknownModelReservation = Usd.parse(deps.unknownModelReservationUsd ?? "0.05");
 
-  const estimateFor = (
-    endpoint: ProxyEndpoint,
-    model: Parameters<typeof modelPricing>[0] | null,
-    body: Record<string, unknown>,
-  ) => {
-    const kind = ENDPOINTS[endpoint];
-    const completions = kind === "embedding" ? 1 : requestedCompletions(body);
-    const pricing = model ? modelPricing(model) : null;
-    if (!pricing) return unknownModelReservation.multiply(BigInt(completions));
+  const imageTokenRates = new ImageTokenRates(deps.sql);
 
+  const billablePrompt = (body: Record<string, unknown>) => {
     // System instructions and tool schemas are prompt tokens too; leaving
     // them out under-reserves tool-heavy requests.
     const billableFields = BILLABLE_INPUT_FIELDS.filter((field) => body[field] !== undefined);
@@ -237,16 +233,31 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       billableFields.length > 0
         ? Object.fromEntries(billableFields.map((field) => [field, body[field]]))
         : body;
+    const { input, images } = withoutImages(billable);
+    return { serialized: JSON.stringify(input), images };
+  };
+
+  const estimateFor = (
+    endpoint: ProxyEndpoint,
+    model: Parameters<typeof modelPricing>[0] | null,
+    body: Record<string, unknown>,
+    prompt: { serialized: string; images: number },
+    tokensPerImage: number,
+  ) => {
+    const kind = ENDPOINTS[endpoint];
+    const completions = kind === "embedding" ? 1 : requestedCompletions(body);
+    const pricing = model ? modelPricing(model) : null;
+    if (!pricing) return unknownModelReservation.multiply(BigInt(completions));
+
     const modelMaxOutputTokens =
       kind === "embedding"
         ? 0
         : (pricing.maxCompletionTokens ?? deps.reservationFallbackOutputTokens);
 
-    const { input, images } = withoutImages(billable);
-
     return estimateLanguageReservation({
-      serializedBillableInput: JSON.stringify(input),
-      images,
+      serializedBillableInput: prompt.serialized,
+      images: prompt.images,
+      tokensPerImage,
       inputTokenPriceUsd: pricing.promptUsd.toString(),
       outputTokenPriceUsd: pricing.completionUsd.toString(),
       requestedMaxOutputTokens:
@@ -254,6 +265,11 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       modelMaxOutputTokens,
       completions,
       fixedCostUsd: pricing.requestUsd.toString(),
+      tiers: pricing.tiers.map((tier) => ({
+        minPromptTokens: tier.minPromptTokens,
+        inputTokenPriceUsd: tier.promptUsd.toString(),
+        outputTokenPriceUsd: tier.completionUsd.toString(),
+      })),
     }).amountUsd;
   };
 
@@ -276,8 +292,13 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
     body.usage = { include: true };
 
     // Priced as the dearest model it may run, since any fallback can serve it.
+    const prompt = billablePrompt(body);
+    const rates =
+      prompt.images > 0
+        ? await Promise.all(models.map((model) => (model ? imageTokenRates.perImage(model.id) : 0)))
+        : [];
     const priciest = models
-      .map((model) => estimateFor(endpoint, model ?? null, body))
+      .map((model, index) => estimateFor(endpoint, model ?? null, body, prompt, rates[index] ?? 0))
       .reduce((max, estimate) => (max.lessThan(estimate) ? estimate : max));
     const estimate = requestsUnpricedExtras(ids, body) ? priciest.add(unknownModelReservation) : priciest;
 
@@ -308,6 +329,22 @@ export const proxyRoutes = (deps: ProxyDependencies) => {
       },
       { rewrapResponse: false },
     );
+
+    // With fallbacks the model that served is not known for certain, so
+    // only a single-model request teaches its rate.
+    const [model] = models;
+    if (prompt.images > 0 && model && models.length === 1) {
+      deps.settlements.track(
+        metered.settled
+          .then(async ({ completion }) => {
+            if (completion.state !== "complete" || completion.usage.inputTokens <= 0) return;
+            const textTokens = Math.ceil(prompt.serialized.length / 4);
+            const perImage = Math.ceil((completion.usage.inputTokens - textTokens) / prompt.images);
+            await imageTokenRates.record(model.id, Math.max(1, perImage));
+          })
+          .catch((error: unknown) => log.error({ err: error, requestId }, "failed to record image token rate")),
+      );
+    }
 
     const headers = forwardableHeaders(metered.response.headers);
     headers.set("x-request-id", requestId);

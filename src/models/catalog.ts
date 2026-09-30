@@ -13,6 +13,8 @@ export type OpenRouterModel = {
     prompt?: string;
     completion?: string;
     request?: string;
+    /** Prices OpenRouter charges instead once the prompt reaches `min_prompt_tokens`. */
+    overrides?: Array<{ min_prompt_tokens?: number; prompt?: string; completion?: string }>;
   };
   top_provider?: {
     context_length?: number;
@@ -26,6 +28,7 @@ export type ModelPricing = {
   requestUsd: Usd;
   /** Null when neither the provider nor the model exposes a limit. */
   maxCompletionTokens: number | null;
+  tiers: Array<{ minPromptTokens: number; promptUsd: Usd; completionUsd: Usd }>;
 };
 
 export type ModelCatalogOptions = {
@@ -70,7 +73,16 @@ export const modelPricing = (model: OpenRouterModel): ModelPricing | null => {
       ? declared
       : null;
 
-  return { promptUsd, completionUsd, requestUsd, maxCompletionTokens };
+  // A tier price that is missing falls back to the base one; one that does not parse drops the tier.
+  const tiers = (model.pricing?.overrides ?? []).flatMap((override) => {
+    const minPromptTokens = override.min_prompt_tokens;
+    if (typeof minPromptTokens !== "number" || !Number.isSafeInteger(minPromptTokens) || minPromptTokens < 0) return [];
+    const tierPrompt = nonNegativePrice(override.prompt, promptUsd);
+    const tierCompletion = nonNegativePrice(override.completion, completionUsd);
+    return tierPrompt && tierCompletion ? [{ minPromptTokens, promptUsd: tierPrompt, completionUsd: tierCompletion }] : [];
+  });
+
+  return { promptUsd, completionUsd, requestUsd, maxCompletionTokens, tiers };
 };
 
 /**
