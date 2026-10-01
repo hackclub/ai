@@ -55,3 +55,5 @@ plans/
 docs/
 
 native/abuse/target/
+
+.claude/skills/
