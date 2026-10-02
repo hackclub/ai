@@ -39,4 +39,6 @@ COPY src ./src
 COPY --from=build /app/secrets ./secrets
 USER bun
 EXPOSE 3000
-CMD ["bun", "run", "start"]
+# `bun run` does not forward SIGTERM, and its exit SIGKILLs the server; exec
+# makes the server PID 1 so adapter-bun drains in-flight requests on deploy.
+CMD ["sh", "-c", "bun scripts/migrate.ts && exec bun ./build"]
