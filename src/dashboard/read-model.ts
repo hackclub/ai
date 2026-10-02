@@ -2,6 +2,7 @@ import type postgres from "postgres";
 
 import type { AnalyticsQueries, GlobalRange, RecentRequest, RecentRequestFilters, RequestDetail, UsageStats } from "../analytics/queries";
 import { listApiKeys } from "../auth/api-keys";
+import { Usd } from "../billing/money";
 import type { SessionUser } from "../auth/sessions";
 import type { Env } from "../env";
 import type { IpNetworkTable } from "./ip-network";
@@ -218,11 +219,22 @@ async function dailySpending(sql: postgres.Sql, accountId: string): Promise<Dail
     FROM billing_funding_policies
     WHERE account_id = ${accountId}::uuid AND cadence = 'day' AND enabled
   `;
+  const [cap] = await sql<{ limit: string | null }[]>`
+    SELECT MIN(limit_usd)::text AS limit
+    FROM billing_limit_policies
+    WHERE
+      account_id = ${accountId}::uuid
+      AND cadence = 'day'
+      AND enabled
+      AND effective_from <= now()
+      AND (effective_until IS NULL OR effective_until > now())
+  `;
+  // Before the first request of the day no window exists yet; fall back to
+  // the policy amount so the header shows the real allowance.
+  const allowance = Usd.parse(row && Number(row.granted) > 0 ? row.granted : (policy?.amount ?? "0"));
   return {
     spentUsd: row?.spent ?? "0",
-    // Before the first request of the day no window exists yet; fall back to
-    // the policy amount so the header shows the real allowance.
-    limitUsd: row && Number(row.granted) > 0 ? row.granted : (policy?.amount ?? "0"),
+    limitUsd: (cap?.limit ? Usd.min(allowance, Usd.parse(cap.limit)) : allowance).toString(),
   };
 }
 
