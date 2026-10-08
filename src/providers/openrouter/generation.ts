@@ -46,18 +46,22 @@ export async function fetchOpenRouterGeneration(
       native_tokens_prompt?: number;
       native_tokens_completion?: number;
       usage?: number;
+      upstream_inference_cost?: number;
+      is_byok?: boolean;
     };
   };
   const data = body.data;
   if (!data) return { state: "not_found" };
 
-  const cost =
+  const charged =
     typeof data.total_cost === "number"
       ? data.total_cost
       : typeof data.usage === "number"
         ? data.usage
         : null;
-  if (cost === null || cost < 0) {
+  // With BYOK, the charged cost is only OpenRouter's fee; the provider bills the rest to our key.
+  const upstream = data.is_byok === true ? data.upstream_inference_cost : 0;
+  if (charged === null || charged < 0 || typeof upstream !== "number" || upstream < 0) {
     throw new Error(`OpenRouter generation ${generationId} has no usable cost`);
   }
 
@@ -65,7 +69,7 @@ export async function fetchOpenRouterGeneration(
     state: "found",
     generation: {
       id: data.id ?? generationId,
-      totalCostUsd: Usd.fromNumber(cost),
+      totalCostUsd: Usd.fromNumber(charged).add(Usd.fromNumber(upstream)),
       promptTokens: nonNegativeInteger(data.native_tokens_prompt) ?? 0,
       completionTokens: nonNegativeInteger(data.native_tokens_completion) ?? 0,
       model: typeof data.model === "string" ? data.model : "",

@@ -196,6 +196,33 @@ describe("reconcilePendingReservations with OpenRouter", () => {
     });
   });
 
+  test("bills a BYOK generation at the upstream cost plus OpenRouter's fee", async () => {
+    const accountId = await newAccount();
+    const generationId = uniqueId("gen-");
+    await pending(accountId, generationId);
+
+    const result = await reconcile({
+      openRouter: openRouter(() =>
+        Response.json({
+          data: {
+            id: generationId,
+            model: "anthropic/claude-haiku-4.5",
+            total_cost: 0.0001,
+            usage: 0.0001,
+            upstream_inference_cost: 0.002,
+            is_byok: true,
+            native_tokens_prompt: 5,
+            native_tokens_completion: 7,
+          },
+        }),
+      ),
+    });
+
+    expect(result).toEqual({ finalized: 1, released: 0, skipped: 0, failed: 0 });
+    const record = await onlyBillingRecord(sql, accountId);
+    expect(record.actualCostUsd).toBe("0.002100000000");
+  });
+
   test("waits for young reservations and releases old ones without a record", async () => {
     const accountId = await newAccount();
     // Young rows are backdated too, so a deferral visibly moves updated_at.

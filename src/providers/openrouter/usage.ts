@@ -43,8 +43,13 @@ export const openRouterUsage = (value: unknown): NormalizedUsage | null => {
   if (!usage) return null;
 
   const costDetails = asRecord(usage.cost_details);
+  const charged = cost(usage.cost);
+  const upstream = cost(costDetails?.upstream_inference_cost);
+  // With BYOK, `cost` is only OpenRouter's fee; the provider bills the rest to our key.
   const totalCost =
-    cost(usage.cost) ?? cost(costDetails?.upstream_inference_cost);
+    usage.is_byok === true
+      ? upstream && (charged ? upstream.add(charged) : upstream)
+      : charged ?? upstream;
   if (!totalCost) return null;
 
   const inputTokens =

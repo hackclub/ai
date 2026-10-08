@@ -230,6 +230,37 @@ describe("proxy routes with PostgreSQL", () => {
     expect(record?.estimatedCostUsd).not.toBe("0.001000000000");
   });
 
+  test("bills a BYOK generation at the upstream cost plus OpenRouter's fee", async () => {
+    const account = await createTestAccount(sql, "byok");
+    nextUpstream = () =>
+      Response.json({
+        id: "gen-byok",
+        provider: "Anthropic",
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: {
+          prompt_tokens: 8,
+          completion_tokens: 5,
+          total_tokens: 13,
+          cost: 0.00000165,
+          is_byok: true,
+          cost_details: {
+            upstream_inference_cost: 0.000033,
+            upstream_inference_prompt_cost: 0.000008,
+            upstream_inference_completions_cost: 0.000025,
+          },
+        },
+      });
+    const response = await chat({ model: "test/chat", messages: [{ role: "user", content: "hi" }] }, account.apiKey);
+    expect(response.status).toBe(200);
+    await response.text();
+    await billing.settled();
+
+    const [record] = await billingRecords(sql, account.accountId);
+    expect(record?.state).toBe("finalized");
+    expect(record?.actualCostUsd).toBe("0.000034650000");
+    expect(record?.event?.billed_cost_usd).toBe("0.000034650000");
+  });
+
   test(
     "streams a completion through unchanged and finalizes billing",
     async () => {
