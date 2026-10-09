@@ -16,6 +16,7 @@ export const openRouterProvider = (config: OpenRouterConfig): ProviderModule => 
       model: generation.model,
       inputTokens: generation.promptTokens,
       outputTokens: generation.completionTokens,
+      servedBy: generation.servedBy,
     };
   },
 });

@@ -75,6 +75,19 @@ export type RequestDetail = RecentRequest & {
   country: string;
 };
 
+export type AccountSpend = {
+  todayUsd: string;
+  weekUsd: string;
+  monthUsd: string;
+  lifetimeUsd: string;
+  monthRequests: number;
+  firstRequestAt: string | null;
+  lastRequestAt: string | null;
+  topModels: { model: string; spendUsd: string; requests: number }[];
+};
+
+export type ServedBy = { servedBy: string; requests: number; costUsd: string };
+
 export type RecentRequestsPage = {
   requests: RecentRequest[];
   /** Cursor for the next page, or null when exhausted. */
@@ -326,6 +339,92 @@ export class AnalyticsQueries {
       userAgent: row.user_agent,
       country: row.country,
     };
+  }
+
+  /** An account's spend over a few windows and its most expensive models, for the admin user page. */
+  async accountSpend(accountId: string): Promise<AccountSpend> {
+    const result = await this.clickhouse.query({
+      query: `
+        SELECT
+          toString(sumIf(billed_cost_usd, occurred_at >= today())) AS today,
+          toString(sumIf(billed_cost_usd, occurred_at >= today() - 6)) AS week,
+          toString(sumIf(billed_cost_usd, occurred_at >= today() - 29)) AS month,
+          toString(sum(billed_cost_usd)) AS lifetime,
+          countIf(occurred_at >= today() - 29) AS month_requests,
+          if(count() = 0, '', toString(min(occurred_at))) AS first_request,
+          if(count() = 0, '', toString(max(occurred_at))) AS last_request
+        FROM (
+          SELECT event_id, argMax(billed_cost_usd, event_version) AS billed_cost_usd, any(occurred_at) AS occurred_at
+          FROM request_events
+          WHERE account_id = {account_id:UUID}
+          GROUP BY event_id
+        )
+      `,
+      query_params: { account_id: accountId },
+      format: "JSONEachRow",
+    });
+    const [row] = await result.json<{
+      today: string;
+      week: string;
+      month: string;
+      lifetime: string;
+      month_requests: string;
+      first_request: string;
+      last_request: string;
+    }>();
+    const models = await this.clickhouse.query({
+      query: `
+        SELECT model, toString(sum(billed_cost_usd)) AS spend, count() AS requests
+        FROM (
+          SELECT event_id, any(model) AS model, argMax(billed_cost_usd, event_version) AS billed_cost_usd
+          FROM request_events
+          WHERE account_id = {account_id:UUID} AND occurred_at >= today() - 29
+          GROUP BY event_id
+        )
+        GROUP BY model
+        ORDER BY sum(billed_cost_usd) DESC
+        LIMIT 8
+      `,
+      query_params: { account_id: accountId },
+      format: "JSONEachRow",
+    });
+    return {
+      todayUsd: row?.today ?? "0",
+      weekUsd: row?.week ?? "0",
+      monthUsd: row?.month ?? "0",
+      lifetimeUsd: row?.lifetime ?? "0",
+      monthRequests: Number(row?.month_requests ?? 0),
+      firstRequestAt: row?.first_request || null,
+      lastRequestAt: row?.last_request || null,
+      topModels: (await models.json<{ model: string; spend: string; requests: string }>()).map((model) => ({
+        model: model.model,
+        spendUsd: model.spend,
+        requests: Number(model.requests),
+      })),
+    };
+  }
+
+  /**
+   * The upstreams that have served requests in the last `days`, busiest
+   * first. A discount on an upstream can only name one of these.
+   */
+  async servedBy(days = 30): Promise<ServedBy[]> {
+    const result = await this.clickhouse.query({
+      query: `
+        SELECT attributes['served_by'] AS served_by, count() AS requests, toString(sum(provider_cost_usd)) AS cost
+        FROM request_events
+        WHERE occurred_at >= now() - INTERVAL {days:UInt32} DAY AND attributes['served_by'] != ''
+        GROUP BY served_by
+        ORDER BY requests DESC
+      `,
+      query_params: { days },
+      format: "JSONEachRow",
+    });
+    return (await result.json<{ served_by: string; requests: string; cost: string }>()).map((row) => ({
+      servedBy: row.served_by,
+      requests: Number(row.requests),
+      costUsd: row.cost,
+    }));
   }
 
   /** Every model the account has called, most used first, for the activity filter. */

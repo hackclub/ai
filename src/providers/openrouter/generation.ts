@@ -13,6 +13,7 @@ export type GenerationRecord = {
   promptTokens: number;
   completionTokens: number;
   model: string;
+  servedBy: string | null;
 };
 
 export type GenerationLookup =
@@ -47,6 +48,7 @@ export async function fetchOpenRouterGeneration(
       native_tokens_completion?: number;
       usage?: number;
       upstream_inference_cost?: number;
+      provider_name?: string;
       is_byok?: boolean;
     };
   };
@@ -73,6 +75,7 @@ export async function fetchOpenRouterGeneration(
       promptTokens: nonNegativeInteger(data.native_tokens_prompt) ?? 0,
       completionTokens: nonNegativeInteger(data.native_tokens_completion) ?? 0,
       model: typeof data.model === "string" ? data.model : "",
+      servedBy: typeof data.provider_name === "string" && data.provider_name ? data.provider_name : null,
     },
   };
 }

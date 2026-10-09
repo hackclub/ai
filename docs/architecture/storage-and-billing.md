@@ -55,6 +55,14 @@ The engine does not have a built-in daily limit.
   expiration.
 - A **limit policy** constrains total spend over a period without itself
   supplying funds. Several limits may apply simultaneously.
+- A funding or limit policy without an account is **global**: it applies to
+  every account with no enabled policy of its own of that kind, in a window
+  per account. An account's own policy replaces the global ones; it does
+  not add to them.
+- A **discount** lowers the billed cost of a request at settlement. One that
+  names an upstream provider applies only when that provider served the
+  request. Reservations are never discounted. Billed events keep the
+  provider's cost, the upstream (`served_by`) and the discount applied.
 - A **reservation** temporarily allocates funding and holds capacity in every
   applicable limit window before an upstream request is sent.
 - A **ledger entry** is an immutable debit or credit. Mutable bucket counters
@@ -76,7 +84,8 @@ The engine does not have a built-in daily limit.
 7. Money uses exact decimal arithmetic and never JavaScript floating point.
 8. Unknown provider outcomes remain pending until reconciled or explicitly
    resolved.
-9. Manual changes are append-only, attributed, and auditable.
+9. Manual changes are append-only, attributed, and auditable: every admin
+   action writes `admin_audit_events` in the transaction that makes it.
 10. PostgreSQL transaction time determines active policy windows and
     reservation expiry. Application-host clock skew cannot change which
     funding or limit window applies.

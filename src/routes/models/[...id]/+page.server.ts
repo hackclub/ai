@@ -15,9 +15,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (!model) error(404, `The model ${modelId} was not found or is not available.`);
 
   const modelType = modelTypeOf(model);
-  return {
-    model,
-    modelType,
-    examples: await modelExamples(locals.dashboard.site.baseUrl, model.id, modelType),
-  };
+  const [examples, discounts] = await Promise.all([
+    modelExamples(locals.dashboard.site.baseUrl, model.id, modelType),
+    locals.dashboard.modelDiscounts(model.id),
+  ]);
+  return { model, modelType, examples, discounts };
 };

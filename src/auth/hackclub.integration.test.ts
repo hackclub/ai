@@ -44,7 +44,7 @@ describe("Hack Club OAuth with PostgreSQL", () => {
       }) as typeof fetch,
     });
 
-  test("callback creates the user with funding and a session", async () => {
+  test("callback creates the user and a session", async () => {
     const app = routes();
     const callback = (code: string, state: string) =>
       app.handle(
@@ -67,11 +67,12 @@ describe("Hack Club OAuth with PostgreSQL", () => {
     expect(user?.avatar).toBe(`https://cachet.hackclub.com/users/${slackId}/r`);
     expect(user?.isIdvVerified).toBeTrue();
 
-    const [policy] = await sql<{ amount_usd: string }[]>`
-      SELECT amount_usd::text FROM billing_funding_policies
+    // No allowance of its own: the global policies fund it.
+    const [own] = await sql<{ count: number }[]>`
+      SELECT count(*)::integer AS count FROM billing_funding_policies
       WHERE account_id = ${user?.billingAccountId ?? ""}::uuid
     `;
-    expect(policy?.amount_usd).toBe("3.000000000000");
+    expect(own?.count).toBe(0);
 
     // Signing in again updates rather than duplicates.
     expect((await callback("c2", "s2")).status).toBe(302);

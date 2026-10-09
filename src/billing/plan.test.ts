@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { LimitExceededError } from "./errors";
 import { Usd } from "./money";
 import {
+  applyDiscount,
   type Balance,
   compareSources,
   type FundingHold,
@@ -112,4 +113,14 @@ describe("planFinalize", () => {
     ]);
     expect(plan.unfunded.isZero()).toBeTrue();
   });
+});
+
+test("takes a fractional discount exactly and rounds the charge down to the atom", () => {
+  // "7.5" is 7.50%, not 7.05%.
+  expect(applyDiscount(Usd.parse("1"), "7.5").toString()).toBe("0.925000000000");
+  expect(applyDiscount(Usd.parse("1"), "12.50").toString()).toBe("0.875000000000");
+  // 3 atoms less 33.33% is 2.0001 atoms.
+  expect(applyDiscount(Usd.parse("0.000000000003"), "33.33").toString()).toBe("0.000000000002");
+  expect(applyDiscount(Usd.parse("0.123456789012"), "100.00").isZero()).toBeTrue();
+  expect(() => applyDiscount(Usd.parse("1"), "100.01")).toThrow(RangeError);
 });

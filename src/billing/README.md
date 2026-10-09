@@ -28,6 +28,19 @@ request is refused when any limit window's `limit − reserved − committed`
 is below the estimate. Once charged, the full cost counts even past the
 limit (`overage_usd`).
 
+A policy with no `account_id` is global: it applies to every account that
+has no enabled policy of its own of the same kind, and opens one window per
+account. `policyAppliesTo` (`policies.ts`) is that rule; window
+materialization and the funding and limit locks all use it, so creating a
+per-account policy replaces the global ones at once. Admins change global
+policies through `GlobalPolicies`; a new amount also rewrites the current
+windows (an allowance never below what a window already used).
+
+Discounts (`discounts.ts`) lower the cost passed to `finalize`, never the
+reservation, because the upstream that will serve a request is not known
+when it is reserved. A discount naming an upstream applies only when that
+upstream served the request.
+
 ## One request, start to finish
 
 Take an account with a $0.10 daily allowance and a $0.20 credit grant.
@@ -94,10 +107,13 @@ time and counted against the limit windows in force at the time.
 | `engine.ts` | `BillingEngine`: lock → read → plan → write | yes |
 | `audit.ts` | `findBillingDrift`: read-only check that the books balance | yes |
 | `reconciliation.ts` | cron: settles `pending_reconciliation` from provider records, releases expired holds | fakes / yes |
+| `policies.ts` | the global-policy rule and admin changes to global policies | yes |
+| `discounts.ts` | discount matching (cached) and the admin discount store | yes |
 | `estimate-language-reservation.ts` | reservation estimate for chat/completions requests | no |
 
 Only `engine.ts` (through `holds.ts`) writes counters, holds, the ledger,
-or reservation state. The one exception is `reconciliation.ts`, which
+or reservation state. `policies.ts` writes policy rows and, when an admin
+changes an amount, the current windows' granted or limit amount. The one exception is `reconciliation.ts`, which
 bumps `billing_reservations.updated_at` to rotate its queue and changes
 nothing else.
 

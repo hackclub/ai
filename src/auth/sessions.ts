@@ -14,6 +14,7 @@ export type SessionUser = {
   name: string | null;
   avatar: string | null;
   isBanned: boolean;
+  isAdmin: boolean;
   isIdvVerified: boolean;
   skipIdv: boolean;
   agentBannerDismissedAt: Date | null;
@@ -28,6 +29,7 @@ type SessionRow = Pick<
   | "name"
   | "avatar"
   | "is_banned"
+  | "is_admin"
   | "is_idv_verified"
   | "skip_idv"
   | "agent_banner_dismissed_at"
@@ -70,6 +72,7 @@ async function sessionUser(
       app_user.name,
       app_user.avatar,
       app_user.is_banned,
+      app_user.is_admin,
       app_user.is_idv_verified,
       app_user.skip_idv,
       app_user.agent_banner_dismissed_at,
@@ -89,6 +92,7 @@ async function sessionUser(
     name: row.name,
     avatar: row.avatar,
     isBanned: row.is_banned,
+    isAdmin: row.is_admin,
     isIdvVerified: row.is_idv_verified,
     skipIdv: row.skip_idv,
     agentBannerDismissedAt: row.agent_banner_dismissed_at,

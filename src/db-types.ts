@@ -16,6 +16,16 @@ export type Tables = {
     ip: string;
     user_agent: string;
   };
+  admin_audit_events: {
+    id: string;
+    actor_user_id: string;
+    action: string;
+    target_type: string;
+    target_id: string;
+    reason: string | null;
+    details: JsonValue;
+    created_at: Date;
+  };
   api_keys: {
     id: string;
     user_id: string;
@@ -61,7 +71,7 @@ export type Tables = {
   };
   billing_funding_policies: {
     id: string;
-    account_id: string;
+    account_id: string | null;
     name: string;
     cadence: string;
     timezone: string;
@@ -103,7 +113,7 @@ export type Tables = {
   };
   billing_limit_policies: {
     id: string;
-    account_id: string;
+    account_id: string | null;
     name: string;
     cadence: string;
     timezone: string;
@@ -175,6 +185,18 @@ export type Tables = {
     samples: string;
     updated_at: Date;
   };
+  pricing_discounts: {
+    id: string;
+    model_pattern: string | null;
+    served_by: string | null;
+    percent_off: string;
+    note: string | null;
+    enabled: boolean;
+    starts_at: Date;
+    ends_at: Date | null;
+    created_at: Date;
+    updated_at: Date;
+  };
   replicate_resources: {
     kind: string;
     id: string;
@@ -210,5 +232,6 @@ export type Tables = {
     created_at: Date;
     updated_at: Date;
     agent_banner_dismissed_at: Date | null;
+    is_admin: boolean;
   };
 };

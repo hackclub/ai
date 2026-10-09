@@ -12,6 +12,7 @@ import {
   runMeteredRequest,
   type SettlementTracker,
 } from "../metered-request";
+import type { Discounts } from "../../billing/discounts";
 import { RateLimiter } from "../rate-limit";
 
 export type MeteredRouteDependencies = {
@@ -21,6 +22,8 @@ export type MeteredRouteDependencies = {
   settlements: SettlementTracker;
   enforceIdv: boolean;
   rateLimiter?: RateLimiter;
+  /** Discounts on what requests are billed; absent, everything is billed at cost. */
+  discounts?: Discounts;
   fetch?: Fetch;
   onSettlementError?: (error: unknown, requestId: string) => void;
 };
@@ -133,7 +136,7 @@ export type ProviderRouteInput = Omit<
  * also filters headers through `forwardableHeaders`.
  */
 export async function runProviderRoute(
-  deps: Pick<MeteredRouteDependencies, "billing" | "settlements" | "onSettlementError">,
+  deps: Pick<MeteredRouteDependencies, "billing" | "settlements" | "discounts" | "onSettlementError">,
   request: Request,
   principal: AuthenticatedPrincipal,
   input: ProviderRouteInput,
@@ -154,7 +157,7 @@ export async function runProviderRoute(
   };
   let metered: MeteredRequest;
   try {
-    metered = await runMeteredRequest(deps.billing, full, deps.settlements);
+    metered = await runMeteredRequest(deps.billing, full, deps.settlements, deps.discounts);
   } catch (error) {
     throw billingErrorToHttp(error) ?? error;
   }

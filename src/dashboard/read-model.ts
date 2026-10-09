@@ -3,8 +3,11 @@ import type postgres from "postgres";
 import type { AnalyticsQueries, GlobalRange, RecentRequest, RecentRequestFilters, RequestDetail, UsageStats } from "../analytics/queries";
 import { listApiKeys } from "../auth/api-keys";
 import { Usd } from "../billing/money";
+import { DiscountBook } from "../billing/discounts";
+import { policyAppliesTo } from "../billing/policies";
 import type { SessionUser } from "../auth/sessions";
 import type { Env } from "../env";
+import { AdminReadModel } from "./admin";
 import type { IpNetworkTable } from "./ip-network";
 // The one lib/ import: the dashboard's model type. Catalog unification removes it.
 import { type CatalogModel, type ModelCardData, modelTypeOf, stripMarkdownLinks } from "../lib/format";
@@ -24,7 +27,12 @@ export type DashboardDependencies = {
   env: DashboardEnv;
   /** Resolves a request's IP to its network; omitted, the detail shows no ASN. */
   ipNetworks?: IpNetworkTable;
+  /** The gateway's discounts, so the models pages show changes at once. Omitted, read straight from PostgreSQL. */
+  discounts?: DiscountBook;
 };
+
+/** A discount as the models pages show it. */
+export type ModelDiscount = { percentOff: string; servedBy: string | null; note: string | null; endsAt: Date | null };
 
 /** Static, non-secret deployment facts pages render. */
 export type Site = {
@@ -216,14 +224,14 @@ async function dailySpending(sql: postgres.Sql, accountId: string): Promise<Dail
   `;
   const [policy] = await sql<{ amount: string }[]>`
     SELECT COALESCE(SUM(amount_usd), 0)::text AS amount
-    FROM billing_funding_policies
-    WHERE account_id = ${accountId}::uuid AND cadence = 'day' AND enabled
+    FROM billing_funding_policies AS policy
+    WHERE ${policyAppliesTo(sql, "funding", accountId)} AND cadence = 'day' AND enabled
   `;
   const [cap] = await sql<{ limit: string | null }[]>`
     SELECT MIN(limit_usd)::text AS limit
-    FROM billing_limit_policies
+    FROM billing_limit_policies AS policy
     WHERE
-      account_id = ${accountId}::uuid
+      ${policyAppliesTo(sql, "limit", accountId)}
       AND cadence = 'day'
       AND enabled
       AND effective_from <= now()
@@ -251,10 +259,14 @@ const toCard = (model: CatalogModel): ModelCardData => ({
  */
 export class DashboardReadModel {
   readonly site: Site;
+  readonly admin: AdminReadModel;
   private readonly deps: DashboardDependencies;
+  private readonly discounts: DiscountBook;
 
   constructor(deps: DashboardDependencies) {
     this.deps = deps;
+    this.discounts = deps.discounts ?? new DiscountBook(deps.sql);
+    this.admin = new AdminReadModel(deps.sql, deps.analytics, deps.catalog, this.discounts);
     const { env } = deps;
     this.site = {
       baseUrl: env.baseUrl,
@@ -450,6 +462,19 @@ export class DashboardReadModel {
         (candidate) => candidate.id === id,
       ) ?? null
     );
+  }
+
+  /** Discounts in effect on a model, largest first. */
+  async modelDiscounts(id: string): Promise<ModelDiscount[]> {
+    const discounts = await this.discounts.forModel(id);
+    return discounts
+      .map((discount) => ({
+        percentOff: discount.percentOff,
+        servedBy: discount.servedBy,
+        note: discount.note,
+        endsAt: discount.endsAt,
+      }))
+      .sort((left, right) => Number(right.percentOff) - Number(left.percentOff));
   }
 
   /** The `/replicate` cards: only the fields a card renders. */

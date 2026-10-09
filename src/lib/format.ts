@@ -14,6 +14,12 @@ export function formatPrice(price: string | number): string {
   return `$${whole}.${fraction}`;
 }
 
+/** A dollar amount that may be zero, such as spend: "$0.00" rather than "Free". */
+export const formatUsd = (value: string | number) => {
+  const formatted = formatPrice(value);
+  return formatted === "Free" ? "$0.00" : formatted;
+};
+
 export function formatNumberShort(num: number): string {
   if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
   if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
@@ -71,6 +77,14 @@ export function formatPerMillion(pricePerToken?: string): string {
   if (price < 0.01) return `$${price.toFixed(4)}`;
   return `$${price.toFixed(2)}`;
 }
+
+/** A per-token price string less `percentOff` percent, for display only. */
+export const discountedPrice = (pricePerToken: string | undefined, percentOff: string) => {
+  if (!pricePerToken) return pricePerToken;
+  const price = Number.parseFloat(pricePerToken);
+  if (Number.isNaN(price)) return pricePerToken;
+  return String((price * (100 - Number(percentOff))) / 100);
+};
 
 export const providerName = (modelId: string) => {
   const [first = ""] = modelId.split("/");

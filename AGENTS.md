@@ -56,9 +56,15 @@ running (`src/test/database.ts`, `docs/adr/0001`).
   every provider route shares (auth, rate limit, JSON parsing, billing error
   mapping). Add shared behaviour there, not in a single route.
 - `src/billing/` — read `src/billing/README.md` first. `engine.ts` is the
-  only writer of `billing_*` tables; all money arithmetic is in the pure
+  only writer of `billing_*` tables, except admin policy changes in
+  `policies.ts`; all money arithmetic is in the pure
   `plan.ts`, the state machine in `lifecycle.ts`. `money.ts` is the money
   type. `reconciliation.ts` settles uncertain reservations on a cron.
+  A policy with no account is global (`policyAppliesTo`); `discounts.ts`
+  lowers the billed cost at settlement, never the reservation.
+- `src/admin/` + `src/gateway/admin-api.ts` + `src/routes/admin/` — admin
+  pages for `users.is_admin` users. Every admin change writes
+  `admin_audit_events` in the same transaction (`recordAdminAction`).
 - `src/providers/` — upstream adapters. `metered-body.ts` meters every
   response body; each provider has a `provider.ts` module (cost extraction
   and its reconciliation lookup, or `null`), registered in `src/server.ts`.

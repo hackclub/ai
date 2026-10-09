@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import type postgres from "postgres";
 
 import type { UsageStats } from "../analytics/queries";
+import type { Discounts } from "../billing/discounts";
 import type { BillingLifecycle, SettlementTracker } from "./metered-request";
 import { Usd } from "../billing/money";
 import { estimateLanguageReservation } from "../billing/estimate-language-reservation";
@@ -38,6 +39,8 @@ export type ProxyDependencies = {
   /** Attribution headers OpenRouter shows in its app rankings. */
   attributionHeaders?: Record<string, string>;
   onSettlementError?: (error: unknown, requestId: string) => void;
+  /** Discounts on what requests are billed; absent, everything is billed at cost. */
+  discounts?: Discounts;
   /** Per-user request limiter; defaults to 7500 per 30 minutes. */
   rateLimiter?: RateLimiter;
   /** Interval for whitespace keep-alives on non-streaming responses. */

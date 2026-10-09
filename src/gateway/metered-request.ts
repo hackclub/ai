@@ -1,4 +1,5 @@
 import type { RequestObservation, RequestOutcome } from "../analytics/request-event";
+import { type Discounts, priced } from "../billing/discounts";
 import type { BillingEngine, Reservation } from "../billing/engine";
 import { Usd } from "../billing/money";
 import { log } from "../log";
@@ -165,6 +166,7 @@ const observation = (
   context: AnalyticsContext,
   completion: ProviderCompletion,
   outcome: RequestOutcome,
+  pricing: Record<string, string> = {},
 ): RequestObservation => {
   const { input, response } = context;
   const usage = completion.state === "complete" ? completion.usage : null;
@@ -185,6 +187,7 @@ const observation = (
     responseHeaders: redactHeaders(response.headers),
     attributes: {
       ...(input.analytics?.attributes ?? {}),
+      ...pricing,
       body_capture: completion.bodyCapture,
     },
     requestBody: context.requestBody,
@@ -196,18 +199,25 @@ const settleCompletion = async (
   billing: BillingLifecycle,
   context: AnalyticsContext,
   completion: ProviderCompletion,
+  discounts: Discounts | undefined,
 ): Promise<MeteredRequestOutcome> => {
   const { input } = context;
   const providerRequestId = completion.providerRequestId ?? undefined;
 
   switch (completion.state) {
     case "complete": {
+      const { billed, attributes } = await priced(discounts, completion.usage.costUsd, log, {
+        requestId: input.requestId,
+        model: input.model,
+        ranModel: completion.usage.servedModel ?? completion.model ?? null,
+        servedBy: completion.usage.servedBy ?? null,
+      });
       const reservation = await billing.finalize({
         requestId: input.requestId,
-        actualCostUsd: completion.usage.costUsd,
+        actualCostUsd: billed,
         usageSource: "provider_reported",
         providerRequestId,
-        request: observation(context, completion, "completed"),
+        request: observation(context, completion, "completed", attributes),
       });
       return { kind: "finalized", reservation, completion };
     }
@@ -226,12 +236,18 @@ const settleCompletion = async (
     }
     case "uncertain": {
       if (input.uncertainChargeUsd) {
+        const { billed, attributes } = await priced(discounts, input.uncertainChargeUsd, log, {
+          requestId: input.requestId,
+          model: input.model,
+          ranModel: completion.model ?? null,
+          servedBy: null,
+        });
         const reservation = await billing.finalize({
           requestId: input.requestId,
-          actualCostUsd: input.uncertainChargeUsd,
+          actualCostUsd: billed,
           usageSource: "fallback",
           providerRequestId,
-          request: observation(context, completion, "completed"),
+          request: observation(context, completion, "completed", attributes),
         });
         return { kind: "finalized", reservation, completion };
       }
@@ -264,6 +280,7 @@ export async function runMeteredRequest(
   billing: BillingLifecycle,
   input: MeteredRequestInput,
   settlements?: SettlementTracker,
+  discounts?: Discounts,
 ): Promise<MeteredRequest> {
   const reservation = await billing.reserve({
     requestId: input.requestId,
@@ -315,6 +332,7 @@ export async function runMeteredRequest(
         durationMs: elapsedMs(startedAt),
       },
       completion,
+      discounts,
     ),
   );
   // The expiry sweeper releases a hold still `reserved` past its expiry,

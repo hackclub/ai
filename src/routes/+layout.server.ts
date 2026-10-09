@@ -17,6 +17,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
           isIdvVerified: user.isIdvVerified,
           skipIdv: user.skipIdv,
           agentBannerDismissed: user.agentBannerDismissedAt !== null,
+          isAdmin: user.isAdmin,
         }
       : null,
     spending,

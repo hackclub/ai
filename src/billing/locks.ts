@@ -7,6 +7,7 @@ import {
 } from "./errors";
 import type { ReservationState } from "./lifecycle";
 import { Usd } from "./money";
+import { policyAppliesTo } from "./policies";
 import type {
   FundingHold,
   FundingSource,
@@ -154,6 +155,7 @@ export function lockLimitWindows(tx: Tx, accountId: string) {
       AND limit_window.window_start <= now()
       AND limit_window.window_end > now()
       AND policy.enabled
+      AND ${policyAppliesTo(tx, "limit", accountId)}
     ORDER BY policy.id, limit_window.id
     FOR UPDATE OF limit_window
   `;
@@ -180,6 +182,7 @@ export function lockAvailableWindows(tx: Tx, accountId: string) {
       AND funding_window.window_start <= now()
       AND funding_window.window_end > now()
       AND policy.enabled
+      AND ${policyAppliesTo(tx, "funding", accountId)}
     ORDER BY policy.priority, funding_window.window_end, funding_window.id
     FOR UPDATE OF funding_window
   `;

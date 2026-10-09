@@ -1,8 +1,11 @@
 import type postgres from "postgres";
 
+import { policyAppliesTo } from "./policies";
+
 /**
  * Creates the current funding and limit windows for an account's enabled
- * policies, idempotently (`ON CONFLICT DO NOTHING`). Called at the head of
+ * policies, idempotently (`ON CONFLICT DO NOTHING`; the only unique key is
+ * one window per policy, account, generation and period). Called at the head of
  * every reservation and late finalization so the locking reads that follow
  * in the same pipelined round trip find the windows present.
  */
@@ -21,7 +24,7 @@ export function materializeFundingWindows(
         ) AS local_start
       FROM billing_funding_policies AS policy
       WHERE
-        policy.account_id = ${accountId}::uuid
+        ${policyAppliesTo(tx, "funding", accountId)}
         AND policy.enabled
         AND policy.effective_from <= now()
         AND (
@@ -32,7 +35,7 @@ export function materializeFundingWindows(
     windows AS (
       SELECT
         id AS policy_id,
-        account_id,
+        ${accountId}::uuid AS account_id,
         generation,
         local_start AT TIME ZONE timezone AS window_start,
         (
@@ -102,7 +105,7 @@ export function materializeLimitWindows(
         END AS window_end
       FROM billing_limit_policies AS policy
       WHERE
-        policy.account_id = ${accountId}::uuid
+        ${policyAppliesTo(tx, "limit", accountId)}
         AND policy.enabled
         AND policy.effective_from <= now()
         AND (
@@ -120,7 +123,7 @@ export function materializeLimitWindows(
     )
     SELECT
       id,
-      account_id,
+      ${accountId}::uuid,
       generation,
       window_start,
       window_end,

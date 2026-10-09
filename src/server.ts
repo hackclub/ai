@@ -4,16 +4,20 @@ import type { AnyElysia } from "elysia";
 import postgres from "postgres";
 
 import { AnalyticsQueries } from "./analytics/queries";
+import { AdminUsers } from "./admin/users";
 import { createBlobStore } from "./analytics/bodies";
 import { startAnalyticsWorker } from "./analytics/worker";
 import { createApp } from "./app";
 import { hackClubAuthRoutes } from "./auth/hackclub";
 import { createSessions, type Sessions } from "./auth/sessions";
+import { DiscountBook } from "./billing/discounts";
 import { BillingEngine } from "./billing/engine";
+import { GlobalPolicies } from "./billing/policies";
 import { DashboardReadModel } from "./dashboard/read-model";
 import { IpNetworkTable } from "./dashboard/ip-network";
 import type { Env } from "./env";
 import { createHealthCheck } from "./gateway/health";
+import { adminApiRoutes } from "./gateway/admin-api";
 import { keysApiRoutes } from "./gateway/keys-api";
 import { SettlementTracker } from "./gateway/metered-request";
 import { RateLimiter } from "./gateway/rate-limit";
@@ -97,7 +101,10 @@ export const createBackend = (env: Env): Backend => {
     log.error({ err: error, requestId }, "billing settlement failed");
     Sentry.captureException(error, { tags: { requestId, stage: "billing.settle" } });
   };
-  const metered = { sql, billing, settlements, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
+  const discounts = new DiscountBook(sql);
+  const policies = new GlobalPolicies(sql);
+  const adminUsers = new AdminUsers(sql);
+  const metered = { sql, billing, settlements, discounts, enforceIdv: env.enforceIdv, rateLimiter, onSettlementError };
   // One pricing cache shared by the route and the reconciler.
   const replicatePricing = createReplicatePricingSource({});
   // Every provider key a reservation can carry; reconciliation asks it for lookups.
@@ -115,7 +122,7 @@ export const createBackend = (env: Env): Backend => {
   });
   const ipNetworks = new IpNetworkTable();
   void ipNetworks.refresh();
-  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env, ipNetworks });
+  const dashboard = new DashboardReadModel({ sql, analytics: queries, catalog, replicateCatalog, env, ipNetworks, discounts });
 
   const routes: AnyElysia[] = [
     exaRoutes({ ...metered, exaApiKey: env.exaApiKey }),
@@ -143,6 +150,14 @@ export const createBackend = (env: Env): Backend => {
       attributionHeaders,
     }),
     keysApiRoutes({ sql, baseUrl: env.baseUrl, sessions }),
+    adminApiRoutes({
+      baseUrl: env.baseUrl,
+      sessions,
+      users: adminUsers,
+      policies,
+      discounts,
+      servedBy: () => queries.servedBy(),
+    }),
     webhookRoutes({ sql }),
     replicateRoutes({
       ...metered,
@@ -189,6 +204,7 @@ export const createBackend = (env: Env): Backend => {
       reservationFallbackOutputTokens: env.reservationFallbackOutputTokens,
       attributionHeaders,
       rateLimiter,
+      discounts,
       onSettlementError,
     },
     routes,
@@ -211,6 +227,7 @@ export const createBackend = (env: Env): Backend => {
         sql,
         billing,
         providers,
+        discounts,
       },
       log: (message) => log.info({ message }, "billing.reconcile"),
     });

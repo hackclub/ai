@@ -34,6 +34,20 @@ export const openRouterRequestId = (value: unknown): string | null => {
   return response && typeof response.id === "string" ? response.id : null;
 };
 
+/** The upstream OpenRouter routed the request to, e.g. "Anthropic". */
+export const openRouterServedBy = (value: unknown): string | null => {
+  const root = asRecord(value);
+  const provider = root?.provider ?? asRecord(root?.response)?.provider;
+  return typeof provider === "string" && provider.length > 0 ? provider : null;
+};
+
+/** The model OpenRouter ran, which is a fallback when the requested one was unavailable. */
+export const openRouterServedModel = (value: unknown): string | null => {
+  const root = asRecord(value);
+  const model = root?.model ?? asRecord(root?.response)?.model;
+  return typeof model === "string" && model.length > 0 ? model : null;
+};
+
 export const openRouterUsage = (value: unknown): NormalizedUsage | null => {
   const root = asRecord(value);
   if (!root) return null;

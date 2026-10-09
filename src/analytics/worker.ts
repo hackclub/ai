@@ -17,6 +17,7 @@ import {
   type ProviderLookups,
   reconcilePendingReservations,
 } from "../billing/reconciliation";
+import type { Discounts } from "../billing/discounts";
 import { log } from "../log";
 import {
   type RequestEventDrainer,
@@ -32,6 +33,7 @@ export type ReconciliationDependencies = {
   sql: postgres.Sql;
   billing: BillingEngine;
   providers: ProviderLookups;
+  discounts?: Discounts;
 };
 
 export type AnalyticsWorkerOptions = {
@@ -71,6 +73,7 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
         sql: deps.sql,
         billing: deps.billing,
         providers: deps.providers,
+        discounts: deps.discounts,
         log,
       });
       helpers.logger.info(

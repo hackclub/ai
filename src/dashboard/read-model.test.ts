@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import { AnalyticsQueries } from "../analytics/queries";
 import { toClickHouseEvent } from "../analytics/request-event";
@@ -115,7 +115,14 @@ const insertEvents = async (values: ReturnType<typeof event>[]) => {
 };
 
 describe("spending", () => {
-  test("a fresh user shows the policy allowance and nothing spent", async () => {
+  beforeAll(async () => {
+    await sql`
+      INSERT INTO billing_funding_policies (account_id, name, cadence, amount_usd)
+      VALUES (NULL, 'Daily allowance', 'day', 3)
+    `;
+  });
+
+  test("a fresh user shows the global allowance and nothing spent", async () => {
     const user = await signedIn();
     expect(await readModel().spending(user)).toEqual({ spentUsd: "0", limitUsd: "3.000000000000" });
   });
@@ -154,8 +161,15 @@ describe("spending", () => {
       UPDATE billing_funding_windows SET granted_usd = 0 WHERE account_id = ${user.billingAccountId}::uuid
     `;
     expect(windows.count).toBe(1);
-    await sql`UPDATE billing_funding_policies SET amount_usd = 5 WHERE account_id = ${user.billingAccountId}::uuid`;
+    await sql`UPDATE billing_funding_policies SET amount_usd = 5 WHERE account_id IS NULL`;
     expect(await readModel().spending(user)).toEqual({ spentUsd: "0.000000000000", limitUsd: "5.000000000000" });
+    await sql`UPDATE billing_funding_policies SET amount_usd = 3 WHERE account_id IS NULL`;
+  });
+
+  test("an allowance of the user's own replaces the global one", async () => {
+    const created = await createUser(sql, { slackId: `U-read-model-${++users}`, dailyAllowanceUsd: "0.5" });
+    const user = await sessions.user((await sessions.start(created.userId)).split(";")[0] ?? null);
+    expect(await readModel().spending(user!)).toEqual({ spentUsd: "0", limitUsd: "0.500000000000" });
   });
 
 });

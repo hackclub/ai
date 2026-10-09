@@ -10,7 +10,7 @@ export type CreateUserInput = {
   email?: string | null;
   name?: string | null;
   avatar?: string | null;
-  /** Recurring daily allowance in USD. Defaults to $3. */
+  /** A daily allowance of the user's own, in USD, replacing the global allowances. */
   dailyAllowanceUsd?: string;
 };
 
@@ -20,9 +20,8 @@ export type CreatedUser = {
 };
 
 /**
- * Creates the user, its billing account, and a daily allowance in one
- * transaction so an authenticated user can never exist without funding
- * policy rows to reserve against.
+ * Creates the user and its billing account in one transaction. The account
+ * is funded by the global policies unless it is given an allowance of its own.
  */
 export async function createUser(
   sql: Sql,
@@ -48,18 +47,20 @@ export async function createUser(
     `;
     if (!account) throw new Error("PostgreSQL did not return the new account");
 
-    await tx`
-      INSERT INTO billing_funding_policies (
-        account_id, name, cadence, amount_usd, priority
-      )
-      VALUES (
-        ${account.id}::uuid,
-        'Daily allowance',
-        'day',
-        ${input.dailyAllowanceUsd ?? "3"}::numeric,
-        100
-      )
-    `;
+    if (input.dailyAllowanceUsd !== undefined) {
+      await tx`
+        INSERT INTO billing_funding_policies (
+          account_id, name, cadence, amount_usd, priority
+        )
+        VALUES (
+          ${account.id}::uuid,
+          'Daily allowance',
+          'day',
+          ${input.dailyAllowanceUsd}::numeric,
+          100
+        )
+      `;
+    }
 
     return { userId: user.id, billingAccountId: account.id };
   });

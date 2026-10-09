@@ -9,11 +9,14 @@
   import BrainIcon from "remixicon-svelte/icons/brain-line";
   import OcrIcon from "remixicon-svelte/icons/character-recognition-line";
   import SearchIcon from "remixicon-svelte/icons/search-line";
+  import UserIcon from "remixicon-svelte/icons/user-settings-line";
+  import ScalesIcon from "remixicon-svelte/icons/scales-3-line";
+  import DiscountIcon from "remixicon-svelte/icons/price-tag-3-line";
   import { page } from "$app/state";
   import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
   import SidebarUser from "#lib/components/layout/sidebar-user.svelte";
 
-  type SidebarUserData = { name: string | null; email: string | null; avatar: string | null };
+  type SidebarUserData = { name: string | null; email: string | null; avatar: string | null; isAdmin: boolean };
   let { user }: { user: SidebarUserData } = $props();
 
   const items = [
@@ -26,6 +29,12 @@
     { title: "OCR", url: "/ocr", icon: OcrIcon },
     { title: "Exa", url: "/exa", icon: SearchIcon },
     { title: "Global stats", url: "/global", icon: GlobeIcon },
+  ];
+
+  const adminItems = [
+    { title: "Users", url: "/admin/users", icon: UserIcon },
+    { title: "Policies", url: "/admin/policies", icon: ScalesIcon },
+    { title: "Discounts", url: "/admin/discounts", icon: DiscountIcon },
   ];
 
   const isActive = (url: string) => page.url.pathname === url || page.url.pathname.startsWith(`${url}/`);
@@ -51,6 +60,28 @@
         </Sidebar.Menu>
       </Sidebar.GroupContent>
     </Sidebar.Group>
+
+    {#if user.isAdmin}
+      <Sidebar.Group>
+        <Sidebar.GroupLabel>Admin</Sidebar.GroupLabel>
+        <Sidebar.GroupContent>
+          <Sidebar.Menu>
+            {#each adminItems as item (item.url)}
+              <Sidebar.MenuItem>
+                <Sidebar.MenuButton isActive={isActive(item.url)}>
+                  {#snippet child({ props })}
+                    <a href={item.url} {...props}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </a>
+                  {/snippet}
+                </Sidebar.MenuButton>
+              </Sidebar.MenuItem>
+            {/each}
+          </Sidebar.Menu>
+        </Sidebar.GroupContent>
+      </Sidebar.Group>
+    {/if}
 
     <Sidebar.Group>
       <Sidebar.GroupLabel>Resources</Sidebar.GroupLabel>

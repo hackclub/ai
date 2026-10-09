@@ -247,3 +247,15 @@ function assertBalanced(
     );
   }
 }
+
+/**
+ * `cost` less `percentOff` percent, given as the stored NUMERIC(5, 2)
+ * string ("12.50"). Rounds down to the atom.
+ */
+export const applyDiscount = (cost: Usd, percentOff: string): Usd => {
+  const match = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(percentOff);
+  if (!match) throw new TypeError(`Invalid discount: ${percentOff}`);
+  const hundredths = BigInt(match[1]!) * 100n + BigInt((match[2] ?? "").padEnd(2, "0"));
+  if (hundredths > 10_000n) throw new RangeError(`A discount cannot exceed 100%: ${percentOff}`);
+  return Usd.fromAtoms((cost.toAtoms() * (10_000n - hundredths)) / 10_000n);
+};

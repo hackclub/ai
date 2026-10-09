@@ -2,6 +2,7 @@ import type postgres from "postgres";
 
 import { reconciledObservation } from "../analytics/request-event";
 import type { Tables } from "../db-types";
+import { type Discounts, priced } from "./discounts";
 import type { BillingEngine } from "./engine";
 import type { Usd } from "./money";
 
@@ -12,6 +13,8 @@ export type ReconcileOptions = {
   billing: Pick<BillingEngine, "finalize" | "release">;
   /** The lookup for each provider key; a key without one is released after `maxAgeMs`. */
   providers: ProviderLookups;
+  /** Discounts on what requests are billed; absent, everything is billed at cost. */
+  discounts?: Discounts;
   /** Age after which a reservation with nothing to look up is released. */
   maxAgeMs?: number;
   /**
@@ -44,7 +47,7 @@ const DEFAULT_NOT_FOUND_GRACE_MS = 5 * 60 * 1_000;
 
 /** What a provider lookup found for a pending reservation. */
 export type ProviderCharge =
-  | { state: "charged"; costUsd: Usd; model: string; inputTokens: number; outputTokens: number }
+  | { state: "charged"; costUsd: Usd; model: string; inputTokens: number; outputTokens: number; servedBy?: string | null }
   | { state: "not_found" }
   | { state: "not_ready"; detail: string };
 
@@ -81,6 +84,7 @@ export async function reconcilePendingReservations(
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const notFoundGraceMs = options.notFoundGraceMs ?? DEFAULT_NOT_FOUND_GRACE_MS;
   const log = options.log ?? (() => {});
+  const errorLog = { error: (_fields: object, message: string) => log(message) };
   const result: ReconcileResult = { finalized: 0, released: 0, skipped: 0, failed: 0 };
 
   const rows = await options.sql<PendingRow[]>`
@@ -146,15 +150,23 @@ export async function reconcilePendingReservations(
         continue;
       }
 
+      // The reservation does not keep the requested model; the record's stands for it.
+      const { billed, attributes } = await priced(options.discounts, charge.costUsd, errorLog, {
+        requestId: row.request_id,
+        model: charge.model,
+        ranModel: charge.model,
+        servedBy: charge.servedBy ?? null,
+      });
+      const request = reconciledObservation(charge, {
+        endpoint: row.endpoint,
+        reconciliationReason: row.reconciliation_reason,
+      });
       await options.billing.finalize({
         requestId: row.request_id,
-        actualCostUsd: charge.costUsd,
+        actualCostUsd: billed,
         usageSource: "reconciled",
         providerRequestId: row.provider_request_id ?? undefined,
-        request: reconciledObservation(charge, {
-          endpoint: row.endpoint,
-          reconciliationReason: row.reconciliation_reason,
-        }),
+        request: { ...request, attributes: { ...request.attributes, ...attributes } },
       });
       result.finalized += 1;
     } catch (error) {

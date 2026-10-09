@@ -5,6 +5,10 @@ export type NormalizedUsage = {
   outputTokens: number;
   totalTokens: number;
   costUsd: Usd;
+  /** The upstream that served the request, when a router reports it (OpenRouter's `provider`). */
+  servedBy?: string;
+  /** The model that ran, when a router reports it; differs from the requested one after a fallback. */
+  servedModel?: string;
 };
 
 type CompletionCommon = {

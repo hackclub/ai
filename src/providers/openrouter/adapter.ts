@@ -7,7 +7,7 @@ import {
 } from "../metered-body";
 import type { MeteredProviderResponse, NormalizedUsage } from "../types";
 import { ServerSentEventParser } from "../sse-parser";
-import { openRouterRequestId, openRouterUsage } from "./usage";
+import { openRouterRequestId, openRouterServedBy, openRouterServedModel, openRouterUsage } from "./usage";
 
 /**
  * No abort signal: OpenRouter bills a generation even if the client leaves.
@@ -71,6 +71,8 @@ class OpenRouterResponseReader implements UsageReader {
   private requestId: string | null;
   private usage: NormalizedUsage | null = null;
   private error: string | null = null;
+  private servedBy: string | null = null;
+  private servedModel: string | null = null;
   private readonly parser: ServerSentEventParser | null;
   private readonly hasBody: boolean;
 
@@ -140,7 +142,12 @@ class OpenRouterResponseReader implements UsageReader {
 
     return {
       requestId: this.requestId,
-      usage: this.usage,
+      // Streams name the upstream and model on every chunk, not necessarily the usage one.
+      usage: this.usage && {
+        ...this.usage,
+        ...(this.servedBy ? { servedBy: this.servedBy } : {}),
+        ...(this.servedModel ? { servedModel: this.servedModel } : {}),
+      },
       providerError: this.error,
     };
   }
@@ -148,6 +155,8 @@ class OpenRouterResponseReader implements UsageReader {
   private observeValue(value: unknown) {
     this.requestId = openRouterRequestId(value) ?? this.requestId;
     this.usage = openRouterUsage(value) ?? this.usage;
+    this.servedBy = openRouterServedBy(value) ?? this.servedBy;
+    this.servedModel = openRouterServedModel(value) ?? this.servedModel;
     this.error = providerError(value) ?? this.error;
   }
 }

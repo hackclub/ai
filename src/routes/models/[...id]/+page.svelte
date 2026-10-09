@@ -4,7 +4,7 @@
   import { Button } from "#lib/components/ui/button/index.ts";
   import CodeBlock from "#lib/components/code-block.svelte";
   import CopyButton from "#lib/components/copy-button.svelte";
-  import { formatModality, formatPerMillion, providerName, stripMarkdownLinks } from "#lib/format.ts";
+  import { discountedPrice, formatFullTime, formatModality, formatPerMillion, providerName, stripMarkdownLinks } from "#lib/format.ts";
 
   let { data } = $props();
 
@@ -29,18 +29,36 @@
     { key: "python", label: "Python" },
   ] as const;
 
+  /** A discount that applies whichever upstream serves the request changes the price shown. */
+  const modelDiscount = $derived(data.discounts.find((discount) => discount.servedBy === null) ?? null);
+  /** Discounts that apply only when one upstream serves the request are shown beside the price instead. */
+  const upstreamDiscounts = $derived(
+    data.discounts.filter(
+      (discount) => discount.servedBy !== null && Number(discount.percentOff) > Number(modelDiscount?.percentOff ?? 0),
+    ),
+  );
+
+  const price = (pricePerToken: string | undefined) => {
+    if (!modelDiscount) return { value: formatPerMillion(pricePerToken), was: null };
+    const full = formatPerMillion(pricePerToken);
+    const value = formatPerMillion(discountedPrice(pricePerToken, modelDiscount.percentOff));
+    return { value, was: value === full ? null : full };
+  };
+  const input = $derived(price(model.pricing?.prompt));
+  const output = $derived(price(model.pricing?.completion));
+
   const facts = $derived(
     modelType === "embedding"
       ? [
           { label: "Context window", value: model.context_length ? model.context_length.toLocaleString() : "N/A", note: "tokens" },
-          { label: "Input price", value: formatPerMillion(model.pricing?.prompt), note: "per 1M tokens" },
+          { label: "Input price", value: input.value, was: input.was, note: "per 1M tokens" },
           { label: "Modality", value: formatModality(model) },
           { label: "Tokenizer", value: model.architecture?.tokenizer || "Unknown" },
         ]
       : [
           { label: "Context window", value: model.context_length ? model.context_length.toLocaleString() : "N/A", note: "tokens" },
-          { label: "Input price", value: formatPerMillion(model.pricing?.prompt), note: "per 1M tokens" },
-          { label: "Output price", value: formatPerMillion(model.pricing?.completion), note: "per 1M tokens" },
+          { label: "Input price", value: input.value, was: input.was, note: "per 1M tokens" },
+          { label: "Output price", value: output.value, was: output.was, note: "per 1M tokens" },
           { label: "Max output", value: maxOutput, note: "tokens" },
         ],
   );
@@ -68,11 +86,38 @@
     <CopyButton text={model.id} class="shrink-0" />
   </div>
 
+  {#if modelDiscount || upstreamDiscounts.length > 0}
+    <div class="mt-8 space-y-2">
+      {#if modelDiscount}
+        <div class="bg-primary/5 border-primary/20 rounded-lg border px-4 py-3 text-sm">
+          <p class="font-medium">{Number(modelDiscount.percentOff)}% off this model</p>
+          <p class="text-muted-foreground mt-0.5">
+            {modelDiscount.note ?? "The prices below include the discount."}
+            {#if modelDiscount.endsAt}Until {formatFullTime(modelDiscount.endsAt)}.{/if}
+          </p>
+        </div>
+      {/if}
+      {#each upstreamDiscounts as discount, index (index)}
+        <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          <p class="font-medium">{Number(discount.percentOff)}% off, only when {discount.servedBy} serves the request</p>
+          <p class="text-muted-foreground mt-0.5">
+            {#if discount.note}{discount.note}{/if}
+            Requests routed to any other provider are charged the full price below.
+            {#if discount.endsAt}Until {formatFullTime(discount.endsAt)}.{/if}
+          </p>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <dl class="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4">
     {#each facts as fact (fact.label)}
       <div class="bg-card flex flex-col gap-1 px-4 py-4 sm:px-5">
         <dt class="text-muted-foreground text-xs font-medium">{fact.label}</dt>
-        <dd class="text-xl font-semibold tracking-tight tabular-nums">{fact.value}</dd>
+        <dd class="text-xl font-semibold tracking-tight tabular-nums">
+          {fact.value}
+          {#if "was" in fact && fact.was}<s class="text-muted-foreground ms-1 text-sm font-normal">{fact.was}</s>{/if}
+        </dd>
         {#if fact.note}<dd class="text-muted-foreground text-xs">{fact.note}</dd>{/if}
       </div>
     {/each}
