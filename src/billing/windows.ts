@@ -63,7 +63,7 @@ export function materializeFundingWindows(
       window_end,
       amount_usd
     FROM windows
-    ON CONFLICT (policy_id, generation, window_start) DO NOTHING
+    ON CONFLICT DO NOTHING
   `;
 }
 
@@ -126,6 +126,6 @@ export function materializeLimitWindows(
       window_end,
       limit_usd
     FROM policies
-    ON CONFLICT (policy_id, generation, window_start) DO NOTHING
+    ON CONFLICT DO NOTHING
   `;
 }
