@@ -30,16 +30,18 @@ limit (`overage_usd`).
 
 A policy with no `account_id` is global: it applies to every account that
 has no enabled policy of its own of the same kind, and opens one window per
-account. `policyAppliesTo` (`policies.ts`) is that rule; window
-materialization and the funding and limit locks all use it, so creating a
-per-account policy replaces the global ones at once. Admins change global
+account. A global limit applies to every account, alongside any limit of
+its own: limits only restrict. `policyAppliesTo` (`policies.ts`) is that
+rule; window materialization and the funding and limit locks all use it, so
+creating a per-account allowance replaces the global ones at once. Admins change global
 policies through `GlobalPolicies`; a new amount also rewrites the current
 windows (an allowance never below what a window already used).
 
 Discounts (`discounts.ts`) lower the cost passed to `finalize`, never the
 reservation, because the upstream that will serve a request is not known
 when it is reserved. A discount naming an upstream applies only when that
-upstream served the request.
+upstream served the request, and a model is matched against the model that
+ran, not the one requested. Discounts apply only to OpenRouter requests.
 
 ## One request, start to finish
 

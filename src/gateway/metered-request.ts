@@ -208,6 +208,7 @@ const settleCompletion = async (
     case "complete": {
       const { billed, attributes } = await priced(discounts, completion.usage.costUsd, log, {
         requestId: input.requestId,
+        provider: input.provider,
         model: input.model,
         ranModel: completion.usage.servedModel ?? completion.model ?? null,
         servedBy: completion.usage.servedBy ?? null,
@@ -238,6 +239,7 @@ const settleCompletion = async (
       if (input.uncertainChargeUsd) {
         const { billed, attributes } = await priced(discounts, input.uncertainChargeUsd, log, {
           requestId: input.requestId,
+          provider: input.provider,
           model: input.model,
           ranModel: completion.model ?? null,
           servedBy: null,

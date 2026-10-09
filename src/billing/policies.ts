@@ -15,31 +15,35 @@ const TABLES = {
 
 /**
  * SQL condition: the policy aliased `policy` applies to the account. An
- * account policy always applies to its own account. A global policy (no
- * account) applies to every account with no enabled, current policy of its
- * own of the same kind, so a per-account allowance replaces the global ones
- * instead of adding to them.
+ * account policy always applies to its own account. A global allowance
+ * applies to every account with no enabled, current allowance of its own,
+ * so a per-account allowance replaces the global ones instead of adding to
+ * them. A global limit applies to every account: limits only ever
+ * restrict, so one of the account's own never lifts it.
  */
 export const policyAppliesTo = (
   sql: Sql | postgres.TransactionSql,
   kind: PolicyKind,
   /** An account id, or a fragment naming an account id column. */
   accountId: string | postgres.PendingQuery<postgres.Row[]>,
-) => sql`(
-  policy.account_id = ${accountId}::uuid
-  OR (
-    policy.account_id IS NULL
-    AND NOT EXISTS (
-      SELECT 1
-      FROM ${sql(TABLES[kind])} AS own
-      WHERE
-        own.account_id = ${accountId}::uuid
-        AND own.enabled
-        AND own.effective_from <= now()
-        AND (own.effective_until IS NULL OR own.effective_until > now())
-    )
-  )
-)`;
+) =>
+  kind === "limit"
+    ? sql`(policy.account_id = ${accountId}::uuid OR policy.account_id IS NULL)`
+    : sql`(
+        policy.account_id = ${accountId}::uuid
+        OR (
+          policy.account_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM billing_funding_policies AS own
+            WHERE
+              own.account_id = ${accountId}::uuid
+              AND own.enabled
+              AND own.effective_from <= now()
+              AND (own.effective_until IS NULL OR own.effective_until > now())
+          )
+        )
+      )`;
 
 const CADENCES = {
   funding: ["day", "week", "month", "year"],
@@ -58,7 +62,7 @@ export type GlobalPolicy = {
   enabled: boolean;
   effectiveFrom: Date;
   effectiveUntil: Date | null;
-  /** Accounts with a policy of their own of this kind, which this one does not reach. */
+  /** Accounts with an allowance of their own, which a global allowance does not reach; 0 for limits. */
   overriddenAccounts: number;
 };
 
@@ -117,8 +121,7 @@ export class GlobalPolicies {
       this.sql<PolicyRow[]>`
         SELECT
           id, name, cadence, timezone, enabled, effective_from, effective_until,
-          limit_usd::text AS amount_usd, NULL::int AS priority,
-          (SELECT count(DISTINCT account_id)::int FROM billing_limit_policies WHERE account_id IS NOT NULL AND enabled) AS overridden_accounts
+          limit_usd::text AS amount_usd, NULL::int AS priority, 0 AS overridden_accounts
         FROM billing_limit_policies
         WHERE account_id IS NULL
         ORDER BY effective_until IS NOT NULL, created_at

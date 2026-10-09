@@ -153,6 +153,7 @@ export async function reconcilePendingReservations(
       // The reservation does not keep the requested model; the record's stands for it.
       const { billed, attributes } = await priced(options.discounts, charge.costUsd, errorLog, {
         requestId: row.request_id,
+        provider: row.provider,
         model: charge.model,
         ranModel: charge.model,
         servedBy: charge.servedBy ?? null,

@@ -55,20 +55,14 @@ const modelMatches = (pattern: string, model: string) => {
   return model === pattern || model.split(":")[0] === pattern;
 };
 
-const vendor = (model: string) => model.split("/")[0];
-
 /**
- * Providers report the model that ran under its canonical slug
- * ("anthropic/claude-4.5-sonnet-20250929"), not the id that was requested.
- * The requested id stands for it when both are the same vendor's.
+ * The model a discount is checked against: the one that ran when the
+ * provider reports it. A request that fell back to another model, even the
+ * same vendor's, is not discounted as the requested one; a caller can force
+ * that fallback.
  */
-const ranModelMatches = (pattern: string, request: { model: string; ranModel: string | null }) => {
-  if (request.ranModel === null) return modelMatches(pattern, request.model);
-  return (
-    modelMatches(pattern, request.ranModel) ||
-    (vendor(request.ranModel) === vendor(request.model) && modelMatches(pattern, request.model))
-  );
-};
+const ranModelMatches = (pattern: string, request: { model: string; ranModel: string | null }) =>
+  modelMatches(pattern, request.ranModel ?? request.model);
 
 const inEffect = (discount: Discount, now: Date) =>
   discount.enabled && discount.startsAt <= now && (discount.endsAt === null || discount.endsAt > now);
@@ -143,8 +137,7 @@ export class DiscountBook {
    * The discount on a request's cost. One naming an upstream applies only
    * when that upstream served the request; a request whose upstream is
    * unknown gets only discounts that name none. The model is the one that
-   * ran: a request that fell back to another vendor's model is not
-   * discounted as the requested one.
+   * ran, so a fallback is not discounted as the requested model.
    */
   async charge(
     cost: Usd,
@@ -235,10 +228,12 @@ export const priced = async (
   discounts: Discounts | undefined,
   cost: Usd,
   log: { error: (fields: object, message: string) => void },
-  request: { requestId: string; model: string; ranModel: string | null; servedBy: string | null },
+  request: { requestId: string; provider: string; model: string; ranModel: string | null; servedBy: string | null },
 ): Promise<{ billed: Usd; attributes: Record<string, string> }> => {
   const attributes: Record<string, string> = request.servedBy ? { served_by: request.servedBy } : {};
-  if (!discounts) return { billed: cost, attributes };
+  // Discounts price the OpenRouter catalog the models pages list. Other
+  // providers' ids can share its owner/name shape (Replicate's do).
+  if (!discounts || request.provider !== "openrouter") return { billed: cost, attributes };
   try {
     const applied = await discounts.charge(cost, request);
     if (!applied) return { billed: cost, attributes };

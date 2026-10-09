@@ -32,7 +32,7 @@ const discounts = new DiscountBook(sql);
 // Each model reserves about $0.002: 1,000 output tokens at $0.000002.
 const modelListing = () =>
   Response.json({
-    data: ["anthropic/claude-test", "openai/gpt-test"].map((id) => ({
+    data: ["anthropic/claude-test", "anthropic/claude-pricey", "openai/gpt-test"].map((id) => ({
       id,
       pricing: { prompt: "0.000001", completion: "0.000002", request: "0" },
       top_provider: { max_completion_tokens: 1000 },
@@ -225,6 +225,24 @@ describe("global policies", () => {
     expect(actions.every((event) => event.actor_user_id === admin.userId)).toBeTrue();
   });
 
+  test("a limit of the account's own does not lift a global limit", async () => {
+    const own = await person({ allowanceUsd: "1" });
+    await sql`
+      INSERT INTO billing_limit_policies (account_id, name, cadence, limit_usd)
+      VALUES (${own.accountId}::uuid, 'Generous cap', 'day', 100)
+    `;
+    const created = await adminCall("POST", "/policies/limit", { name: "Safety cap", cadence: "day", amountUsd: "0.0001", enabled: true });
+    const { id } = (await created.json()) as { id: string };
+
+    try {
+      nextUpstream = reply(0.001, { provider: "Anthropic" });
+      expect((await chat(own.apiKey)).status).toBe(429);
+      expect(await billingRecords(sql, own.accountId)).toEqual([]);
+    } finally {
+      expect((await adminCall("DELETE", `/policies/limit/${id}`)).status).toBe(200);
+    }
+  });
+
   test("an unused policy is deleted outright", async () => {
     const created = await adminCall("POST", "/policies/funding", {
       name: "Never used",
@@ -335,20 +353,24 @@ describe("discounts", () => {
     expect([record?.providerRequestId, record?.actualCostUsd]).toEqual([id, "0.000000000000"]);
   });
 
-  test("a model discount does not follow a fallback to another vendor's model", async () => {
+  test("a model discount applies to the model that ran, never to a fallback", async () => {
     const { apiKey, accountId } = await user;
-    const created = await adminCall("POST", "/discounts", { modelPattern: "anthropic/*", percentOff: "50", enabled: true });
+    const created = await adminCall("POST", "/discounts", { modelPattern: "anthropic/claude-test", percentOff: "50", enabled: true });
     expect(created.status).toBe(200);
 
+    // The discounted model ran.
+    nextUpstream = reply(0.002, { provider: "Google", model: "anthropic/claude-test" });
+    await chat(apiKey);
+    // A caller who forces a fallback to another model, even the same vendor's, pays its full price.
+    nextUpstream = reply(0.002, { provider: "Google", model: "anthropic/claude-pricey" });
+    await chat(apiKey, "anthropic/claude-test", { models: ["anthropic/claude-pricey"] });
     nextUpstream = reply(0.002, { provider: "OpenAI", model: "openai/gpt-test" });
     await chat(apiKey, "anthropic/claude-test", { models: ["openai/gpt-test"] });
-    // OpenRouter reports the dated slug of the model it ran; same vendor, so it is the requested model.
-    nextUpstream = reply(0.002, { provider: "Google", model: "anthropic/claude-test-20260101" });
-    await chat(apiKey);
 
-    const [fallback, renamed] = (await billingRecords(sql, accountId)).slice(-2);
-    expect(fallback?.actualCostUsd).toBe("0.002000000000");
-    expect(renamed?.actualCostUsd).toBe("0.001000000000");
+    const [ran, sameVendor, otherVendor] = (await billingRecords(sql, accountId)).slice(-3);
+    expect(ran?.actualCostUsd).toBe("0.001000000000");
+    expect(sameVendor?.actualCostUsd).toBe("0.002000000000");
+    expect(otherVendor?.actualCostUsd).toBe("0.002000000000");
   });
 
   test("reconciliation applies the discount for the upstream the generation record names", async () => {

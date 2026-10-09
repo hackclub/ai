@@ -55,13 +55,13 @@ The engine does not have a built-in daily limit.
   expiration.
 - A **limit policy** constrains total spend over a period without itself
   supplying funds. Several limits may apply simultaneously.
-- A funding or limit policy without an account is **global**: it applies to
-  every account with no enabled policy of its own of that kind, in a window
-  per account. An account's own policy replaces the global ones; it does
-  not add to them.
-- A **discount** lowers the billed cost of a request at settlement. One that
-  names an upstream provider applies only when that provider served the
-  request. Reservations are never discounted. Billed events keep the
+- A funding or limit policy without an account is **global**, with a window
+  per account. A global allowance funds every account with no enabled
+  allowance of its own, which replaces it. A global limit caps every
+  account, alongside any limit of its own.
+- A **discount** lowers the billed cost of an OpenRouter request at
+  settlement. It matches the model that ran, and one that names an upstream
+  provider applies only when that provider served the request. Reservations are never discounted. Billed events keep the
   provider's cost, the upstream (`served_by`) and the discount applied.
 - A **reservation** temporarily allocates funding and holds capacity in every
   applicable limit window before an upstream request is sent.

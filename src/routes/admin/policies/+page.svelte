@@ -176,11 +176,11 @@
         </tbody>
       </table>
     </div>
-    {#if policies[0] && policies[0].overriddenAccounts > 0}
+    {#if kind === "funding" && policies[0] && policies[0].overriddenAccounts > 0}
       <p class="text-muted-foreground mt-2 text-xs">
         {policies[0].overriddenAccounts.toLocaleString()}
         {policies[0].overriddenAccounts === 1 ? "account has" : "accounts have"}
-        {kind === "funding" ? "an allowance" : "a limit"} of their own, which replaces these.
+        an allowance of their own, which replaces these.
       </p>
     {/if}
   {/if}
@@ -224,7 +224,7 @@
         <Dialog.Description>
           {form.kind === "funding"
             ? "Applies to every user without an allowance of their own."
-            : "Applies to every user without a limit of their own."}
+            : "Applies to every user, on top of any limit of their own."}
         </Dialog.Description>
       </Dialog.Header>
 

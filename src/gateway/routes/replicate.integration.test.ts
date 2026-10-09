@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
 import { allowedReplicateModelVersions } from "../../config/allowed-replicate-model-versions";
+import { DiscountBook } from "../../billing/discounts";
 import { Usd } from "../../billing/money";
 import type { ReplicatePricing } from "../../providers/replicate/pricing";
 import { testDatabase } from "../../test/database";
@@ -78,10 +79,12 @@ describe("Replicate routes with PostgreSQL", () => {
     );
   }) as typeof fetch;
 
+  const discounts = new DiscountBook(sql);
   const app = () =>
     replicateRoutes({
       sql,
       ...testBilling(sql),
+      discounts,
       replicateApiKey: "replicate-secret",
       enforceIdv: false,
       fetch: fakeFetch,
@@ -102,8 +105,9 @@ describe("Replicate routes with PostgreSQL", () => {
       }),
     );
 
+  let userId: string;
   beforeAll(async () => {
-    ({ accountId, apiKey } = await createTestAccount(sql, "replicate"));
+    ({ accountId, apiKey, userId } = await createTestAccount(sql, "replicate"));
   });
 
   const latestReservation = async (wantState = "finalized") => {
@@ -207,6 +211,28 @@ describe("Replicate routes with PostgreSQL", () => {
     expect(row?.state).toBe("finalized");
     expect(row?.actual_cost_usd).toBe(Usd.parse("0.0005").toString());
     expect(upstream.some((c) => c.url.endsWith(`/v1/predictions/${created.id}`))).toBeTrue();
+  });
+
+  test("a discount on models of the same name does not reach Replicate", async () => {
+    // Discounts price the OpenRouter catalog; Replicate's ids share its owner/name shape.
+    const discount = await discounts.create(userId, {
+      modelPattern: `${owner}/*`,
+      servedBy: null,
+      percentOff: "100",
+      note: null,
+      enabled: true,
+      endsAt: null,
+    });
+    try {
+      const response = await call(`/models/${owner}/${name}:${knownVersion}/predictions`, {
+        method: "POST",
+        body: JSON.stringify({ input: { text: "hi" } }),
+      });
+      expect(response.status).toBe(201);
+      expect((await latestReservation())?.actual_cost_usd).toBe(Usd.parse("0.0005").toString());
+    } finally {
+      await discounts.remove(userId, discount);
+    }
   });
 
   test("decides access from 'version' alone on the bare predictions route", async () => {
