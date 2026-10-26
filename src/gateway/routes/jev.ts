@@ -52,10 +52,16 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     return principal;
   };
 
-  const upstreamHeaders = () => ({
-    "content-type": "application/json",
-    authorization: `Bearer ${deps.typesafeApiKey}`,
-  });
+  const upstreamHeaders = (request: Request) => {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      authorization: `Bearer ${deps.typesafeApiKey}`,
+    };
+    for (const [name, value] of request.headers) {
+      if (name.startsWith("typesafe-danger-zone-")) headers[name] = value;
+    }
+    return headers;
+  };
 
   const systemOne = async (request: Request) => {
     const rawBody = await request.text();
@@ -79,7 +85,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
         const metered = await executeJsonProvider({
           fetch: deps.fetch,
           url: `${baseUrl}/v1/systemone`,
-          init: { method: "POST", headers: upstreamHeaders(), body: requestBody },
+          init: { method: "POST", headers: upstreamHeaders(request), body: requestBody },
           extractCost: (response) => jevCost(response, inputPrice),
           extractTokens: jevTokens,
         });
@@ -103,7 +109,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     await authorize(request, "");
     const upstream = await (deps.fetch ?? fetch)(`${baseUrl}/v1/models`, {
       method: "GET",
-      headers: upstreamHeaders(),
+      headers: upstreamHeaders(request),
       signal: request.signal,
     });
     const headers = forwardableHeaders(upstream.headers);

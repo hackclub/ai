@@ -9,18 +9,19 @@ const { sql } = await testDatabase();
 describe("jev route", () => {
   const { billing, settlements, settled } = testBilling(sql);
 
-  const call = async (label: string, upstream: () => Response, model?: string) => {
+  const call = async (label: string, upstream: () => Response, model?: string, headers: Record<string, string> = {}) => {
     const account = await createTestAccount(sql, `jev-${label}`);
-    const { fetch } = fakeFetch(upstream);
+    const { fetch, upstream: sent } = fakeFetch(upstream);
     const app = jevRoutes({ sql, billing, settlements, enforceIdv: false, typesafeApiKey: "ts-key", fetch });
     const response = await app.handle(
       post("/proxy/v1/jev/systemone", { input: "hi", ...(model ? { model } : {}) }, {
         authorization: `Bearer ${account.apiKey}`,
+        ...headers,
       }),
     );
     await response.text();
     await settled();
-    return { account, response, record: await onlyBillingRecord(sql, account.accountId) };
+    return { account, response, sent, record: await onlyBillingRecord(sql, account.accountId) };
   };
 
   test("a successful response records the versioned model it reports", async () => {
@@ -44,6 +45,16 @@ describe("jev route", () => {
     expect(record.state).toBe("finalized");
     expect(record.event?.model).toBe("jev/jev-latest");
     expect(record.event?.outcome).toBe("provider_error");
+  });
+
+  test("forwards TypeSafe's danger zone opt-in headers and the gateway's own key", async () => {
+    const { sent } = await call("images", () => Response.json({ model: "jev-1.13.0", output: "hi" }), undefined, {
+      "TypeSafe-Danger-Zone-Images": "true",
+      "x-other": "dropped",
+    });
+    expect(sent[0]?.headers.get("typesafe-danger-zone-images")).toBe("true");
+    expect(sent[0]?.headers.get("x-other")).toBeNull();
+    expect(sent[0]?.headers.get("authorization")).toBe("Bearer ts-key");
   });
 
   test("a success without usable usage is charged the hold", async () => {
