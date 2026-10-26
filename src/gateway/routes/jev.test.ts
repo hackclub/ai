@@ -57,6 +57,48 @@ describe("jev route", () => {
     expect(sent[0]?.headers.get("authorization")).toBe("Bearer ts-key");
   });
 
+  test("forwards a multipart image upload with the model defaulted", async () => {
+    const account = await createTestAccount(sql, "jev-multipart");
+    let sent: Request | undefined;
+    const app = jevRoutes({
+      sql,
+      billing,
+      settlements,
+      enforceIdv: false,
+      typesafeApiKey: "ts-key",
+      fetch: async (input, init) => {
+        sent = new Request(String(input), init);
+        return Response.json({ model: "jev-1.13.0", output: "hi", usage: { input_tokens: 1_000_000, output_tokens: 0 } });
+      },
+    });
+    const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00, 0xd8]);
+    const form = new FormData();
+    form.append("request", JSON.stringify({ state: { door: "d" }, assets: { d: { part: "door" } } }));
+    form.append("door", new File([image], "door.png", { type: "image/png" }));
+    const response = await app.handle(
+      new Request("http://gateway.test/proxy/v1/jev/v1/systemone", {
+        method: "POST",
+        headers: { authorization: `Bearer ${account.apiKey}`, "TypeSafe-Danger-Zone-Images": "true" },
+        body: form,
+      }),
+    );
+    await response.text();
+    await settled();
+
+    expect(response.status).toBe(200);
+    expect(sent?.headers.get("content-type")).toStartWith("multipart/form-data; boundary=");
+    expect(sent?.headers.get("typesafe-danger-zone-images")).toBe("true");
+    const upstream = await sent!.formData();
+    expect([...upstream.keys()]).toEqual(["request", "door"]);
+    expect(JSON.parse(String(upstream.get("request")))).toEqual({
+      model: "jev-latest",
+      state: { door: "d" },
+      assets: { d: { part: "door" } },
+    });
+    expect(new Uint8Array(await (upstream.get("door") as File).arrayBuffer())).toEqual(image);
+    expect((await onlyBillingRecord(sql, account.accountId)).actualCostUsd).toBe("0.042000000000");
+  });
+
   test("a success without usable usage is charged the hold", async () => {
     const { response, record } = await call("no-usage", () => Response.json({ model: "jev-1.13.0", output: "hi" }));
     expect(response.status).toBe(200);

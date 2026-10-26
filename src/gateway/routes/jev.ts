@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
-import { executeJsonProvider } from "../../providers/json-provider";
+import { meterJsonResponse } from "../../providers/json-provider";
 import { forwardableHeaders } from "../../providers/response-headers";
 import {
   DEFAULT_JEV_MODEL,
@@ -53,10 +53,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
   };
 
   const upstreamHeaders = (request: Request) => {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      authorization: `Bearer ${deps.typesafeApiKey}`,
-    };
+    const headers: Record<string, string> = { authorization: `Bearer ${deps.typesafeApiKey}` };
     for (const [name, value] of request.headers) {
       if (name.startsWith("typesafe-danger-zone-")) headers[name] = value;
     }
@@ -64,7 +61,17 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
   };
 
   const systemOne = async (request: Request) => {
-    const rawBody = await request.text();
+    const form = request.headers.get("content-type")?.startsWith("multipart/form-data")
+      ? await request.formData().catch(() => {
+          throw new HttpError(400, "Request body must be valid multipart/form-data");
+        })
+      : null;
+    const requestPart = form?.get("request");
+    const rawBody = !form
+      ? await request.text()
+      : typeof requestPart === "string"
+        ? requestPart
+        : ((await requestPart?.text()) ?? "");
     const principal = await authorize(request, rawBody);
 
     const body = parseJsonObject(rawBody);
@@ -74,6 +81,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     }
     body.model = model;
     const requestBody = JSON.stringify(body);
+    form?.set("request", requestBody);
 
     const input: ProviderRouteInput = {
       provider: TYPESAFE,
@@ -82,10 +90,15 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
       estimatedCostUsd: reservation,
       uncertainChargeUsd: reservation,
       execute: async () => {
-        const metered = await executeJsonProvider({
-          fetch: deps.fetch,
-          url: `${baseUrl}/v1/systemone`,
-          init: { method: "POST", headers: upstreamHeaders(request), body: requestBody },
+        const upstream = await (deps.fetch ?? fetch)(`${baseUrl}/v1/systemone`, {
+          method: "POST",
+          headers: form
+            ? upstreamHeaders(request)
+            : { ...upstreamHeaders(request), "content-type": "application/json" },
+          body: form ?? requestBody,
+        });
+        const metered = await meterJsonResponse(upstream, {
+          init: { body: requestBody },
           extractCost: (response) => jevCost(response, inputPrice),
           extractTokens: jevTokens,
         });
