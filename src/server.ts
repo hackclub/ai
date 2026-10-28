@@ -136,6 +136,7 @@ export const createBackend = (env: Env): Backend => {
       ...metered,
       typesafeApiKey: env.typesafeApiKey,
       inputPricePerMillionTokensUsd: env.typesafeInputPricePerMillionUsd,
+      maxBodyBytes: env.maxRequestBodyBytes,
     }),
     moderationRoutes({
       ...metered,
