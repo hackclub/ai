@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { testDatabase } from "../../test/database";
 import { jevRoutes } from "./jev";
-import { createTestAccount, fakeFetch, onlyBillingRecord, post, testBilling } from "./test-harness";
+import { billingRecords, createTestAccount, fakeFetch, onlyBillingRecord, post, testBilling } from "./test-harness";
 
 const { sql } = await testDatabase();
 
@@ -97,6 +97,64 @@ describe("jev route", () => {
     });
     expect(new Uint8Array(await (upstream.get("door") as File).arrayBuffer())).toEqual(image);
     expect((await onlyBillingRecord(sql, account.accountId)).actualCostUsd).toBe("0.042000000000");
+  });
+
+  test("decodes a zstd multipart upload as the TypeSafe SDK sends it", async () => {
+    const account = await createTestAccount(sql, "jev-zstd");
+    let sent: Request | undefined;
+    const app = jevRoutes({
+      sql,
+      billing,
+      settlements,
+      enforceIdv: false,
+      typesafeApiKey: "ts-key",
+      fetch: async (input, init) => {
+        sent = new Request(String(input), init);
+        return Response.json({ model: "jev-1.13.0", output: "hi", usage: { input_tokens: 1_000_000, output_tokens: 0 } });
+      },
+    });
+    const image = crypto.getRandomValues(new Uint8Array(4096));
+    const form = new FormData();
+    form.append("request", JSON.stringify({ state: { door: "d" }, assets: { d: { part: "door" } } }));
+    form.append("door", new File([image], "door.png", { type: "image/png" }));
+    const encoded = new Response(form);
+    const response = await app.handle(
+      new Request("http://gateway.test/proxy/v1/jev/v1/systemone", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${account.apiKey}`,
+          "content-type": encoded.headers.get("content-type")!,
+          "content-encoding": "zstd",
+        },
+        body: new Uint8Array(Bun.zstdCompressSync(await encoded.bytes())),
+      }),
+    );
+    await response.text();
+    await settled();
+
+    expect(response.status).toBe(200);
+    expect(sent?.headers.get("content-encoding")).toBeNull();
+    const upstream = await sent!.formData();
+    expect(JSON.parse(String(upstream.get("request"))).model).toBe("jev-latest");
+    expect(new Uint8Array(await (upstream.get("door") as File).arrayBuffer())).toEqual(image);
+    expect((await onlyBillingRecord(sql, account.accountId)).actualCostUsd).toBe("0.042000000000");
+  });
+
+  test("rejects a zstd body that decodes past the body limit before dispatch", async () => {
+    const account = await createTestAccount(sql, "jev-zstd-bomb");
+    const { fetch, upstream } = fakeFetch(() => Response.json({ model: "jev-1.13.0", output: "hi" }));
+    const app = jevRoutes({ sql, billing, settlements, enforceIdv: false, typesafeApiKey: "ts-key", fetch, maxBodyBytes: 64 * 1024 });
+    const response = await app.handle(
+      new Request("http://gateway.test/proxy/v1/jev/systemone", {
+        method: "POST",
+        headers: { authorization: `Bearer ${account.apiKey}`, "content-type": "application/json", "content-encoding": "zstd" },
+        body: new Uint8Array(Bun.zstdCompressSync(JSON.stringify({ input: "a".repeat(1024 * 1024) }))),
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(upstream).toHaveLength(0);
+    expect(await billingRecords(sql, account.accountId)).toEqual([]);
   });
 
   test("a success without usable usage is charged the hold", async () => {

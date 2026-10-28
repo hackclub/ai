@@ -1,3 +1,6 @@
+import { promisify } from "node:util";
+import { zstdDecompress } from "node:zlib";
+
 import { Elysia } from "elysia";
 
 import { Usd } from "../../billing/money";
@@ -33,6 +36,30 @@ export type JevRouteDependencies = MeteredRouteDependencies & {
    */
   inputPricePerMillionTokensUsd?: string;
   baseUrl?: string;
+  /** Largest request body after decompression; defaults to 20 MiB. */
+  maxBodyBytes?: number;
+};
+
+const unzstd = promisify(zstdDecompress);
+
+/**
+ * The TypeSafe SDK zstd-compresses bodies of 1 KiB or more, multipart
+ * included. Decoded up front so the JSON can be screened and image parts are
+ * forwarded intact; the cap stops a small body expanding without bound.
+ */
+const decodeBody = async (request: Request, maxBytes: number) => {
+  const encoding = request.headers.get("content-encoding")?.trim().toLowerCase();
+  if (!encoding || encoding === "identity") return request;
+  if (encoding !== "zstd") throw new HttpError(415, `Unsupported Content-Encoding ${encoding}`);
+  const body = await unzstd(await request.bytes(), { maxOutputLength: maxBytes }).catch((error: { code?: string }) => {
+    throw error.code === "ERR_BUFFER_TOO_LARGE"
+      ? new HttpError(413, `Request body exceeds the ${Math.floor(maxBytes / 1024 / 1024)} MiB limit`)
+      : new HttpError(400, "Request body is not valid zstd");
+  });
+  const headers = new Headers(request.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  return new Request(request.url, { method: request.method, headers, body: new Uint8Array(body), signal: request.signal });
 };
 
 /**
@@ -46,6 +73,7 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
   const reservation = Usd.parse(deps.reservationUsd ?? "0.02");
   const inputPrice = Usd.parse(deps.inputPricePerMillionTokensUsd ?? "0.042");
   const baseUrl = (deps.baseUrl ?? "https://api.typesafe.ai").replace(/\/$/, "");
+  const maxBodyBytes = deps.maxBodyBytes ?? 20 * 1024 * 1024;
 
   const authorize = async (request: Request, rawBody: string) => {
     const principal = await authorizeProviderRequest(deps, rateLimiter, request, rawBody);
@@ -60,7 +88,8 @@ export const jevRoutes = (deps: JevRouteDependencies) => {
     return headers;
   };
 
-  const systemOne = async (request: Request) => {
+  const systemOne = async (received: Request) => {
+    const request = await decodeBody(received, maxBodyBytes);
     const form = request.headers.get("content-type")?.startsWith("multipart/form-data")
       ? await request.formData().catch(() => {
           throw new HttpError(400, "Request body must be valid multipart/form-data");
