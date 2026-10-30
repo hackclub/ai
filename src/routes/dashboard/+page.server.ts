@@ -5,7 +5,6 @@ import { requireUser } from "#lib/server/page.ts";
 import { randomQuote } from "#lib/server/quotes.ts";
 
 const LAST_QUOTE_COOKIE = "last_quote";
-const PLAYER_TWO_BANNER_COOKIE = "playertwo_banner_dismissed";
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
   const user = requireUser(locals);
@@ -17,10 +16,5 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
   const lastIndex = Number.parseInt(cookies.get(LAST_QUOTE_COOKIE) ?? "", 10);
   const quote = randomQuote(Number.isNaN(lastIndex) ? undefined : lastIndex);
   cookies.set(LAST_QUOTE_COOKIE, String(quote.index), { path: "/dashboard", httpOnly: true, sameSite: "lax" });
-  return {
-    stats,
-    curlExample,
-    quote: quote.text,
-    playerTwoBannerDismissed: cookies.get(PLAYER_TWO_BANNER_COOKIE) === "1",
-  };
+  return { stats, curlExample, quote: quote.text };
 };
