@@ -30,7 +30,10 @@ jobs:
       - run: bun run typecheck
       - run: bun run check
       - run: bun test
-      - run: bun audit
+      # Build-time only, on our own config and CSS, with no patched release:
+      # deepmerge 4.3.1 is the latest, and @tailwindcss/typography pins
+      # postcss-selector-parser 6.0.10 exactly.
+      - run: bun audit --ignore GHSA-gcqx-w48m-w2h4 --ignore GHSA-rj75-hqrm-r3gf
       - run: bun run build
         env:
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
