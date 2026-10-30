@@ -4,7 +4,6 @@
   import PulseIcon from "remixicon-svelte/icons/pulse-line";
   import ArrowRightIcon from "remixicon-svelte/icons/arrow-right-s-line";
   import AlertIcon from "remixicon-svelte/icons/alert-line";
-  import CloseIcon from "remixicon-svelte/icons/close-line";
   import ExternalIcon from "remixicon-svelte/icons/external-link-line";
   import { Button } from "#lib/components/ui/button/index.ts";
   import CodeBlock from "#lib/components/code-block.svelte";
@@ -18,7 +17,19 @@
   let agentBannerDismissed = $state(false);
   const showAgentBanner = $derived(!user.agentBannerDismissed && !agentBannerDismissed);
 
+  const AGENT_NOTICE_SECONDS = 5;
+  let secondsLeft = $state(AGENT_NOTICE_SECONDS);
+  $effect(() => {
+    if (!showAgentBanner) return;
+    const timer = setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+
   const dismissAgentBanner = async () => {
+    if (secondsLeft > 0) return;
     agentBannerDismissed = true;
     await fetch("/api/dismiss-agent-banner", { method: "POST" });
   };
@@ -53,22 +64,6 @@
       <Button href="https://account.hackclub.com" target="_blank" rel="noopener noreferrer" variant="destructive" size="sm" class="shrink-0">
         Verify identity
         <ExternalIcon data-icon="inline-end" class="size-4" />
-      </Button>
-    </div>
-  {/if}
-
-  {#if showAgentBanner}
-    <div class="mt-8 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4" role="status">
-      <AlertIcon class="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
-      <div class="min-w-0 flex-1">
-        <h3 class="text-sm font-semibold">Not for AI coding agents</h3>
-        <p class="text-muted-foreground mt-1 text-sm text-pretty">
-          Hack Club AI cannot be used with AI coding agents like OpenClaw, Claude Code, Cursor, Cline, or any other coding agent.
-          Requests from these tools will be blocked. Join <code class="font-mono">#hackclub-ai</code> on the Hack Club Slack for updates.
-        </p>
-      </div>
-      <Button variant="ghost" size="icon-sm" class="-m-1 shrink-0" aria-label="Dismiss banner" onclick={dismissAgentBanner}>
-        <CloseIcon class="size-4" />
       </Button>
     </div>
   {/if}
@@ -128,3 +123,36 @@
     </section>
   </div>
 </div>
+
+{#if showAgentBanner}
+  <div
+    class="bg-background/95 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-6 backdrop-blur-sm"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="agent-notice-title"
+    aria-describedby="agent-notice-body"
+  >
+    <div class="w-full max-w-2xl rounded-2xl border-2 border-red-500/60 bg-red-500/10 p-8 sm:p-12">
+      <AlertIcon class="size-16 text-red-600 dark:text-red-400" />
+      <h2 id="agent-notice-title" class="mt-6 text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+        AI coding agents are NOT allowed
+      </h2>
+      <div id="agent-notice-body" class="mt-6 space-y-4 text-lg text-pretty">
+        <p>
+          Do <strong>not</strong> use Hack Club AI with coding agents like OpenClaw, Claude Code, Cursor, Cline, Codex, OpenCode or any
+          other coding agent. Requests from these tools are blocked, and your account can be banned.
+        </p>
+        <p class="text-muted-foreground">
+          General agents are fine, as long as <strong>you code them yourself</strong>: your own bot, your own tools, your own loop.
+          Just don't point a ready-made coding agent at this API.
+        </p>
+        <p class="text-muted-foreground">
+          Questions? Join <code class="font-mono">#hackclub-ai</code> on the Hack Club Slack.
+        </p>
+      </div>
+      <Button size="lg" class="mt-8 w-full sm:w-auto" disabled={secondsLeft > 0} onclick={dismissAgentBanner}>
+        {secondsLeft > 0 ? `I understand (${secondsLeft})` : "I understand"}
+      </Button>
+    </div>
+  </div>
+{/if}
