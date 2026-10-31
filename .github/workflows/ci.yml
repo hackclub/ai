@@ -30,7 +30,7 @@ jobs:
       - run: bun run typecheck
       - run: bun run check
       - run: bun test
-      - run: bun audit
+      - run: bun audit --ignore GHSA-gcqx-w48m-w2h4 # deepmerge: no patched release yet, build-time only
       - run: bun run build
         env:
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
