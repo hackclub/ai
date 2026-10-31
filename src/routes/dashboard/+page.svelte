@@ -28,6 +28,14 @@
     return () => clearInterval(timer);
   });
 
+  let playerTwoBannerDismissed = $state(false);
+  const showPlayerTwoBanner = $derived(!data.playerTwoBannerDismissed && !playerTwoBannerDismissed);
+
+  const dismissPlayerTwoBanner = () => {
+    playerTwoBannerDismissed = true;
+    document.cookie = "playertwo_banner_dismissed=1; path=/dashboard; max-age=31536000; samesite=lax";
+  };
+
   const dismissAgentBanner = async () => {
     if (secondsLeft > 0) return;
     agentBannerDismissed = true;
@@ -73,6 +81,37 @@
       <h2 id="usage-heading" class="sr-only">Usage</h2>
       <StatsGrid stats={data.stats} />
     </section>
+
+    {#if showPlayerTwoBanner}
+      <aside class="@container relative mt-3 overflow-hidden rounded-lg border border-white/10 bg-[#1a1e24] text-white" aria-label="Player Two">
+        <a
+          href="https://playertwo.hackclub.com/?ref=hackclub-ai-banner"
+          target="_blank"
+          rel="noopener"
+          class="group focus-visible:ring-ring/50 flex min-h-16 items-center gap-3 rounded-lg py-2 pr-11 pl-4 outline-none focus-visible:ring-3 @md:gap-4 @2xl:pr-72"
+        >
+          <img src="/playertwo/logo.webp" alt="Player Two" width="247" height="128" class="h-8 w-auto shrink-0 @md:h-10" />
+          <span class="min-w-0 text-xs leading-snug text-pretty @md:text-sm">
+            Train an AI model that can play a game, get <strong class="font-semibold whitespace-nowrap">free co-op games!</strong>
+          </span>
+          <img
+            src="/playertwo/games.webp"
+            alt=""
+            width="458"
+            height="176"
+            class="pointer-events-none absolute top-1 right-10 hidden h-22 w-auto transition-transform group-hover:-translate-y-0.5 @2xl:block"
+          />
+        </a>
+        <button
+          type="button"
+          class="absolute top-1/2 right-2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-3 focus-visible:ring-white/40 outline-none"
+          aria-label="Dismiss Player Two banner"
+          onclick={dismissPlayerTwoBanner}
+        >
+          <CloseIcon class="size-4" />
+        </button>
+      </aside>
+    {/if}
 
     <section class="mt-10" aria-labelledby="links-heading">
       <h2 id="links-heading" class="mb-4 text-sm font-medium">Jump to</h2>
