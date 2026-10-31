@@ -4,6 +4,7 @@
   import PulseIcon from "remixicon-svelte/icons/pulse-line";
   import ArrowRightIcon from "remixicon-svelte/icons/arrow-right-s-line";
   import AlertIcon from "remixicon-svelte/icons/alert-line";
+  import CloseIcon from "remixicon-svelte/icons/close-line";
   import ExternalIcon from "remixicon-svelte/icons/external-link-line";
   import { Button } from "#lib/components/ui/button/index.ts";
   import CodeBlock from "#lib/components/code-block.svelte";
