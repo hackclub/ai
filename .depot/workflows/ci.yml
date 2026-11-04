@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck, tests, build
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # bun test needs PostgreSQL and ClickHouse (docs/adr/0001); start them
+      # first so they are healthy by the time the tests run.
+      - run: docker compose up -d --wait
+      - run: bun run typecheck
+      - run: bun run check
+      - run: bun test
+      - run: bun audit
+      - run: bun run build
+        env:
+          DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
+          OPENROUTER_API_KEY: ci
+          TYPESAFE_API_KEY: ci
+      - if: failure()
+        run: docker compose logs --no-color postgres clickhouse | tail -n 200
+      - if: always()
+        run: docker compose down --volumes

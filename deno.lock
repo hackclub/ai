@@ -1,0 +1,50 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@deno/installer-shell-setup@*": "0.3.4"
+  },
+  "jsr": {
+    "@deno/installer-shell-setup@0.3.4": {
+      "integrity": "48665d1a737d487cce6874bc97bba70a5aeffa7053aca3f60df93c6fab8963b4"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@clickhouse/client@^1.23.1",
+        "npm:@fontsource-variable/noto-sans@^5.3.0",
+        "npm:@fontsource/maple-mono@^5.3.0",
+        "npm:@sentry/bun@^10.75.3",
+        "npm:@sveltejs/adapter-bun@^1.0.0-next.2",
+        "npm:@sveltejs/kit@^3.0.0-next.27",
+        "npm:@sveltejs/vite-plugin-svelte@^7.3.1",
+        "npm:@tailwindcss/forms@~0.5.11",
+        "npm:@tailwindcss/typography@~0.5.20",
+        "npm:@tailwindcss/vite@^4.3.3",
+        "npm:@types/canvas-confetti@^1.9.0",
+        "npm:bits-ui@^2.19.3",
+        "npm:bun-types@1.4.2",
+        "npm:canvas-confetti@^1.9.4",
+        "npm:clsx@^2.1.1",
+        "npm:dbmate@^2.36.0",
+        "npm:elysia@2.0.0-exp.64",
+        "npm:graphile-worker@0.18",
+        "npm:mmdb-lib@3.0.3",
+        "npm:mode-watcher@^1.1.0",
+        "npm:pino@^10.3.1",
+        "npm:postgres@^3.4.9",
+        "npm:remixicon-svelte@^0.0.5",
+        "npm:shadcn-svelte@^1.7.0",
+        "npm:shiki@^4.4.3",
+        "npm:svelte-check@^4.7.6",
+        "npm:svelte@^5.57.1",
+        "npm:tailwind-merge@^3.7.0",
+        "npm:tailwind-variants@^3.3.1",
+        "npm:tailwindcss@^4.3.3",
+        "npm:tw-animate-css@^1.4.0",
+        "npm:typescript@6.0.3",
+        "npm:vite@^8.3.1"
+      ]
+    }
+  }
+}
