@@ -15,6 +15,9 @@ jobs:
     runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
     steps:
       - uses: actions/checkout@v4
+      # Bring them up in the background so pulling and booting overlap with
+      # install, typecheck and check; the step before bun test waits for it.
+      - run: nohup sh -c 'docker compose up -d --wait; echo $? > "$RUNNER_TEMP/compose-exit"' > "$RUNNER_TEMP/compose.log" 2>&1 &
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.2"
@@ -24,11 +27,12 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      # bun test needs PostgreSQL and ClickHouse (docs/adr/0001); start them
-      # first so they are healthy by the time the tests run.
-      - run: docker compose up -d --wait
       - run: bun run typecheck
       - run: bun run check
+      - run: |
+          while [ ! -f "$RUNNER_TEMP/compose-exit" ]; do sleep 1; done
+          cat "$RUNNER_TEMP/compose.log"
+          exit "$(cat "$RUNNER_TEMP/compose-exit")"
       - run: bun test
       # deepmerge has no patched release; it only merges vite-plugin-svelte's own config.
       - run: bun audit --ignore GHSA-gcqx-w48m-w2h4
