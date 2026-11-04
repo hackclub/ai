@@ -15,7 +15,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+          "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
         ]
       interval: 2s
       timeout: 5s
@@ -39,7 +39,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "clickhouse-client --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1'",
+          "clickhouse-client --host clickhouse --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1'",
         ]
       interval: 2s
       timeout: 5s
