@@ -30,13 +30,14 @@ jobs:
       - run: bun run typecheck
       - run: bun run check
       - run: bun test
-      - run: bun audit
+      # deepmerge has no patched release; it only merges vite-plugin-svelte's own config.
+      - run: bun audit --ignore GHSA-gcqx-w48m-w2h4
       - run: bun run build
         env:
           DATABASE_URL: postgres://hcai:hcai@localhost:55432/hcai
           OPENROUTER_API_KEY: ci
           TYPESAFE_API_KEY: ci
       - if: failure()
-        run: docker compose logs --no-color postgres clickhouse | tail -n 200
+        run: docker compose logs --no-color postgres clickhouse garage | tail -n 200
       - if: always()
         run: docker compose down --volumes
