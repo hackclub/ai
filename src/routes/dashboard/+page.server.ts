@@ -5,7 +5,6 @@ import { requireUser } from "#lib/server/page.ts";
 import { randomQuote } from "#lib/server/quotes.ts";
 
 const LAST_QUOTE_COOKIE = "last_quote";
-const PLAYER_TWO_BANNER_COOKIE = "playertwo_banner_dismissed";
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
   const user = requireUser(locals);
@@ -21,6 +20,5 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
     stats,
     curlExample,
     quote: quote.text,
-    playerTwoBannerDismissed: cookies.get(PLAYER_TWO_BANNER_COOKIE) === "1",
   };
 };
