@@ -61,7 +61,7 @@ export async function authenticateApiKey(
       app_user.id AS user_id,
       account.id AS billing_account_id,
       account.status AS billing_account_status,
-      app_user.is_banned,
+      app_user.is_banned OR app_user.hackatime_banned_at IS NOT NULL AS is_banned,
       app_user.is_idv_verified,
       app_user.skip_idv
     FROM api_keys AS api_key

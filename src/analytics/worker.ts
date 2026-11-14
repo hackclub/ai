@@ -10,6 +10,7 @@ import {
 
 import postgres from "postgres";
 
+import { type HackatimeConfig, syncHackatimeBans } from "../auth/hackatime-bans";
 import type { BillingEngine } from "../billing/engine";
 import { pruneAbuseEvents } from "../gateway/abuse-events";
 import {
@@ -28,6 +29,7 @@ import {
 export const RECONCILE_TASK = "billing.reconcile";
 export const OUTBOX_RETENTION_TASK = "analytics.strip_parked_bodies";
 export const ABUSE_RETENTION_TASK = "abuse.prune_events";
+export const HACKATIME_BANS_TASK = "hackatime.sync_bans";
 
 export type ReconciliationDependencies = {
   sql: postgres.Sql;
@@ -45,6 +47,8 @@ export type AnalyticsWorkerOptions = {
   drainIntervalMs?: number;
   /** Enables the periodic billing.reconcile task when provided. */
   reconciliation?: ReconciliationDependencies;
+  /** Enables the periodic hackatime.sync_bans task when provided. */
+  hackatime?: HackatimeConfig | null;
   log?: (message: string) => void;
 };
 
@@ -55,6 +59,7 @@ export const migrateJobQueue = (connectionString: string) =>
 export type TaskListOptions = {
   sql: postgres.Sql;
   reconciliation?: ReconciliationDependencies;
+  hackatime?: HackatimeConfig | null;
   log?: (message: string) => void;
 };
 
@@ -89,6 +94,13 @@ export const taskList = (resolved: TaskListOptions): TaskList => {
     const pruned = await pruneAbuseEvents(resolved.sql);
     helpers.logger.info(`abuse.prune_events: pruned=${pruned}`);
   };
+  const hackatime = resolved.hackatime;
+  if (hackatime) {
+    tasks[HACKATIME_BANS_TASK] = async (_payload, helpers) => {
+      const { banned, unbanned } = await syncHackatimeBans(resolved.sql, hackatime);
+      helpers.logger.info(`hackatime.sync_bans: banned=${banned} unbanned=${unbanned}`);
+    };
+  }
   return tasks;
 };
 
@@ -118,6 +130,7 @@ export const startAnalyticsWorker = async (
     taskList: taskList({
       sql,
       reconciliation: options.reconciliation,
+      hackatime: options.hackatime,
       log: options.log,
     }),
     concurrency: options.concurrency ?? 8,
@@ -143,6 +156,16 @@ export const startAnalyticsWorker = async (
               identifier: RECONCILE_TASK,
               // One reconcile at a time; a slow run never stacks up.
               options: { queueName: RECONCILE_TASK, maxAttempts: 3, backfillPeriod: 0 },
+            },
+          ]
+        : []),
+      ...(options.hackatime
+        ? [
+            {
+              task: HACKATIME_BANS_TASK,
+              match: "*/10 * * * *",
+              identifier: HACKATIME_BANS_TASK,
+              options: { queueName: HACKATIME_BANS_TASK, maxAttempts: 3, backfillPeriod: 0 },
             },
           ]
         : []),

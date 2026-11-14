@@ -233,5 +233,6 @@ export type Tables = {
     updated_at: Date;
     agent_banner_dismissed_at: Date | null;
     is_admin: boolean;
+    hackatime_banned_at: Date | null;
   };
 };

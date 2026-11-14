@@ -1,3 +1,5 @@
+import type { HackatimeConfig } from "./auth/hackatime-bans";
+
 /**
  * Validated process configuration. Bun loads `.env` automatically; this
  * module only checks shape and applies defaults so a misconfigured deploy
@@ -58,6 +60,8 @@ export type Env = {
   reservationFallbackOutputTokens: number;
   /** Largest accepted HTTP request body, in bytes. */
   maxRequestBodyBytes: number;
+  /** Hackatime Admin API used to refuse users Hackatime has banned; the sync is off when unset. */
+  hackatime: HackatimeConfig | null;
 };
 
 const list = (value: string | undefined) =>
@@ -146,6 +150,12 @@ export const loadEnv = (
       8192,
     ),
     maxRequestBodyBytes: integer(source, "MAX_REQUEST_BODY_BYTES", 20 * 1024 * 1024),
+    hackatime: source.HACKATIME_ADMIN_API_KEY
+      ? {
+          baseUrl: source.HACKATIME_URL || "https://hackatime.hackclub.com",
+          adminApiKey: source.HACKATIME_ADMIN_API_KEY,
+        }
+      : null,
   };
 };
 

@@ -230,6 +230,7 @@ export const createBackend = (env: Env): Backend => {
         providers,
         discounts,
       },
+      hackatime: env.hackatime,
       log: (message) => log.info({ message }, "billing.reconcile"),
     });
     // The first listing and its cover thumbnails take seconds to build; do

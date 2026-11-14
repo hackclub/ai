@@ -70,6 +70,8 @@
               <td class="{cell} whitespace-nowrap">
                 {#if user.isBanned}
                   <span class="text-destructive font-medium">Banned</span>
+                {:else if user.hackatimeBanned}
+                  <span class="text-destructive font-medium">Banned on Hackatime</span>
                 {:else}
                   <span class="text-primary font-medium">Active</span>
                 {/if}

@@ -13,6 +13,8 @@ export type AdminUserRow = {
   email: string | null;
   avatar: string | null;
   isBanned: boolean;
+  /** Banned on Hackatime; lifted only there (hackatime.sync_bans). */
+  hackatimeBanned: boolean;
   isAdmin: boolean;
   isIdvVerified: boolean;
   createdAt: Date;
@@ -43,7 +45,7 @@ export class AdminUserError extends Error {}
 
 type UserRow = Pick<
   Tables["users"],
-  "id" | "slack_id" | "name" | "email" | "avatar" | "is_banned" | "is_admin" | "is_idv_verified" | "created_at"
+  "id" | "slack_id" | "name" | "email" | "avatar" | "is_banned" | "hackatime_banned_at" | "is_admin" | "is_idv_verified" | "created_at"
 >;
 
 const toRow = (row: UserRow): AdminUserRow => ({
@@ -53,6 +55,7 @@ const toRow = (row: UserRow): AdminUserRow => ({
   email: row.email,
   avatar: row.avatar,
   isBanned: row.is_banned,
+  hackatimeBanned: row.hackatime_banned_at !== null,
   isAdmin: row.is_admin,
   isIdvVerified: row.is_idv_verified,
   createdAt: row.created_at,
@@ -71,7 +74,7 @@ export class AdminUsers {
    */
   async search(query: string, limit = 50): Promise<AdminUserRow[]> {
     const term = query.trim();
-    const columns = this.sql`id, slack_id, name, email, avatar, is_banned, is_admin, is_idv_verified, created_at`;
+    const columns = this.sql`id, slack_id, name, email, avatar, is_banned, hackatime_banned_at, is_admin, is_idv_verified, created_at`;
     if (!term) {
       const rows = await this.sql<UserRow[]>`SELECT ${columns} FROM users ORDER BY created_at DESC LIMIT ${limit}`;
       return rows.map(toRow);
@@ -97,7 +100,7 @@ export class AdminUsers {
     const [row] = await this.sql<(UserRow & { billing_account_id: string; active_keys: number })[]>`
       SELECT
         app_user.id, app_user.slack_id, app_user.name, app_user.email, app_user.avatar,
-        app_user.is_banned, app_user.is_admin, app_user.is_idv_verified, app_user.created_at,
+        app_user.is_banned, app_user.hackatime_banned_at, app_user.is_admin, app_user.is_idv_verified, app_user.created_at,
         account.id AS billing_account_id,
         (SELECT count(*)::int FROM api_keys WHERE user_id = app_user.id AND revoked_at IS NULL) AS active_keys
       FROM users AS app_user

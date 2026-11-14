@@ -71,7 +71,7 @@ async function sessionUser(
       app_user.email,
       app_user.name,
       app_user.avatar,
-      app_user.is_banned,
+      app_user.is_banned OR app_user.hackatime_banned_at IS NOT NULL AS is_banned,
       app_user.is_admin,
       app_user.is_idv_verified,
       app_user.skip_idv,

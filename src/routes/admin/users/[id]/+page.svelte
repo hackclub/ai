@@ -61,6 +61,8 @@
           <span class="truncate">{user.name ?? "Unnamed"}</span>
           {#if user.isBanned}
             <span class="bg-destructive/10 text-destructive rounded px-2 py-0.5 text-xs font-medium">Banned</span>
+          {:else if user.hackatimeBanned}
+            <span class="bg-destructive/10 text-destructive rounded px-2 py-0.5 text-xs font-medium">Banned on Hackatime</span>
           {:else}
             <span class="bg-primary/10 text-primary rounded px-2 py-0.5 text-xs font-medium">Active</span>
           {/if}
